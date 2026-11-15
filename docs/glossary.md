@@ -100,7 +100,7 @@ as a usage error rather than walking the wrong range.
 "the highest other tag". README "Getting started" has its use (the tag-push
 job, where the new tag is itself the highest) and the first-release fallback;
 both forms are bounded by the release-floor cap: past `walk.walkCap`
-walk-visible commits the walk is refused (fail-loud 4) with the escape in the
+commits the walk is refused (fail-loud 4) with the escape in the
 message, because it pays one API round-trip per visited commit and nothing
 else bounds it. The bound must itself be version-shaped (usage error
 otherwise), and the sentinel cannot collide with a real tag: git forbids `:`
@@ -206,15 +206,14 @@ merged into another base branch is associated with commits that reached main
 another way. `internal/walk/expand.go: mergedPullFor` (`covering`, `inRange`)
 
 **lost pull** — a covered pull that was never expanded, because its canonical
-commit never resolved (GitHub had not indexed the merge commit yet, or an
-automation authored it and the author gate skipped it before the API). The walk
+commit never resolved (GitHub had not indexed the merge commit yet). The walk
 **warns and deliberately does not expand it**: a listing carries nothing about
 the range, so recovering it would be guessing, and the guess was measured wrong
 (DESIGN §4 has both ways). The walk is then *incomplete*: `bump` and `notes`
 warn, `release` refuses at exit 4 before it reads the releases listing (DESIGN
-§4, the incomplete-walk refusal). API lag clears itself on a re-run; a
-repository whose merge button an **automation** presses meets the refusal on
-every release until a tag is cut past that merge point.
+§4, the incomplete-walk refusal). API lag clears itself on a re-run, and it is
+the one cause: a merge commit an automation pressed resolves like any other
+(DESIGN §4, "The author excludes a message, never a merge point").
 `internal/walk/expand.go: walk.reconcile` (the `coveredOrder` ledger),
 `Facts.lostPulls`
 
@@ -665,8 +664,11 @@ a commit appears in the notes at all is the sections' decision alone.
 
 **excluded author** — an `exclude_authors` entry: its commits leave lint and
 the fold before matching (the key exists for bots, whose messages the
-patterns do not describe) and skip release-walk resolution, but still reach
-the notes machinery — the sections decide. Distinguish from *skip*, which
+patterns do not describe), but still reach the notes machinery — the sections
+decide. The exclusion is of the message: on the release walk an excluded
+author's commit is still asked about, and expands the pull it merged when
+someone else committed to that pull (DESIGN §4, "The author excludes a
+message, never a merge point"). Distinguish from *skip*, which
 is total. `internal/bump/fold.go: Fold`
 
 **cleanup** — the reduction of a raw commit-message **file** (what git hands a

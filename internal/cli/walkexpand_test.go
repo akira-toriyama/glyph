@@ -32,7 +32,7 @@ const apiUnknownSHA = "\x00 422 unknown sha"
 // walkServer stands in for api.github.com during a release walk: routes maps
 // each expected request path to its response body, and any request outside the
 // map fails the test — which is also how a test proves a SHA was NEVER asked
-// about (bot commits must stay off the API).
+// about.
 func walkServer(t *testing.T, routes map[string]string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(walkHandler(t, routes))
@@ -284,26 +284,6 @@ func TestSinceTagPicksTheMergedMatch(t *testing.T) {
 	}
 }
 
-// TestSinceTagBotCommitsNeverReachTheAPI: a bot commit on main (the routine
-// fleet-sync direct push) is excluded by the participation rules BEFORE any
-// resolution — walkServer would fail the test if its SHA were ever asked about.
-func TestSinceTagBotCommitsNeverReachTheAPI(t *testing.T) {
-	dir, _ := testutil.NewTaggedRepo(t)
-	testutil.Commit(t, dir, "dependabot[bot]", ":robot:= chore(fleet): sync a file")
-	sha1 := squashCommit(t, dir, "Fix a crash", 3)
-	srv := walkServer(t, map[string]string{
-		commitPullsPath(sha1): `[` + apiPullRef(3, "2026-07-13T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(3):    `[` + apiCommit("c1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
-	})
-	usePR(t, srv)
-	t.Chdir(dir)
-
-	code, stdout, _ := runGlyph(t, "bump", "--since-tag=v0.1.0")
-	if code != 0 || stdout != "v0.1.1\n" {
-		t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v0.1.1 (the bot commit must be excluded pre-API)", code, stdout)
-	}
-}
-
 // TestSinceTagRevertPRIsWalked: a revert PR squash-merges with the subject
 // `Revert "..." (#N)` — the prefix the presets' revert pattern claims a raw
 // git-revert message by. On the walk that subject is a POINTER to a resolvable
@@ -526,45 +506,6 @@ func TestSinceTagMergeCommitBranchCommitsCountOnce(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "::notice::") || !strings.Contains(stderr, mp.Branch[1][:7]) {
 		t.Fatalf("the dedup must announce each already-folded commit with a ::notice:: naming it:\n%s", stderr)
-	}
-}
-
-// TestSinceTagBotMergeCommitCostsNoLookup: the author gate still runs BEFORE
-// resolution, merge commit or not — walkServer fails the test on any request it
-// did not expect, so leaving the merge commit's own route out of the map is the
-// proof that no round-trip was spent on it. That property is what keeps the
-// routine fleet-sync push (every repo, every day) free.
-//
-// The branch commit's route is stubbed the way GitHub actually answers: for a
-// commit of a pull request GitHub considers merged it names that pull, with
-// merge_commit_sha pointing at the merge commit — it does NOT answer []. A []
-// stub is a state the API cannot produce here, and under it the walk reads the
-// commit's own message and releases, which the realistic shape does not do on
-// its own. With the honest shape the pull is one the walk can only ever see
-// from the INSIDE, so the price of keeping the round-trip free is
-// paid here: the pull's commits stand aside for a merge point the walk will
-// never ask about, and the release is short. That is a loss the walk cannot
-// repair from the pull's listing, so it must at least be loud — the ::warning::
-// naming the pull is the whole difference from the t-7zt7 silence.
-func TestSinceTagBotMergeCommitCostsNoLookup(t *testing.T) {
-	dir, _ := testutil.NewTaggedRepo(t)
-	mp := mergeInto(t, dir, "akira-toriyama", "dependabot[bot]", prTopic(7), prMergeSubject(7), ":bug:~ fix a crash")
-	srv := walkServer(t, map[string]string{
-		commitPullsPath(mp.Branch[0]): `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`,
-		// The merge commit's own route is deliberately absent, and so is
-		// pulls/7/commits: asking for either would fail this test — the first
-		// proves the author gate still runs before the API, the second that a
-		// pull nothing resolved to is never folded from its own listing.
-	})
-	usePR(t, srv)
-	t.Chdir(dir)
-
-	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0")
-	if code != 1 || stdout != "" {
-		t.Fatalf("bump = exit %d stdout %q, want 1 / empty (the bot's merge commit costs no lookup, so nothing resolves the pull and nothing may be invented for it)\nstderr: %s", code, stdout, stderr)
-	}
-	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "#7") {
-		t.Fatalf("a pull the walk only saw from the inside must be named in a ::warning::, never lost in silence:\n%s", stderr)
 	}
 }
 

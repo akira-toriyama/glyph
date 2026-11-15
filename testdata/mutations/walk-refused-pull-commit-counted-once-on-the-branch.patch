@@ -1,9 +1,9 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index a6b343a..631410c 100644
+index 9b47478..d23baf9 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -343,7 +343,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
- 		w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
+@@ -486,7 +486,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+ 		}
  		return
  	}
 -	if i, refused := w.wedged[raw.SHA]; refused {

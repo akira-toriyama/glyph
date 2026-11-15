@@ -1569,12 +1569,10 @@ the plain listing — about 29 s over its 204 lines at the fresh-clone rate
 A merge point is whatever commit GitHub named `merge_commit_sha` for the pull —
 the squash commit, a rebase-merge's last commit, or (the merge-commit button)
 the **merge commit itself**, whose `merge_commit_sha` is its own sha. One
-equality resolves all three. The walk therefore excludes a commit before that
-lookup **only by its author** (a bot's or an automation's commit is a direct
-push that can never move the version, and the fleet's daily sync push must not
-cost a round-trip): a merge point's subject and its parent count are how GitHub
-*shapes a pointer*, not evidence about it. Judging the shape first is what let
-one click on the merge button drop a whole PR out of both the version and the
+equality resolves all three. The walk therefore excludes **no commit** before
+that lookup: a merge point's subject, its parent count and its author are how
+GitHub *shapes a pointer*, not evidence about what it points at. Judging the
+shape first is what let one click on the merge button drop a whole PR out of both the version and the
 notes, silently, on the fleet repositories that allow the button (31 of 34 on
 2026-07-21, §7; t-7zt7); the message rules still apply, one step later, to any commit no pull
 request explains — which is how a local `git merge` stays skipped. Because
@@ -1588,6 +1586,49 @@ listing of the pull that later landed that branch, and re-reading it as a
 message wedged the release permanently. The price is one API round-trip per
 merge commit, including the local merges that resolve to nothing — the only way
 to tell the two apart is to ask.
+
+**The author excludes a message, never a merge point.** GitHub writes a squash
+commit under the name of whoever *opened* the pull, and a merge commit under
+whoever *pressed the button*: glyph#351, dependabot's gomod bump with
+`hub-fleet-repin[bot]`'s re-pin pushed onto its branch, landed as 86eab14 —
+author `dependabot[bot]`, committer `GitHub`, merged by a human (measured
+2026-11-15: `pulls/351`, `pulls/351/commits`, `commits/86eab14`; the second
+committer there is another automation, and a *human's* commit on a bot's pull is
+not measured live — the tests stand one in). So the author of a merge point says
+nothing of who wrote the commits inside, and an `exclude_authors` author's commit
+on the released branch is asked about like any other. It resolves to the pull it
+merged exactly when that pull's listing holds a commit by someone else; the pull
+then expands as any pull does, its excluded commits still excluded one by one —
+no message of theirs is judged and none moves a version. A listing of excluded
+authors alone, or no pull at all, leaves the commit what it was: one commit under
+its own sha, out of the fold, the notes' to show, standing aside for nothing. The
+routine bot pull is therefore never an expansion
+(`TestSinceTagExcludedAuthorsOwnPullIsNotExpanded`). glyph#351 itself is not
+one: `hub-fleet-repin[bot]` is no `exclude_authors` entry, so #351 expands — its
+`=` re-pin joins the walk and the notes cite dependabot's own commit subject under
+#351 where they cited the squash's title, the verdict unmoved (glyph main at
+c06e426, the same day). Until t-saky the author
+gated the lookup itself, to keep the fleet's daily sync push off the API, and
+that hid two shapes. A human's fix pushed onto dependabot's branch landed under
+the bot's name, and `bump` answered `0 commit(s) participate` at exit 1 with no
+warning (`TestSinceTagExcludedAuthorsSquashExpandsAPullSomeoneElseCommittedTo`).
+And a merge commit an automation pressed was skipped while the pull's commits
+stood aside for it: a NOT-counted warning from `bump` and `notes`, and `release`
+at exit 4, on every run (`TestSinceTagExcludedAuthorsMergeCommitResolvesItsPull`).
+Rejected: refusing the squash shape at 4 as the merge-commit shape was refused,
+which turns every bot pull a human touches into a red release. The price is the
+lookup every commit pays, and the listing for a bot's commit that resolves: one
+request for a direct push, two for a bot's own squash; the whole-history cap and
+the PR side's window count an excluded author's commit with the rest. Under the
+API's lag a bot's commit joins the walk with a warning that a pull it may have
+merged went unresolved, and a bot's merge commit is the unresolved merge point
+any merge commit is (`TestSinceTagExcludedAuthorsCommitUnknownToGitHubIsSaid`).
+One reader, `walk.resolve`, answers for the walk's expansion and for the
+read-back below, so a commit one of them takes for a merge point the other does
+too. (Mutation rows `walk-skips-an-excluded-authors-merge-point`,
+`walk-expands-an-excluded-authors-own-pull`,
+`walk-stands-an-excluded-authors-commit-aside`,
+`walk-excluded-authors-lagging-commit-goes-unsaid`.)
 
 **A pull's listing is governed by the walk's range, not by the pull.** The
 listing is the pull's *entire* history and knows nothing of the range, so
@@ -1845,14 +1886,18 @@ the same day). A third pull stacked above would flip the verdict with no change 
 the range.
 
 The price is a pull that forked behind the base: one lookup per commit between its
-fork and the base, an excluded author's aside, and one listing per pull that
-resolves, once per walk however many pulls share the window. A fork in range or at
+fork and the base, an excluded author's among them — the reader is the walk's own
+("The author excludes a message, never a merge point"), so a pull stacked on a
+bot's pull does not count what that pull released
+(`TestSinceTagStackedOverAnExcludedAuthorsPullCountsItsCommitsOnce`) — and one
+listing per pull that resolves, once per walk however many pulls share the window. A fork in range or at
 the base asks nothing — a commit descending the base cannot be in it — and that is
 nearly every pull: of 1,792 merged pulls with a tag base across glyph, furrow, sill,
 canon, `.github` and dotfiles, 16 forked behind it, the widest by 10 commits
 (measured 2026-11-04, GraphQL). Past a token's budget the rate limit answers, as for
-any tagged range (§4.1, "Only the untagged arm is capped"); no fleet window is near
-it. A released pull GitHub lists at its cap (250) is read as far as the cap, and
+any tagged range (§4.1, "Only the untagged arm is capped";
+`TestSinceTagReadBackBehindTheBaseIsNotCapped` reads 202 commits back); no fleet
+window is near it. A released pull GitHub lists at its cap (250) is read as far as the cap, and
 the walk warns that a sha past it is matched by nothing and may count again — the
 walk's own cap warning speaks of a verdict that pull is not in
 (`TestSinceTagReadBackOfACappedPullWarnsOfARecount`). Two holes are named rather
@@ -1867,7 +1912,7 @@ it counts again. (Mutation rows
 `walk-forgets-where-a-pre-rebase-sha-landed`,
 `walk-read-back-matches-a-released-message`,
 `walk-read-back-walks-the-whole-base`,
-`walk-read-back-resolves-an-excluded-author`,
+`walk-read-back-is-capped-behind-the-base`,
 `walk-read-back-asks-about-a-window-twice`,
 `walk-read-back-dies-on-an-unknown-commit`,
 `walk-read-back-fails-on-a-fork-no-checkout-holds`,
@@ -1898,25 +1943,32 @@ and names the replay as where #15 landed it (the same day;
 each sha, because a pull is never *another* pull to itself: read by number once
 merged, its own merge point sits in the window and resolves back to it, and a pull
 stacked on it and merged after it lists the same shas, recorded first under the
-pull that landed them by the oldest-first read-back. Without that, `--pr` of any
+pull that landed them by the oldest-first read-back — whoever authored that pull's
+merge point (`TestPullSideReadsAnExcludedAuthorsMergePointAsItsOwn`). Without that, `--pr` of any
 merged pull dropped its own commits as landed through another pull — `bump` and
 `notes` answered none, and the frozen packages live fire, which previews the merged
 #10 and #11 of `glyph-monorepo-test` at 380db9d, read #10 as "moves nothing"
 (verified 2026-11-08 at 4d20780; `TestPullSideReadsAMergedPullAsItsOwn`). The price
 is one lookup per commit between the fork and `HEAD`, less the listing's own — a
 checkout standing on the pull's branch holds them in the window, and an open
-pull's commit names no merged pull — and an excluded author's, plus one listing
-per pull that resolves, so two requests per merged pull in the window: a pull cut
-from the tip pays nothing (`TestPullSideForkedAtTheTipAsksNothingMore`), a stale
-one its age in walk-visible commits, on every push. That window grows with the
-pull's staleness and serves no release, so it is bounded where the untagged arm is
-(§4.1, "Only the untagged arm is capped"): past `walkCap` (200) walk-visible
-commits nothing is read back, and one warning says the listing is read whole and
-a commit another pull landed may count as this pull's own, with the remedy — a
-rebase onto the released branch moves the fork
+pull's commit names no merged pull — plus one listing per pull that resolves, a
+page per 100 commits it lists, so two requests per merged pull in the window as a
+rule: a pull cut from the tip pays nothing
+(`TestPullSideForkedAtTheTipAsksNothingMore`), a stale one its age in commits, on
+every push. That window grows with the pull's staleness and serves no release, so
+it is bounded where the untagged arm is (§4.1, "Only the untagged arm is capped"):
+past `walkCap` (200) commits — the union of the listing's fork windows, a commit
+two forks reach counted once (`TestPullSideCapCountsTheUnionOfItsForkWindows`) —
+nothing is read back, and one warning says the listing is read whole and a commit
+another pull landed may count as this pull's own, with the remedy a pull still
+open has — a rebase onto the released branch moves the fork — and none for a
+merged pull, whose window only grows
 (`TestPullSideStaleBeyondTheCapReadsNothingBack`). Under the bound the PR side
-costs at most 400 requests of the Actions token's 1,000 an hour, beside the
-pending walk's own. preview's pending walk reads the range's merge points on its
+costs at most 200 lookups and one listing per pull that resolves, beside the
+pull's own: 401 requests where every commit behind the pull is a merge point, and
+one more for each further page of a listing past 100 commits, three pages at
+GitHub's cap of 250 (`TestPullSidePriceAtTheBound`: 402, one listing of 101) — of
+the Actions token's 1,000 an hour, beside the pending walk's own. preview's pending walk reads the range's merge points on its
 own account; the overlap with this window is the pull's age in commits, paid
 twice. Rejected: subtracting the pending walk's expansions on the PR side instead,
 which has no answer for `bump --pr` and `notes --pr`, nor for a repository with no
@@ -1924,7 +1976,8 @@ tag, and under `[[packages]]` runs only after attribution has judged the listing
 so a commit the base released under a hand-cut escape tag would be refused where
 the walk drops it. (Mutation rows `pr-side-counts-what-another-pull-landed`,
 `pr-side-asks-about-the-pulls-own-commits`,
-`pr-side-reads-a-merged-pull-as-another-pull`, `pr-side-reads-back-past-the-cap`.)
+`pr-side-reads-a-merged-pull-as-another-pull`, `pr-side-reads-back-past-the-cap`,
+`pr-side-cap-counts-a-commit-per-fork-window`.)
 
 Standing aside is only safe if something stands in, so the walk keeps a ledger:
 a pull that some commit reported itself *covered* by, whose canonical commit is
@@ -1932,8 +1985,7 @@ inside the range and was nevertheless never expanded, gets a loud `::warning::`
 naming it at the end of the walk (and, on `release`, the exit-4 refusal below:
 the walk is incomplete). That is a merged PR the walk could only ever
 see from the inside — GitHub had not indexed the merge commit yet (a release
-job runs seconds after the merge), or an automation authored it and the author
-gate skipped it. Without the ledger every one of its commits skips itself and
+job runs seconds after the merge). Without the ledger every one of its commits skips itself and
 the release reports `no release: 0 commit(s) participate` with no diagnostic at
 all: the original t-7zt7 silence, surviving on the new path.
 
@@ -1956,13 +2008,16 @@ and it is tracked rather than smuggled in.) The warning cannot fire on a reposit
 whose merge points the walk can **resolve** — one that cries on every release
 would be worse than none: standing aside requires the pull's canonical commit to
 be **in range**, and a canonical commit in range that resolves is expanded on the
-spot. Two causes reach it and they behave differently. API lag clears itself
-on the re-run. A repository whose merge button is pressed by an **automation**
-meets it on *every* release: the author gate skips a bot-authored merge commit
-before the API, so nothing is left to resolve the pull. Either way the walk is
-incomplete (below): `bump` and `notes` warn, `release` refuses at exit 4.
-Before t-7zt7 that pull was lost silently, so this is not a regression — but
-such a repository lets a human press merge, or cuts a tag past the merge point.
+spot. One cause reaches it: GitHub not associating a merge point with its pull
+yet, which clears itself on the re-run the refusal asks for. The walk is then
+incomplete (below): `bump` and `notes` warn, `release` refuses at exit 4. A
+merge commit an **automation** pressed was a second cause, met on *every*
+release, while the author gated the lookup; it resolves now like any merge point
+("The author excludes a message, never a merge point"), `release --dry-run`
+answering 0 where it answered 4 (`TestSinceTagExcludedAuthorsMergeCommitResolvesItsPull`),
+so the refusal names no remedy but the re-run (t-b7t2). One corner is reasoned,
+not measured: a bot's pull GitHub lists at its cap of 250, with someone else's
+commit only past the cap, resolves to nothing.
 
 *Covered* is deliberately gated on the canonical commit being **in the walked
 range** — a pull merged into another base branch is associated with commits
@@ -2007,11 +2062,11 @@ t-pysg, replacing #66's warn-and-refuse-to-destroy, which still built and
 raised drafts, banner and all, out of folds it had just called short). The exit
 that #66 rejected was rejected for a repository whose merge button an
 automation presses, which then warned on every release structurally; merge
-points resolve now (t-7zt7), so what remains of that shape is a bot-authored
-merge commit — a walk blind to a whole pull, which is exactly what the exit is
-for, and the escape is the wedge escape: cut a tag at or past what the walk
-cannot read, or fix the checkout (`fetch-depth: 0`) when the shortfall names
-it. Ordinary API lag clears on the re-run the error asks for. The same family,
+points resolve now, whoever pressed the button (t-7zt7, t-saky), so nothing
+remains of that shape, and a walk blind to part of its range is exactly what
+the exit is for. Where a re-run cannot read it either, the escape is the wedge
+escape: cut a tag at or past what the walk cannot read, or fix the checkout
+(`fetch-depth: 0`) when the shortfall names it. Ordinary API lag clears on the re-run the error asks for. The same family,
 reached from the output side: a composed body over GitHub's release cap —
 **125000 characters, not bytes**, measured live against the API with the
 over-by-one and the multibyte case both probed (`internal/cli/bodylimit.go`
@@ -3015,10 +3070,17 @@ it cost 2 (measured 2026-09-10 on glyph-monorepo-test, pulls #1 and #2 of one
 and two commits: seven requests, four of them the merge points and the
 listings; and 2026-09-26 in the fixture, a pull of one human and one
 dependabot commit: four requests where the first cut paid three). A pull
-whose merge point an excluded author wrote is never expanded at all (§4's
-author gate), so the routine dependabot squash — authored by `dependabot[bot]`,
-as GitHub writes it — is placed by its landed net diff from local git, free;
-nothing else in the walk changes price, and a repository without
+whose merge point an excluded author wrote, and whose listing holds excluded
+authors' commits alone, is not expanded (§4, "The author excludes a message,
+never a merge point"), so the routine dependabot squash — authored by
+`dependabot[bot]`, as GitHub writes it — is placed by its landed net diff from
+local git and no file is asked for: it costs §4's two requests, the lookup and
+the listing that says nobody else committed to it, and a bot's direct push the
+lookup alone. With someone else's commit in its listing it is priced as any
+pull, 2 + *k* (measured 2026-11-15 in the fixture: two requests for the bot's
+own squash, four for one carrying a human's fix beside the bump;
+`TestSinceTagPackagesExcludedAuthorsSquashIsPricedByWhoCommittedToIt`).
+Nothing else in the walk changes price, and a repository without
 `[[packages]]` pays nothing new because no file is ever asked for. The
 whole-history cap (`walk.walkCap`) still counts commits, not requests: a
 capped first walk of a packages repository may cost up to twice the cap. The
@@ -3282,9 +3344,11 @@ line walks that line's range alone (1 lookup for the fresh line beside the
 only (t-60dc, below).
 
 The fleet's exposure, measured 2026-09-29: the longest tagged walk is
-dotfiles', 192 commits past v0.2.0 (cut 2026-07-20) — 188 lookups once its 4
-dependabot commits are excluded, plus up to 148 listings for its pull-shaped
-subjects, about 340 requests per release run (an estimate from local git).
+dotfiles', 192 commits past v0.2.0 (cut 2026-07-20) — 192 lookups, its 4
+dependabot commits among them (§4, "The author excludes a message, never a merge
+point"), plus up to 148 listings for its pull-shaped subjects and 4 for the
+dependabot commits, about 345 requests per release run (an estimate from local
+git, recounted 2026-11-15 from the same figures).
 That job runs on `github.token`, and every preview on a dotfiles pull walks the
 same range for its pending side, all against the repository's 1,000 requests
 an hour (the `GITHUB_TOKEN` limit GitHub documents): about three verdict runs
@@ -4523,8 +4587,8 @@ The severities are the argued part:
   no bump while the API answers, and none at full darkness either — the branch
   commits are on `main` and classify themselves. What is left is the squash-only
   house convention plus one *loud* window per style: an unresolved merge point
-  (API lag, or a bot-authored merge, where it repeats every release) is a lost
-  pull that stops `release` at exit `4` until a tag clears it (§4), and a rebase
+  (API lag) is a lost pull that stops `release` at exit `4` until the re-run
+  resolves it (§4), and a rebase
   whose listing the walk cannot align
   against what landed — one that dropped a commit it was asked to replay, already
   upstream or rebased empty — can still

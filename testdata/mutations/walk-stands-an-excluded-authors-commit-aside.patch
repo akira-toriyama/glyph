@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 9b47478..4d5cc4f 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -228,7 +228,7 @@ func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-	excluded := w.excludes(raw)
++	excluded := false
+ 	// Ledger first, whatever this commit resolves to: a commit can name the
+ 	// pull that merged it AND a pull that merely carries it (a sub-PR's
+ 	// squash commit is inside the branch of the pull that landed it), and

@@ -3,7 +3,6 @@ package walk
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
@@ -170,8 +169,8 @@ const flagEscape = "; name the walk base yourself with --since-tag=TAG (cutting 
 // "Only the untagged arm is capped"; t-354v). whyNone is stated of HEAD's
 // history, never of the repository: "no version tag found" beside a
 // `git tag -l` that lists one is the sentence t-gt9n forbids. The commits the
-// walk would visit are counted FIRST, under the author exclusion the walk
-// itself applies, and past walkCap the refusal is CodeAPI — nothing is broken
+// walk would visit are counted FIRST — every one, an excluded author's too,
+// which the walk asks about like any other (resolve) — and past walkCap the refusal is CodeAPI — nothing is broken
 // underneath, no retry clears it — with the escape in the message; the count
 // is exact, so the refusal names the real cost, and the second `git log` this
 // arm spends is local and cheap. remedy is what a packages walk can say of
@@ -188,12 +187,7 @@ func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, r
 	if err != nil {
 		return "", nil, err
 	}
-	walked := 0
-	for _, raw := range raws {
-		if !slices.Contains(cfg.ExcludeAuthors, raw.Author) {
-			walked++
-		}
-	}
+	walked := len(raws)
 	if walked > walkCap {
 		if escape == "" {
 			escape = flagEscape

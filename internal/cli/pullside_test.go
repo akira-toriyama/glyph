@@ -2,8 +2,11 @@ package cli
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
@@ -228,16 +231,19 @@ func TestPullSideReadsAMergedPullAsItsOwn(t *testing.T) {
 }
 
 // TestPullSideStaleBeyondTheCapReadsNothingBack prices the PR side's window.
-// A pull forked more than walkCap walk-visible commits behind HEAD would cost
-// a lookup per commit on every push, so nothing is read back: the listing is
-// read whole, one request, and one warning says that a commit another pull
-// landed may count as this pull's. At the cap the window is read, and the
-// bot commits in it are neither counted against the cap nor asked about.
+// A pull forked more than walkCap commits behind HEAD would cost a lookup per
+// commit on every push, so nothing is read back: the listing is read whole,
+// one request, and one warning says that a commit another pull landed may
+// count as this pull's — with a remedy only for a pull still open, since
+// --pr reads merged pulls too and no rebase moves a merged pull's fork. At
+// the cap the window is read, and the bot commits in it are counted against
+// the cap and asked about like any other: one of them may be the merge point
+// of a pull someone else committed to.
 func TestPullSideStaleBeyondTheCapReadsNothingBack(t *testing.T) {
 	const d9 = "d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9"
 	// staleHistory lands #1 (a1) by squash under the fixture's tag, then humans
 	// more commits by akira-toriyama and ten by a bot, and returns the shas the
-	// read-back would ask about, oldest first.
+	// read-back would ask about, oldest first: every one of them.
 	staleHistory := func(t *testing.T, humans int) (dir, root string, visible []string) {
 		t.Helper()
 		dir, root = testutil.NewTaggedRepo(t)
@@ -248,6 +254,7 @@ func TestPullSideStaleBeyondTheCapReadsNothingBack(t *testing.T) {
 		}
 		for i := range 10 {
 			testutil.Commit(t, dir, "dependabot[bot]", fmt.Sprintf(":robot:= chore(fleet): sync %d", i))
+			visible = append(visible, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 		}
 		return dir, root, visible
 	}
@@ -255,7 +262,7 @@ func TestPullSideStaleBeyondTheCapReadsNothingBack(t *testing.T) {
 		return apiListing(apiCommitOn(stackedA1, ":boom:! break the api", root), apiCommitOn(d9, ":bug:~ fix a thing", stackedA1))
 	}
 	t.Run("past the cap", func(t *testing.T) {
-		dir, root, visible := staleHistory(t, 200)
+		dir, root, visible := staleHistory(t, 190)
 		srv, asked := recordingWalkServer(t, map[string]string{pullCommitsPath(9): listing(root)})
 		usePR(t, srv)
 		t.Chdir(dir)
@@ -266,13 +273,13 @@ func TestPullSideStaleBeyondTheCapReadsNothingBack(t *testing.T) {
 		if want := []string{pullCommitsPath(9)}; !slices.Equal(*asked, want) {
 			t.Errorf("requests = %v, want the listing alone", *asked)
 		}
-		want := fmt.Sprintf("::warning::glyph: pull request #9 forked %d commits behind HEAD — reading back which of them another pull request landed would ask GitHub about each (the cap is 200), so the listing is read whole: a commit another pull request already landed on the released branch may be counted as this pull's own. Rebase the branch onto the released branch to narrow the window", len(visible))
+		want := fmt.Sprintf("::warning::glyph: pull request #9 forked %d commits behind HEAD — reading back which of them another pull request landed would ask GitHub about each (the cap is 200), so the listing is read whole: a commit another pull request already landed on the released branch may be counted as this pull's own. A pull still open narrows the window by rebasing its branch onto the released branch; a merged pull's window only grows", len(visible))
 		if !strings.Contains(stderr, want) {
 			t.Errorf("the over-count must be said:\n  %s\nstderr: %s", want, stderr)
 		}
 	})
 	t.Run("at the cap", func(t *testing.T) {
-		dir, root, visible := staleHistory(t, 199)
+		dir, root, visible := staleHistory(t, 189)
 		routes := map[string]string{
 			pullCommitsPath(9):          listing(root),
 			commitPullsPath(visible[0]): apiMerged(1, visible[0]),
@@ -289,10 +296,104 @@ func TestPullSideStaleBeyondTheCapReadsNothingBack(t *testing.T) {
 			t.Fatalf("bump --pr 9 --json = exit %d commits %v, want 0 and d9 alone — #1 landed a1\nstderr: %s", code, shas, stderr)
 		}
 		if strings.Contains(stderr, "the cap is") {
-			t.Errorf("200 walk-visible commits sit at the cap, not past it:\n%s", stderr)
+			t.Errorf("200 commits sit at the cap, not past it:\n%s", stderr)
 		}
 		if len(*asked) != 2+len(visible) {
 			t.Errorf("%d requests, want the listing, %d lookups and #1's listing:\n%v", len(*asked), len(visible), *asked)
 		}
 	})
+}
+
+// TestPullSideCapCountsTheUnionOfItsForkWindows: a listing with two forks —
+// GitHub's "Update branch" merges the base in, and the merge commit's second
+// parent is a commit of the released branch — reads two windows that overlap,
+// and a commit both hold is one commit: asked about once and counted once
+// against the cap. 150 commits sit behind the pull; the windows hold 150 and
+// 100 of them, and counted apart they pass the cap of 200, so the pull would
+// be read whole under a warning where its window is in bounds.
+func TestPullSideCapCountsTheUnionOfItsForkWindows(t *testing.T) {
+	const merge = "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5"
+	dir, root := testutil.NewTaggedRepo(t)
+	var visible []string
+	for i := range 150 {
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
+		visible = append(visible, headSHA(t, dir))
+	}
+	routes := map[string]string{pullCommitsPath(9): apiListing(
+		apiCommitOn(stackedA1, ":memo:= start the api", root),
+		apiCommitOn(merge, "Merge branch 'main' into topic", stackedA1, visible[49]),
+		apiCommitOn(stackedA2, ":bug:~ fix the api", merge))}
+	for _, sha := range visible {
+		routes[commitPullsPath(sha)] = `[]`
+	}
+	srv, asked := recordingWalkServer(t, routes)
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, _, stderr := verdictSHAs(t, "bump", "--pr", "9")
+	if code != 0 || strings.Contains(stderr, "the cap is") {
+		t.Fatalf("bump --pr 9 = exit %d, want 0 and no cap warning — 150 distinct commits sit behind the pull\nstderr: %s", code, stderr)
+	}
+	if len(*asked) != 1+len(visible) {
+		t.Errorf("%d requests, want the listing and one lookup per commit behind it (%d)", len(*asked), 1+len(visible))
+	}
+}
+
+// TestPullSidePriceAtTheBound measures the sentence DESIGN §4 prices the PR
+// side with: at the cap, with every commit behind the pull a merge point, the
+// read-back costs 200 lookups and one listing per pull that resolves, the
+// pull's own listing beside them — 401 requests — and one more for each
+// further page of a listing past 100 commits (#150 lists 101).
+//
+// bite-exempt: a measurement of the read-back's price, which the pre-PR
+// source does not pay; mutation row pr-side-reads-back-past-the-cap defends
+// the bound.
+func TestPullSidePriceAtTheBound(t *testing.T) {
+	const d9 = "d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9"
+	dir, root := testutil.NewTaggedRepo(t)
+	merge := map[string]int{}
+	for i := range 200 {
+		n := 100 + i
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf("Pull %d (#%d)", n, n))
+		merge[headSHA(t, dir)] = n
+	}
+	var count atomic.Int64
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count.Add(1)
+		p := r.URL.Path
+		sha, lookup := strings.CutSuffix(strings.TrimPrefix(p, "/repos/akira-toriyama/glyph/commits/"), "/pulls")
+		switch {
+		case p == pullCommitsPath(9):
+			fmt.Fprint(w, apiListing(apiCommitOn(stackedA1, ":boom:! break the api", root), apiCommitOn(d9, ":bug:~ fix a thing", stackedA1)))
+		case lookup && merge[sha] != 0:
+			fmt.Fprint(w, apiMerged(merge[sha], sha))
+		case p == pullCommitsPath(150) && r.URL.Query().Get("page") == "":
+			w.Header().Set("Link", fmt.Sprintf(`<%s%s?per_page=100&page=2>; rel="next"`, srv.URL, p))
+			entries := make([]string, 0, 100)
+			for k := range 100 {
+				entries = append(entries, apiCommitOn(fmt.Sprintf("%040x", 0xbb0000+k), fmt.Sprintf(":memo:= big %d", k), root))
+			}
+			fmt.Fprint(w, apiListing(entries...))
+		default:
+			var n int
+			if _, err := fmt.Sscanf(p, "/repos/akira-toriyama/glyph/pulls/%d/commits", &n); err != nil || n < 100 || n >= 300 {
+				t.Errorf("unexpected request %q", p)
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprint(w, apiListing(apiCommitOn(fmt.Sprintf("%040x", 0xcc0000+n), fmt.Sprintf(":memo:= pull %d", n), root)))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, shas, stderr := verdictSHAs(t, "bump", "--pr", "9")
+	if code != 0 || !slices.Equal(shas, []string{stackedA1, d9}) || strings.Contains(stderr, "the cap is") {
+		t.Fatalf("bump --pr 9 --json = exit %d commits %v, want 0 and both commits with no cap warning\nstderr: %s", code, shas, stderr)
+	}
+	if got := count.Load(); got != 402 {
+		t.Errorf("%d requests, want 402: the pull's own listing, 200 lookups, 200 listings and #150's second page", got)
+	}
 }

@@ -134,8 +134,8 @@ func TestSinceReadsThroughItsPorts(t *testing.T) {
 			t.Errorf("no file was to be asked for on the bare line, got %q", asked)
 		}
 	}
-	if len(pulls.asked) != 3 {
-		t.Errorf("requests = %q, want the root's and the squash's resolution and one listing (the bot push costs none)", pulls.asked)
+	if len(pulls.asked) != 4 {
+		t.Errorf("requests = %q, want the root's, the squash's and the bot push's resolution and one listing", pulls.asked)
 	}
 	if len(rep.lines) != 2 || !strings.HasPrefix(rep.lines[0], "warning: no version tag in HEAD's history — walking the repository's whole history") ||
 		!strings.HasSuffix(rep.lines[1], "has no merged pull request (a direct push, or the API lagging) — reading its own message") {

@@ -1,13 +1,16 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 65e8606..4ba831e 100644
+index 9b47478..24004b9 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -625,8 +625,6 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+@@ -862,7 +862,10 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+ 		return nil
+ 	}
  	w.readBackDone[raw.SHA] = true
- 	number, found, _, err := w.mergedPullFor(ctx, w.owner, w.repo, raw.SHA, nil)
- 	switch {
--	case github.IsCommitUnknown(err):
--		return nil
- 	case err != nil:
+-	m, _, _, err := w.resolve(ctx, raw, nil)
++	m, _, lag, err := w.resolve(ctx, raw, nil)
++	if lag {
++		return fmt.Errorf("commit %s is unknown", raw.SHA)
++	}
+ 	if err != nil || m == nil {
  		return err
- 	case !found:
+ 	}

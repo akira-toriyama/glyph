@@ -1,0 +1,12 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 9b47478..d753420 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -169,6 +169,7 @@ func newWalk(w Walker, cfg *config.Config, owner, repo, revRange string, raws []
+ 		landings:     map[string]landing{},
+ 		readBackDone: map[string]bool{},
+ 		readBackTop:  top,
++		readBackCap:  walkCap,
+ 		inRange:      inRange,
+ 		coveredPulls: map[int]bool{},
+ 		expanded:     map[int]bool{},

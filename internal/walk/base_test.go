@@ -179,19 +179,18 @@ func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
 
 // TestWholeHistoryAtTheCapStillWalks is the untagged arm's half of the cap
 // decision that cli's TestSinceTagUnboundedWalkRefused cannot pin: a history
-// of exactly walkCap walk-visible commits still walks (a skip would fold zero
-// commits and verdict the first release out of existence), and the count
-// excludes the bot authors the walk itself never asks about. The refusal one
-// commit past the cap, and its exit 4 and escape, are that cli test's.
+// of exactly walkCap commits still walks (a skip would fold zero commits and
+// verdict the first release out of existence), and the count holds every
+// commit, a bot's included: the walk asks about each. The refusal one commit
+// past the cap, and its exit 4 and escape, are that cli test's.
 func TestWholeHistoryAtTheCapStillWalks(t *testing.T) {
-	// 199 human commits (plus the fixture's root) and 10 bot commits: 200
-	// walk-visible, exactly AT the cap. The bot commits prove the guard counts
-	// what the walk VISITS, not raw history length.
-	dir := testutil.NewUntaggedHistory(t, 199, 10)
+	// 189 human commits, the fixture's root and 10 bot commits: 200, exactly
+	// AT the cap.
+	dir := testutil.NewUntaggedHistory(t, 189, 10)
 
 	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testutil.Config(t), Auto)
 	if err != nil {
-		t.Fatalf("200 walk-visible commits are AT the cap and must still walk (a skip would "+
+		t.Fatalf("200 commits are AT the cap and must still walk (a skip would "+
 			"verdict the first release out of existence), got %v", err)
 	}
 	if revRange != "HEAD" || base == nil || *base != (bump.Version{}) {

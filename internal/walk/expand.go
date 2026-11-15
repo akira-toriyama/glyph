@@ -210,52 +210,46 @@ func (w Walker) OpenPull(ctx context.Context, cfg *config.Config, owner, repo st
 	return own, nil
 }
 
-// visit folds one commit of the range in by what resolves it: an excluded
-// author's commit joins before any request, a merge point expands the pull it
-// resolves to, a covered commit stands aside for its pull's merge point, and
-// everything else falls back to its own message. The error is the API's or
+// visit folds one commit of the range in by what resolves it: a merge point
+// expands the pull it resolves to, a covered commit stands aside for its
+// pull's merge point, and everything else falls back to its own message — an
+// excluded author's commit to no message at all. The error is the API's or
 // git's as received; walkSince decides what it means for the verdict.
 func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
 	// A merge point is a POINTER to a pull request, not a message being
-	// judged, so only its AUTHOR excludes it before resolution: an
-	// exclude_authors commit can never move the version, and the fleet's
-	// daily bot push must not cost a round-trip. Neither its subject nor
-	// its parent count may — judging the shape dropped a whole pull out of
-	// a release in silence (t-7zt7; DESIGN §4). The commit still joins the
-	// walk; whether the notes show it is their decision.
-	if slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
-		if raw.SHA != "" && w.seen[raw.SHA] {
-			return nil
-		}
-		if raw.SHA != "" {
-			w.seen[raw.SHA] = true
-		}
-		w.commits = append(w.commits, Commit{Raw: raw, Landed: true})
-		return nil
-	}
+	// judged, so nothing about the commit excludes it before resolution:
+	// neither its subject nor its parent count — judging the shape dropped a
+	// whole pull out of a release in silence (t-7zt7; DESIGN §4) — nor its
+	// author, which GitHub writes from the pull's opener on a squash and from
+	// whoever pressed the button on a merge commit, and which says nothing of
+	// who wrote the commits inside (resolve; t-saky).
 	w.visited++
-	number, found, covering, rerr := w.mergedPullFor(ctx, w.owner, w.repo, raw.SHA, w.inRange)
+	m, covering, lag, err := w.resolve(ctx, raw, w.inRange)
+	if err != nil {
+		return err
+	}
+	excluded := w.excludes(raw)
 	// Ledger first, whatever this commit resolves to: a commit can name the
 	// pull that merged it AND a pull that merely carries it (a sub-PR's
 	// squash commit is inside the branch of the pull that landed it), and
-	// reconcile needs both sightings.
-	for _, n := range covering {
-		if !w.coveredPulls[n] {
-			w.coveredPulls[n] = true
-			w.coveredOrder = append(w.coveredOrder, n)
+	// reconcile needs both sightings. An excluded author's commit never
+	// stands aside — it joins the walk under its own sha — so it reports
+	// itself covered by nothing.
+	if !excluded {
+		for _, n := range covering {
+			if !w.coveredPulls[n] {
+				w.coveredPulls[n] = true
+				w.coveredOrder = append(w.coveredOrder, n)
+			}
 		}
 	}
-	lag := false
 	switch {
-	case github.IsCommitUnknown(rerr):
+	case lag:
 		// GitHub does not know the SHA yet (422) — the walk outran the API
 		// right after a push. DESIGN §4's API lag: fall back, never fail.
 		w.unknown++
-		lag = true
-	case rerr != nil:
-		return rerr
-	case found:
-		if err := w.expand(ctx, number, raw.SHA); err != nil {
+	case m != nil:
+		if err := w.expand(ctx, m, raw.SHA); err != nil {
 			return err
 		}
 		// The canonical commit is now represented BY that expansion, so it
@@ -266,7 +260,7 @@ func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
 			w.seen[raw.SHA] = true
 		}
 		return nil
-	case len(covering) > 0:
+	case !excluded && len(covering) > 0:
 		// Covered: part of a merged pull whose canonical commit is in this
 		// range and expands it — a rebase-merge's earlier commits, a
 		// merge-merged pull's branch commits (the log runs without
@@ -276,6 +270,55 @@ func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
 	}
 	w.fallback(raw, lag)
 	return nil
+}
+
+// excludes reports a commit an exclude_authors author wrote: its message is
+// never judged and it never moves the version, wherever the walk meets it.
+func (w *walk) excludes(raw gitsource.RawCommit) bool {
+	return slices.Contains(w.cfg.ExcludeAuthors, raw.Author)
+}
+
+// merged is a merge point resolved: the pull it merged and that pull's
+// listing as GitHub returns it, capped when the listing sits at GitHub's cap.
+type merged struct {
+	number  int
+	listing []gitsource.RawCommit
+	capped  bool
+}
+
+// resolve reads raw as a merge point: the pull that merged it and that pull's
+// listing, nil when it merged none. It is the one reader behind the walk's
+// expansion (visit) and the read-back (readBackPull), so a commit one of them
+// takes for a merge point the other does too — a read-back with a gate of its
+// own read a merged pull as another pull to its own commits
+// (TestPullSideReadsAnExcludedAuthorsMergePointAsItsOwn).
+//
+// An excluded author's commit is asked about like any other, and resolves
+// only to a pull whose listing holds a commit by someone else: a human's fix
+// pushed onto a bot's branch lands under the bot's name, as does any pull an
+// automation merges with the button, and unresolved it left the version in
+// silence or stood the pull's commits aside for good (t-saky). A listing of
+// excluded authors alone resolves to nothing, so the routine bot pull stays
+// one commit placed by what it landed, never an expansion.
+//
+// lag is GitHub's 422 for the sha, which each caller answers its own way.
+// covering is mergedPullFor's, whatever raw resolved to.
+func (w *walk) resolve(ctx context.Context, raw gitsource.RawCommit, inRange map[string]bool) (m *merged, covering []int, lag bool, err error) {
+	number, found, covering, err := w.mergedPullFor(ctx, w.owner, w.repo, raw.SHA, inRange)
+	switch {
+	case github.IsCommitUnknown(err):
+		return nil, nil, true, nil
+	case err != nil || !found:
+		return nil, covering, false, err
+	}
+	listing, capped, err := w.pullListing(ctx, w.owner, w.repo, number)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if w.excludes(raw) && !slices.ContainsFunc(listing, func(r gitsource.RawCommit) bool { return !w.excludes(r) }) {
+		return nil, covering, false, nil
+	}
+	return &merged{number: number, listing: listing, capped: capped}, covering, false, nil
 }
 
 // expand folds one RESOLVED merged pull into the walk, canonical being the
@@ -289,14 +332,12 @@ func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
 // a squash subject) — and what remains is pre-flighted against the pattern
 // file HERE, where the pull association still exists to word the refusal
 // (wedge).
-func (w *walk) expand(ctx context.Context, number int, canonical string) error {
-	listing, err := w.PullRawCommits(ctx, w.owner, w.repo, number)
-	if err != nil {
-		return err
-	}
+func (w *walk) expand(ctx context.Context, m *merged, canonical string) error {
+	number, listing := m.number, m.listing
 	// Recorded HERE, not in PullRawCommits, which --pr shares and which
 	// carries no facts: only a walk acts on its verdict irreversibly.
-	if len(listing) >= github.PullCommitsCap {
+	if m.capped {
+		w.warnCapped(number, len(listing))
 		w.facts.truncated = append(w.facts.truncated, number)
 	}
 	// Where did each listed commit LAND on the released branch? That is the
@@ -347,7 +388,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 			}
 			continue
 		}
-		judgeMessage := judged && !slices.Contains(w.cfg.ExcludeAuthors, r.Author)
+		judgeMessage := judged && !w.excludes(r)
 		if r.SHA != "" && w.seen[r.SHA] {
 			// An earlier pull listed it at an identity every line had
 			// released, so it went in unjudged; this sighting's identity is
@@ -417,8 +458,9 @@ func (w *walk) judges(gov string) bool {
 	return !w.ranges.releasedEverywhere(gov)
 }
 
-// fallback reads a commit no merged pull explains — a direct push, or the API
-// lagging — from its own message, the evidence that is left. A merge commit
+// fallback reads a commit no merged pull explains — a direct push, a bot's own
+// pull, or the API lagging — from its own message, the evidence that is left,
+// and an excluded author's from none. A merge commit
 // GitHub has not indexed yet is a merge POINT the walk could not resolve, and
 // its message never says what it merged — a fact a release decision needs
 // (Facts.dropped), not only a warning.
@@ -426,6 +468,22 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 	if lag && len(raw.Parents) >= 2 {
 		w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
 		w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
+		return
+	}
+	if w.excludes(raw) {
+		// No message to read: the commit joins the walk under its own sha,
+		// and whether the notes show it is their decision. Under the lag it
+		// may be the squash of a pull someone else committed to, which no
+		// message of its own would say.
+		if lag {
+			w.Report.Warnf("commit %.7s, an exclude_authors author's, is not known to GitHub yet (API lag), so a pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+		}
+		if raw.SHA == "" || !w.seen[raw.SHA] {
+			if raw.SHA != "" {
+				w.seen[raw.SHA] = true
+			}
+			w.commits = append(w.commits, Commit{Raw: raw, Landed: true})
+		}
 		return
 	}
 	if i, refused := w.wedged[raw.SHA]; refused {
@@ -483,8 +541,8 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 // reconcile closes the walk: the covered ledger against the pulls expanded,
 // and the resolution counts against each other. A pull the walk saw only from
 // the INSIDE — its commits standing aside for a canonical commit that never
-// resolved (API lag, or an exclude_authors author merged it with a real merge
-// commit) — is WARNED about and deliberately NOT expanded: a listing carries
+// resolved (GitHub not associating the merge point with the pull yet) — is
+// WARNED about and deliberately NOT expanded: a listing carries
 // nothing about this range, and expanding it was unsound both ways — a
 // rebase-merge's pre-rebase SHAs double-count, released work comes back
 // (DESIGN §4, "The walk warns and does not expand"). Naming the loss is what
@@ -495,7 +553,7 @@ func (w *walk) reconcile() {
 			continue
 		}
 		w.facts.lostPulls = append(w.facts.lostPulls, number)
-		w.Report.Warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an exclude_authors author merged it with a real merge commit (which the walk skips before resolution); those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, w.revRange, number, w.revRange)
+		w.Report.Warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge point with the pull yet; those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, w.revRange, number, w.revRange)
 	}
 	if w.visited > 0 && w.unknown == w.visited {
 		w.facts.allUnknown = true
@@ -629,11 +687,16 @@ func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []
 // commit's second parent brings in whatever an earlier squash or rebase of
 // the same commit released. A commit a rebase replayed is the stacked pull's
 // own, a rebase drops what its base put upstream, and a listing whose only
-// leftover is a merge commit forked from nothing a read-back could place, so
-// it asks nothing. Once asked, the answer is taken for every entry the
-// footprint did not place, a merge commit included (yields): the squash
-// landed the merge commit's content as it landed the rest, and it is the
-// alignment, not the landing, that a merge commit has no position in.
+// leftover is a merge commit asks nothing: a rebase never replays one, so
+// the footprint leaving it is no sign of another pull's landing, and asking
+// would price every pull that merged its base in. A read-back could place
+// such a merge commit when the base pull listed it too, so unasked it folds
+// as this pull's own — a skip under the presets' `^Merge `, a re-count under
+// a message a pattern claims, a refusal under one none does. Once asked, the
+// answer is taken for every entry the footprint did not place, a merge
+// commit included (yields): the squash landed the merge commit's content as
+// it landed the rest, and it is the alignment, not the landing, that a merge
+// commit has no position in.
 //
 // The identity is the listed sha, the one seen already judges a stacked
 // duplicate by. A message would be a second rule, and it cannot hold: a
@@ -735,10 +798,12 @@ func (w *walk) landedElsewhere(sha string, number int) string {
 // whole-history arm has no base to read behind; for a pull read by number
 // HEAD, the one window it has. The listing's own shas are never asked about:
 // a checkout standing on the pull's branch holds them in the window, and an
-// open pull's commit names no merged pull. An excluded author's commit is
-// not asked about either, visit's gate, and it is not counted against the
-// cap, which bounds what GitHub would be asked: past readBackCap nothing is
-// read back and one warning says what the listing read whole risks.
+// open pull's commit names no merged pull. Every other commit of the window
+// is asked about, an excluded author's included (resolve), and counts
+// against the cap, which bounds what GitHub would be asked: past readBackCap
+// nothing is read back and one warning says what the listing read whole
+// risks. A commit two fork windows hold is one commit, asked about and
+// counted once (TestPullSideCapCountsTheUnionOfItsForkWindows).
 //
 // Asked of the two questions every walk rests on, a merge point's merged pull
 // and that pull's listing. Never of GET commits/{listed sha}/pulls, the one
@@ -768,7 +833,7 @@ func (w *walk) readBack(ctx context.Context, number int, listing []gitsource.Raw
 			return err
 		}
 		for _, raw := range window {
-			if skip[raw.SHA] || slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
+			if skip[raw.SHA] {
 				continue
 			}
 			skip[raw.SHA] = true
@@ -776,7 +841,7 @@ func (w *walk) readBack(ctx context.Context, number int, listing []gitsource.Raw
 		}
 	}
 	if w.readBackCap > 0 && len(missed) > w.readBackCap {
-		w.Report.Warnf("pull request #%d forked %d commits behind %s — reading back which of them another pull request landed would ask GitHub about each (the cap is %d), so the listing is read whole: a commit another pull request already landed on the released branch may be counted as this pull's own. Rebase the branch onto the released branch to narrow the window", number, len(missed), w.readBackTop, w.readBackCap)
+		w.Report.Warnf("pull request #%d forked %d commits behind %s — reading back which of them another pull request landed would ask GitHub about each (the cap is %d), so the listing is read whole: a commit another pull request already landed on the released branch may be counted as this pull's own. A pull still open narrows the window by rebasing its branch onto the released branch; a merged pull's window only grows", number, len(missed), w.readBackTop, w.readBackCap)
 		return nil
 	}
 	for _, raw := range missed {
@@ -802,20 +867,12 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error 
 		return nil
 	}
 	w.readBackDone[raw.SHA] = true
-	number, found, _, err := w.mergedPullFor(ctx, w.owner, w.repo, raw.SHA, nil)
-	switch {
-	case github.IsCommitUnknown(err):
-		return nil
-	case err != nil:
-		return err
-	case !found:
-		return nil
-	}
-	released, capped, err := w.pullListing(ctx, w.owner, w.repo, number)
-	if err != nil {
+	m, _, _, err := w.resolve(ctx, raw, nil)
+	if err != nil || m == nil {
 		return err
 	}
-	if capped {
+	number, released := m.number, m.listing
+	if m.capped {
 		w.Report.Warnf("pull request #%d, read back for what it landed on the released branch, returned %d commits — GitHub truncates this listing at %d, so a commit past the cap cannot be matched and a later pull listing it may count it again", number, len(released), github.PullCommitsCap)
 	}
 	landed, err := w.mainFootprint(ctx, raw.SHA, released, raw.SHA)
@@ -916,28 +973,33 @@ func (w Walker) mergedPullFor(ctx context.Context, owner, repo, sha string, inRa
 }
 
 // PullRawCommits is a pull's listing as GitHub returns it, converted to the
-// raw shape and with the truncation warning said, NOT yet parsed: the walk
-// filters it against its walk-wide SHA set before anything parses it (a pull
-// squash-merged into a topic branch leaves its own squash subject inside the
-// listing of the pull that landed the branch, and parsing it there wedged
-// the release — t-7zt7). bump, notes and preview read a pull through it too
-// (cli's pullInput).
+// raw shape and with the truncation warning said, NOT yet parsed: bump, notes
+// and preview read a pull by number through it (OpenPull). The walk reads its
+// own listings through resolve and filters them against its walk-wide SHA set
+// before anything parses them (a pull squash-merged into a topic branch
+// leaves its own squash subject inside the listing of the pull that landed
+// the branch, and parsing it there wedged the release — t-7zt7).
 func (w Walker) PullRawCommits(ctx context.Context, owner, repo string, number int) ([]gitsource.RawCommit, error) {
 	local, capped, err := w.pullListing(ctx, owner, repo, number)
 	if err != nil {
 		return nil, err
 	}
 	if capped {
-		// No silent caps: the verdict may be computed from a truncated PR, and
-		// a missing commit could carry the deciding sigil.
-		w.Report.Warnf("pull request #%d returned %d commits — GitHub truncates this listing at %d, so some commits (and their sigils) may be missing from the verdict", number, len(local), github.PullCommitsCap)
+		w.warnCapped(number, len(local))
 	}
 	return local, nil
 }
 
+// warnCapped says a listing a verdict is computed from sits at GitHub's cap.
+// No silent caps: a missing commit could carry the deciding sigil.
+func (w Walker) warnCapped(number, listed int) {
+	w.Report.Warnf("pull request #%d returned %d commits — GitHub truncates this listing at %d, so some commits (and their sigils) may be missing from the verdict", number, listed, github.PullCommitsCap)
+}
+
 // pullListing is PullRawCommits without the warning, and whether the listing
-// sits at GitHub's cap: the read-back reads a pull that is in no verdict, so
-// it words the cap's risk itself (readBackPull).
+// sits at GitHub's cap: each reader words the cap's risk itself — a verdict's
+// own listing (warnCapped), or a pull read back that is in no verdict
+// (readBackPull).
 func (w Walker) pullListing(ctx context.Context, owner, repo string, number int) ([]gitsource.RawCommit, bool, error) {
 	raws, err := w.Pulls.PullCommits(ctx, owner, repo, number)
 	if err != nil {

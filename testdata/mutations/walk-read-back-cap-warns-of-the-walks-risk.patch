@@ -1,14 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 368b196..a6e2e5e 100644
+index 9b47478..7d28660 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -732,7 +732,8 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
- 	case !found:
- 		return nil
+@@ -868,7 +868,7 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
  	}
--	released, capped, err := w.pullListing(ctx, w.owner, w.repo, number)
-+	released, err := w.PullRawCommits(ctx, w.owner, w.repo, number)
-+	capped := false
+ 	number, released := m.number, m.listing
+ 	if m.capped {
+-		w.Report.Warnf("pull request #%d, read back for what it landed on the released branch, returned %d commits — GitHub truncates this listing at %d, so a commit past the cap cannot be matched and a later pull listing it may count it again", number, len(released), github.PullCommitsCap)
++		w.warnCapped(number, len(released))
+ 	}
+ 	landed, err := w.mainFootprint(ctx, raw.SHA, released, raw.SHA)
  	if err != nil {
- 		return err
- 	}

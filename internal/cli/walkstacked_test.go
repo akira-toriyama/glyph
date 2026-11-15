@@ -310,10 +310,10 @@ func TestSinceTagStackedPullLandedFirstReleasedItsBase(t *testing.T) {
 
 // TestSinceTagReadBackAsksOnlyAboutWhatTheForkMissed prices the read-back: of
 // everything behind v1.0.0 it asks only about the commits the pull forked over,
-// less an excluded author's, once however many pulls forked behind the base —
-// walkServer fails on the routes left out (the commit under the fork, the bot's
-// push), and the recording counts the one it serves. A pull forked in range, or
-// at the base itself, reads nothing back.
+// an excluded author's among them, once however many pulls forked behind the
+// base — walkServer fails on the route left out (the commit under the fork),
+// and the recording counts the ones it serves. A pull forked in range, or at
+// the base itself, reads nothing back.
 func TestSinceTagReadBackAsksOnlyAboutWhatTheForkMissed(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= land something under the fork")
@@ -322,21 +322,23 @@ func TestSinceTagReadBackAsksOnlyAboutWhatTheForkMissed(t *testing.T) {
 	testutil.Commit(t, dir, "dependabot[bot]", ":robot:= sync a file")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	bot := base
 	s2 := squashCommit(t, dir, "Follow up on the api", 2)
 	s3 := squashCommit(t, dir, "Follow up again", 3)
 	s4 := squashCommit(t, dir, "Forked at the tag", 4)
 	s5 := squashCommit(t, dir, "Forked in range", 5)
 	srv, asked := recordingWalkServer(t, map[string]string{
-		commitPullsPath(s1): apiMerged(1, s1),
-		pullCommitsPath(1):  apiListing(apiCommitOn(stackedA1, ":sparkles:^ add a thing", fork)),
-		commitPullsPath(s2): apiMerged(2, s2),
-		pullCommitsPath(2):  apiListing(apiCommitOn(stackedA1, ":sparkles:^ add a thing", fork), apiCommitOn(stackedB1, ":bug:~ fix a thing", stackedA1)),
-		commitPullsPath(s3): apiMerged(3, s3),
-		pullCommitsPath(3):  apiListing(apiCommitOn(stackedX1, ":bug:~ fix another thing", fork)),
-		commitPullsPath(s4): apiMerged(4, s4),
-		pullCommitsPath(4):  apiListing(apiCommitOn("d4", ":memo:= forked at the tag", base)),
-		commitPullsPath(s5): apiMerged(5, s5),
-		pullCommitsPath(5):  apiListing(apiCommitOn("d5", ":memo:= forked in range", s2)),
+		commitPullsPath(s1):  apiMerged(1, s1),
+		pullCommitsPath(1):   apiListing(apiCommitOn(stackedA1, ":sparkles:^ add a thing", fork)),
+		commitPullsPath(bot): `[]`,
+		commitPullsPath(s2):  apiMerged(2, s2),
+		pullCommitsPath(2):   apiListing(apiCommitOn(stackedA1, ":sparkles:^ add a thing", fork), apiCommitOn(stackedB1, ":bug:~ fix a thing", stackedA1)),
+		commitPullsPath(s3):  apiMerged(3, s3),
+		pullCommitsPath(3):   apiListing(apiCommitOn(stackedX1, ":bug:~ fix another thing", fork)),
+		commitPullsPath(s4):  apiMerged(4, s4),
+		pullCommitsPath(4):   apiListing(apiCommitOn("d4", ":memo:= forked at the tag", base)),
+		commitPullsPath(s5):  apiMerged(5, s5),
+		pullCommitsPath(5):   apiListing(apiCommitOn("d5", ":memo:= forked in range", s2)),
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -346,7 +348,7 @@ func TestSinceTagReadBackAsksOnlyAboutWhatTheForkMissed(t *testing.T) {
 		t.Fatalf("bump = exit %d stdout %q, want 0 / v1.0.1\nstderr: %s", code, stdout, stderr)
 	}
 	want := []string{
-		commitPullsPath(s2), pullCommitsPath(2), commitPullsPath(s1), pullCommitsPath(1),
+		commitPullsPath(s2), pullCommitsPath(2), commitPullsPath(s1), pullCommitsPath(1), commitPullsPath(bot),
 		commitPullsPath(s3), pullCommitsPath(3),
 		commitPullsPath(s4), pullCommitsPath(4),
 		commitPullsPath(s5), pullCommitsPath(5),
@@ -794,5 +796,41 @@ func TestSinceTagLandingOutsideTheRangeAsksNothing(t *testing.T) {
 	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
 	if code != 0 || stdout != "v1.0.1\n" {
 		t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v1.0.1 and no request about %.7s\nstderr: %s", code, stdout, mp.Merge, stderr)
+	}
+}
+
+// TestSinceTagReadBackBehindTheBaseIsNotCapped: the release walk's read-back
+// has no cap. #2 forked 202 commits behind v1.0.0, past walkCap, and the walk
+// still reads its base #1 back and drops the major #1 released. Capped as
+// the PR side's window is, the walk would read #2's listing whole and
+// manufacture a major out of released work — the verdict this read-back
+// exists to prevent — on a release nothing but a tag could then unblock; the
+// window ends at the base, which moves only by releasing, so it is priced
+// and never capped (DESIGN §4.1, "Only the untagged arm is capped").
+func TestSinceTagReadBackBehindTheBaseIsNotCapped(t *testing.T) {
+	dir, root := testutil.NewTaggedRepo(t)
+	s1 := squashCommit(t, dir, "Reshape the api", 1)
+	routes := map[string]string{
+		commitPullsPath(s1): apiMerged(1, s1),
+		pullCommitsPath(1):  apiListing(apiCommitOn(stackedA1, ":boom:! break the api", root)),
+	}
+	for i := range 201 {
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
+		routes[commitPullsPath(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))] = `[]`
+	}
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	s2 := squashCommit(t, dir, "Follow up on the api", 2)
+	routes[commitPullsPath(s2)] = apiMerged(2, s2)
+	routes[pullCommitsPath(2)] = apiListing(apiCommitOn(stackedA1, ":boom:! break the api", root), apiCommitOn(stackedB1, ":bug:~ fix the follow-up", stackedA1))
+	srv, asked := recordingWalkServer(t, routes)
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 || stdout != "v1.0.1\n" || strings.Contains(stderr, "the cap is") {
+		t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v1.0.1 and no cap — a1's major shipped under v1.0.0\nstderr: %s", code, stdout, stderr)
+	}
+	if len(*asked) != len(routes) {
+		t.Errorf("%d requests, want every route once (%d): #2 and its listing, then 202 lookups and #1's listing behind the base", len(*asked), len(routes))
 	}
 }

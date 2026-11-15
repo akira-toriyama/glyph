@@ -1,13 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index a6b343a..7f28f42 100644
+index 9b47478..fc20eb5 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -409,8 +409,6 @@ func (w *walk) reconcile() {
+@@ -552,8 +552,6 @@ func (w *walk) reconcile() {
  		if w.expanded[number] {
  			continue
  		}
 -		w.facts.lostPulls = append(w.facts.lostPulls, number)
--		w.Report.Warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an exclude_authors author merged it with a real merge commit (which the walk skips before resolution); those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, w.revRange, number, w.revRange)
+-		w.Report.Warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge point with the pull yet; those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, w.revRange, number, w.revRange)
  	}
  	if w.visited > 0 && w.unknown == w.visited {
  		w.facts.allUnknown = true
