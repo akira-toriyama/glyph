@@ -56,10 +56,14 @@ name: goreleaser
 #     cask, pushing it or finding the tap already carries it.
 # So "re-run failed jobs", "re-run all jobs" and a fresh run on the tag all
 # finish a release the cask job never completed, and nothing ever rebuilds
-# over a published release: a rebuild stamps a new build date into the
-# binaries and would replace public assets with bytes the shipped attestation
-# does not name. The cask job reads the release, not an artifact of its own
-# run, so the path is the same in a re-run attempt and in a new run.
+# over a published release: a rebuild is the same bytes only under the
+# GoReleaser that built it. .goreleaser.yaml takes every time from the commit,
+# but the tool floats on `~> 2`, and over one commit v2.19.0 and v2.20.2
+# write the same archives and another cask (measured 2026-11-15) — so a later
+# one could replace public assets with bytes the shipped attestation does not
+# name, and an identical upload gains nothing. The cask job reads the
+# release, not an artifact of its own run, so the path is the same in a
+# re-run attempt and in a new run.
 #
 # Requires the HOMEBREW_TAP_DEPLOY_KEY secret (private half of homebrew-tap's write
 # deploy key) for the cask push — fleet-sync fans it out, gated on this file
@@ -160,9 +164,10 @@ jobs:
       # or published. A published release is this job's finished work and must
       # not be rebuilt over: GoReleaser replaces an asset that already exists
       # (.goreleaser.yaml `replace_existing_artifacts`, there for the draft a
-      # failed run leaves), and a rebuild stamps a new build date into every
-      # binary, so the public assets would be swapped for bytes the shipped
-      # attestation and the tap's cask do not name. So every step from setup-go
+      # failed run leaves), and a rebuild is held to the published bytes only
+      # under the GoReleaser that built them (the header), so the public assets
+      # could be swapped for bytes the shipped attestation and the tap's cask
+      # do not name. So every step from setup-go
       # to the publish carries `if: steps.existing.outputs.release !=
       # 'published'` as its LAST key — one rule, and the key never neighbours
       # a dependabot-owned `uses:` pin, so the ledger's patches over these
@@ -299,9 +304,10 @@ jobs:
       contents: read  # the published release's cask asset
     steps:
       # The cask GoReleaser wrote and uploaded, read back from the release
-      # rather than regenerated or carried over as a run artifact: a rebuild
-      # would stamp a new build date into the binaries, so a regenerated
-      # cask's sha256 would not be the published archives'; and an artifact
+      # rather than regenerated or carried over as a run artifact: a
+      # regenerated cask needs every archive rebuilt for sha256s the release
+      # already states, and under a later GoReleaser (`~> 2`) neither they nor
+      # the cask's text are held to the published bytes; and an artifact
       # belongs to one run, where the release is reachable from a re-run
       # attempt and from a fresh run alike. --repo: this job checks nothing
       # out, so gh has no remote to infer the repository from.

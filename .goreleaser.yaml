@@ -6,6 +6,16 @@ builds:
     binary: glyph
     env: [CGO_ENABLED=0]
     flags: [-trimpath]
+    # Every time a release artifact carries is the tagged commit's committer
+    # time, never the wall clock, so a rebuild of one commit is the same bytes
+    # (measured 2026-11-15, GoReleaser v2.20.2: two runs 75s apart, each in a
+    # fresh checkout, one sha256 per binary, archive, checksums.txt and cask).
+    # GoReleaser's {{.Date}} is the time of the run, and without mod_timestamp
+    # a binary's file time, which its archive copies, is the second the
+    # compiler wrote it.
+    # https://goreleaser.com/customization/builds/go/ (mod_timestamp)
+    # https://goreleaser.com/customization/templates/ (CommitDate, CommitTimestamp)
+    mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
       - -s -w
       # {{.Tag}}, not {{.Version}}: GoReleaser's Version drops the leading v, so
@@ -15,13 +25,35 @@ builds:
       # below keeps {{ .Version }}: the install action derives it as ${ver#v}.
       - -X github.com/akira-toriyama/glyph/v6/internal/version.Version={{.Tag}}
       - -X github.com/akira-toriyama/glyph/v6/internal/version.Commit={{.Commit}}
-      - -X github.com/akira-toriyama/glyph/v6/internal/version.Date={{.Date}}
+      - -X github.com/akira-toriyama/glyph/v6/internal/version.Date={{.CommitDate}}
     goos: [linux, darwin]
     goarch: [amd64, arm64]
 
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # A tar header records each member's owner and time, and GoReleaser copies
+    # both from the file on disk: the account the job runs as, and for
+    # README.md the second the checkout wrote it. Stated here, the headers are
+    # the same on every host and in every run. builds_info states no mtime:
+    # the binary's is mod_timestamp's, above. `files` names the two files
+    # GoReleaser's default globs select here, because `info` is given per
+    # entry.
+    # https://goreleaser.com/customization/archive/ (builds_info, files[].info)
+    builds_info:
+      owner: root
+      group: root
+    files:
+      - src: LICENSE
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
 
 checksum:
   name_template: checksums.txt

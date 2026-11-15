@@ -2,6 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -85,5 +88,44 @@ func TestVersionJSONFalseIsTheHumanLine(t *testing.T) {
 	if strings.HasPrefix(strings.TrimSpace(stdout), "{") {
 		t.Errorf("version --json=false emitted JSON to a caller who declined it — the flag is "+
 			"being read by MENTION (Changed) instead of by value: %q", stdout)
+	}
+}
+
+// TestVersionHelpAndReadmeSayWhatTheDateIs: the two places a user reads what
+// `glyph version` prints name the date as the commit date, once each, and
+// say what a module-mode `go install …@vX.Y.Z` build leaves out. Measured
+// 2026-11-15 on v6.1.0 and at c06e426: `{"version":"v6.1.0"}` and a
+// pseudo-version alone, and `go version -m` lists no vcs.* setting for
+// either binary. "build date" was the wording while the stamp was the
+// build's clock, and the help said a `go install` build "still identifies
+// itself" without saying by how little.
+func TestVersionHelpAndReadmeSayWhatTheDateIs(t *testing.T) {
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := regexp.MustCompile("(?m)^\\| `glyph version` \\|.*$").Find(readme)
+	if row == nil {
+		t.Fatal("README.md has no `glyph version` row in its command table")
+	}
+	// runGlyph hands cobra's help to the diagnostic buffer.
+	code, _, help := runGlyph(t, "version", "--help")
+	if code != 0 {
+		t.Fatalf("glyph version --help exited %d, want 0\n%s", code, help)
+	}
+	for where, text := range map[string]string{
+		"README.md's `glyph version` row": string(row),
+		"`glyph version --help`":          strings.Join(strings.Fields(help), " "),
+	} {
+		if n := strings.Count(text, "commit date"); n != 1 {
+			t.Errorf("%s says \"commit date\" %d time(s), want once: the date is the commit's in every build that states one", where, n)
+		}
+		if strings.Contains(text, "build date") {
+			t.Errorf("%s says \"build date\"; no build stamps the time it ran", where)
+		}
+		if !strings.Contains(text, "module-mode `go install …@vX.Y.Z` build reports the") {
+			t.Errorf("%s does not say what a module-mode `go install …@vX.Y.Z` build reports: the tag alone, "+
+				"no commit and no date, because Go embeds no VCS data there", where)
+		}
 	}
 }
