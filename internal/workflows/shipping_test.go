@@ -99,8 +99,8 @@ func TestInstallActionRetriesSpanARealOutage(t *testing.T) {
 
 // TestNotesSoftExitShipsAPlaceholder pins the release-notes action's arm that
 // absorbs `glyph notes`' soft no-release exit 1 (7d8d733): under `set -e` a
-// bare invocation kills the whole job when the range below the tag holds
-// nothing release-worthy — no binaries, no cask, no attestation, behind a tag
+// bare invocation kills the whole job when no commit below the tag lands in a
+// release-notes section — no binaries, no cask, no attestation, behind a tag
 // that already exists. The contract is honoured instead: 1 ships a
 // placeholder body, and a real failure keeps its code. Which exits ship and
 // which fail is TestNotesStepShipsEveryVerdictOnTheRange's, which runs the
@@ -109,11 +109,11 @@ func TestNotesSoftExitShipsAPlaceholder(t *testing.T) {
 	body := code(repoFile(t, filepath.FromSlash(releaseNotesAction)))
 
 	for _, want := range []string{
-		"|| status=$?",                 // capture without dying under set -e
-		`if [ "$status" -eq 1 ]`,       // the soft no-release arm...
-		"No release-worthy changes in", // ...ships a body that says so
-		`elif [ "$status" -ne 0 ]`,     // real failures keep failing
-		`exit "$status"`,               // with their own code, not a laundered 1
+		"|| status=$?",           // capture without dying under set -e
+		`if [ "$status" -eq 1 ]`, // the soft no-release arm...
+		"no commit below it lands in a release-notes section", // ...ships a body that says so
+		`elif [ "$status" -ne 0 ]`,                            // real failures keep failing
+		`exit "$status"`,                                      // with their own code, not a laundered 1
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the release-notes action lost %q; `glyph notes` exits 1 on an infra-only "+
@@ -238,8 +238,9 @@ func notesScript(t *testing.T) (script string, shell []string) {
 // install action put the real one — over each exit `glyph notes` can hand it.
 // At tag time the range is immutable, so a verdict on it is permanent: a
 // re-run answers the same, and a failed job leaves a tag with no release
-// assets. The step therefore ships on 1 (its placeholder byte for byte,
-// unchanged by t-bcdz) and on 3, which is how the wedge escape's own tag
+// assets. The step therefore ships on 1 (its placeholder byte for byte, in
+// notes' own condition: no commit lands in a section, t-h90a) and on 3, which
+// is how the wedge escape's own tag
 // answers: the escape is a tag cut where glyph's refusal sends it (DESIGN §4)
 // — at or past the refused commit, or a squash-merged pull's merge point —
 // and below: walks from the predecessor, so that walk reaches the commit
@@ -263,9 +264,9 @@ func TestNotesStepShipsEveryVerdictOnTheRange(t *testing.T) {
 		annotation string // one whole line of the step's stdout
 	}{
 		{"a rendered body ships as rendered", 0, 0, rendered, ""},
-		{"nothing release-worthy ships the placeholder that says so", 1, 0,
-			"No release-worthy changes in " + tag + ".\n",
-			"::warning::no release-worthy commits below " + tag + " — publishing with a placeholder body"},
+		{"no notes to write ships the placeholder that says so", 1, 0,
+			"No release notes for " + tag + ": no commit below it lands in a release-notes section.\n",
+			"::warning::no commit below " + tag + " lands in a release-notes section — publishing with a placeholder body"},
 		{"the wedge escape's own range ships the placeholder that says why", 3, 0,
 			"No release notes for " + tag + ": the walk below it reaches a commit glyph refuses, and this tag was cut " +
 				"where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear " +
@@ -320,7 +321,7 @@ func TestNotesStepShipsEveryVerdictOnTheRange(t *testing.T) {
 // invocation, in glyph's own vocabulary — and never the soft exit 1 a failed
 // redirect would otherwise hand the arm that reads glyph's status (measured
 // in review: an `output:` under a directory that does not exist printed the
-// nothing-release-worthy warning with glyph never run).
+// exit-1 arm's warning with glyph never run).
 func TestNotesStepResolvesItsInputs(t *testing.T) {
 	script, shell := notesScript(t)
 	const tag = "v9.8.7"

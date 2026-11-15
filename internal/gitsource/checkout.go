@@ -17,6 +17,10 @@ func (c Checkout) Log(ctx context.Context, revRange string) ([]RawCommit, error)
 
 func (c Checkout) IsShallow(ctx context.Context) (bool, error) { return isShallow(ctx, c.Dir) }
 
+func (c Checkout) FirstChange(ctx context.Context, rev string, pathspec []string) (sha string, parents int, err error) {
+	return firstChange(ctx, c.Dir, rev, pathspec)
+}
+
 func (c Checkout) Tags(ctx context.Context) ([]string, error) { return tags(ctx, c.Dir) }
 
 func (c Checkout) MergedTags(ctx context.Context, rev string) ([]string, error) {

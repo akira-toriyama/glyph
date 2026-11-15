@@ -1,0 +1,16 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 69da191..dfdf52a 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -173,10 +173,7 @@ func logMessageEnd(msg string) int {
+ 		}
+ 		bol = next
+ 	}
+-	if runStart != 0 {
+-		return runStart
+-	}
+-	return cutoff
++	return len(msg) // MUTATION: nothing at the end of a message is ignored
+ }
+ 
+ // trailerBlock returns the lines git reads as the trailer block — the block's

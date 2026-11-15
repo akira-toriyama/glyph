@@ -1,0 +1,13 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 69da191..022d305 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -46,7 +46,7 @@ const gitSpace = " \t\r\n"
+ // prose stand. One of them in a block is what lets the block keep prose
+ // lines: `git commit -s` and `git cherry-pick -x` land their line beside a
+ // human's paragraph, and git still reads the trailers around it.
+-var gitGeneratedPrefixes = [...]string{"Signed-off-by: ", "(cherry picked from commit "}
++var gitGeneratedPrefixes = [...]string{"Signed-off-by:", "(cherry picked from commit "}
+ 
+ // scissorsLine is git's cut line under its default comment char (wt-status.c,
+ // cut_line): everything from it down is the diff `git commit -v` showed the

@@ -6,13 +6,14 @@
 // looks like, which commits are skipped — belongs to the file, not to glyph.
 //
 // The package is pure: no I/O beyond StatFile, StatReadable and LoadFile
-// looking at the one path they are given, no globals. It is deliberately strict where the house
-// config style is lenient: unknown schema, unknown keys and half-specified
-// patterns are errors, never clamped or ignored, because this file decides CI
-// verdicts and a silently-misread key is a silently-changed verdict — the
-// exact hole the design refuses to open (no silent none). There is no
-// Default(): a missing or invalid glyph.toml is the caller's fact to act on,
-// not this package's to paper over.
+// looking at the one path they are given, no globals. It is deliberately
+// strict where the house config style is lenient: unknown schema, unknown
+// keys, keys in any case but the schema's spelling (keys.go) and
+// half-specified patterns are errors, never clamped, folded or ignored,
+// because this file decides CI verdicts and a silently-misread key is a
+// silently-changed verdict — the exact hole the design refuses to open (no
+// silent none). There is no Default(): a missing or invalid glyph.toml is the
+// caller's fact to act on, not this package's to paper over.
 //
 // Errors are never *core.Error: which exit code a bad glyph.toml maps to is
 // the CLI's contract to define at its boundary. Every error Load returns is
@@ -415,14 +416,19 @@ func LoadFile(path string) (*Config, error) {
 }
 
 // Load parses and validates glyph.toml content. It rejects, rather than
-// repairs: unknown keys, an unknown or missing schema, an empty
-// exclude_authors entry, an uncompilable or sigil-less pattern, a malformed
-// note.line, a note.line placeholder nothing can bind, a package path git
-// cannot prefix a tag with, a package name no read scope group can spell,
-// and a section that does not state exactly one axis are all load failures.
+// repairs: unknown keys, a key spelled in any case but the schema's, an
+// unknown or missing schema, an empty exclude_authors entry, an uncompilable
+// or sigil-less pattern, a malformed note.line, a note.line that opens with
+// no list-item marker or puts "<" at a block start, a note.line placeholder
+// nothing can bind, a package path git cannot prefix a tag with, a package
+// name no read scope group can spell, and a section that does not state
+// exactly one axis are all load failures.
 func Load(data []byte) (*Config, error) {
 	var r raw
 	if err := strictUnmarshal(data, &r); err != nil {
+		return nil, err
+	}
+	if err := checkKeyCase(data); err != nil {
 		return nil, err
 	}
 
@@ -456,8 +462,14 @@ func Load(data []byte) (*Config, error) {
 		return nil, err
 	}
 
+	if err := checkLineOpensAList(r.Note.Line); err != nil {
+		return nil, fmt.Errorf("note.line: %w", err)
+	}
 	spans, err := parseLine(r.Note.Line)
 	if err != nil {
+		return nil, fmt.Errorf("note.line: %w", err)
+	}
+	if err := checkLineOpensNoHTMLBlock(r.Note.Line, spans); err != nil {
 		return nil, fmt.Errorf("note.line: %w", err)
 	}
 	if err := validateLineNames(spans, patterns, trailers); err != nil {

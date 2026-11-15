@@ -75,6 +75,12 @@ type walk struct {
 	visited, unknown int
 }
 
+// ShallowWarning is the one sentence a shallow checkout gets from the walk,
+// and from preview's floor guard, which skips the walk on an untagged base
+// and must say the same thing about the same checkout (t-txed): a second
+// phrasing would read as a second condition.
+const ShallowWarning = "this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing"
+
 // walkSince is the walk over revRange: the log, the shallow question asked
 // once, one visit per commit, reconcile, and the verdict — the walked list
 // with its facts, or the refusal naming every wedge. An error out of a visit is
@@ -93,7 +99,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 		return nil, Facts{}, serr
 	}
 	if shallow {
-		w.Report.Warnf("this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing")
+		w.Report.Warnf("%s", ShallowWarning)
 	}
 	wk := newWalk(w, cfg, owner, repo, revRange, raws, shallow, ranges)
 	for _, raw := range raws {

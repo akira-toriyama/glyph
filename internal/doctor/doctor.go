@@ -121,9 +121,10 @@ type Input struct {
 	ConfigErr error
 	// RepoObject / RepoErr are the outcome of GET /repos/{owner}/{repo}.
 	// RepoErr must be handed over VERBATIM, exactly as internal/github
-	// returned it: the token check asks github.IsRepoUnknown about it, and
-	// re-wrapping or re-classifying it on the way here would flatten the one
-	// distinction that decides between exit 3 and exit 4.
+	// returned it: the token check and the settings checks' remedy ask
+	// github.IsRepoRefused about it, and re-wrapping or re-classifying it on
+	// the way here would flatten the one distinction that decides between exit
+	// 3 and exit 4.
 	RepoObject github.Repo
 	RepoErr    error
 	// TokenConfigured records whether a credential was configured at all, so
@@ -188,11 +189,14 @@ type Input struct {
 // a verdict about the hook. Claimed reports whether the repository's own
 // glyph.toml classifies the probe message: lint has no taste, so a config is
 // free to claim anything — and against one that does, exit 0 is the chain
-// working, not the gate failing.
+// working, not the gate failing. GlyphAbsent reports that an exit 0 came with
+// no glyph for the hook's `command -v glyph` to resolve, so nothing linted at
+// all, whatever the config claims.
 type HookProbe struct {
-	Exit    int
-	Claimed bool
-	Err     error
+	Exit        int
+	Claimed     bool
+	GlyphAbsent bool
+	Err         error
 }
 
 // The stable check ids. The strings are the report's API — change one and
@@ -300,10 +304,11 @@ func (r *Report) IDs(s Status) []string {
 // diagnostic inventing evidence, so the check reports the permissions block or
 // says plainly that there was none.
 //
-// A read failure splits on what GitHub answered (github.IsRepoUnknown): a 404
-// is a finding (StatusFail, exit 3), and anything else observed nothing about
-// the repository (StatusUnknown, exit 4). The split, and the outage that
-// collapsing it misreported to the fleet's CI wrappers: DESIGN §7.
+// A read failure splits on what GitHub answered (github.IsRepoRefused): a 401, a
+// 403 that is no rate limit and a 404 are findings about the credential
+// (StatusFail, exit 3), and anything else observed nothing about the repository
+// (StatusUnknown, exit 4). The split, and the outage that collapsing it
+// misreported to the fleet's CI wrappers: DESIGN §7.
 func checkTokenAccess(in Input) Check {
 	c := Check{ID: idTokenAccess, Expected: "the credential can read " + in.Repo}
 	credential := "no credential (GITHUB_TOKEN/GH_TOKEN unset — an anonymous read)"
@@ -311,7 +316,7 @@ func checkTokenAccess(in Input) Check {
 		credential = "a token from GITHUB_TOKEN/GH_TOKEN"
 	}
 	if in.RepoErr != nil {
-		if !github.IsRepoUnknown(in.RepoErr) {
+		if !github.IsRepoRefused(in.RepoErr) {
 			c.Status = StatusUnknown
 			c.Observed = fmt.Sprintf("the read with %s produced no answer: %v", credential, in.RepoErr)
 			c.Message = "GitHub did not answer this read at all — a rate limit, an outage that outlived glyph's retry " +
@@ -328,9 +333,10 @@ func checkTokenAccess(in Input) Check {
 		// admitting it exists, so "Not Found" here almost never means the name
 		// is wrong. internal/github's IsCommitUnknown carries the same warning
 		// for the same reason.
-		c.Message = "every setting below is unverifiable without this read, and a release run would fail the same way. " +
-			"GitHub answers 404 (not 403) for a private repository a credential cannot see, so a Not Found here usually " +
-			"names the token rather than the repository"
+		c.Message = "GitHub answered, and the answer is about this credential: a 401 rejects it, a 403 refuses it this " +
+			"repository (a missing grant, an SSO authorization, an IP allow list), and GitHub answers 404 (not 403) for a " +
+			"private repository a credential cannot see, so a Not Found here usually names the token rather than the " +
+			"repository. Every setting below is unverifiable without this read, and a release run would fail the same way"
 		c.Fix = "set GITHUB_TOKEN (or GH_TOKEN) to a credential with read access — in Actions, pass token: ${{ github.token }}"
 		return c
 	}
@@ -558,7 +564,7 @@ func checkSquashMessage(in Input) Check {
 func checkSquashEnum(in Input, id, field, observed, want, passMsg, failMsg string) Check {
 	c := Check{ID: id, Expected: field + "=" + want}
 	if in.RepoErr != nil {
-		return unreadableRepo(c, field)
+		return unreadableRepo(c, field, in.RepoErr)
 	}
 	if observed == "" {
 		return unreportedField(c, field)
@@ -581,7 +587,7 @@ func checkSquashEnum(in Input, id, field, observed, want, passMsg, failMsg strin
 func available(in Input, c Check, field string, value *bool) (Check, bool) {
 	switch {
 	case in.RepoErr != nil:
-		return unreadableRepo(c, field), false
+		return unreadableRepo(c, field, in.RepoErr), false
 	case value == nil:
 		return unreportedField(c, field), false
 	}
@@ -590,12 +596,16 @@ func available(in Input, c Check, field string, value *bool) (Check, bool) {
 
 // unreadableRepo marks a check that never ran because the repository object
 // itself could not be fetched. It points at the token check rather than
-// repeating the API error on every line.
-func unreadableRepo(c Check, field string) Check {
+// repeating the API error on every line, and its remedy is that check's split on
+// readErr: an outage names no credential to fix.
+func unreadableRepo(c Check, field string, readErr error) Check {
 	c.Status = StatusUnknown
 	c.Observed = "not checked — the repository object could not be read"
 	c.Message = "this setting is unverified, not verified-good: " + field + " was never observed. See the " + idTokenAccess + " check"
-	c.Fix = "fix the credential and re-run"
+	c.Fix = "re-run once the API answers again"
+	if github.IsRepoRefused(readErr) {
+		c.Fix = "fix the credential and re-run"
+	}
 	return c
 }
 

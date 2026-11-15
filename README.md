@@ -256,10 +256,11 @@ instead, so cutting a v0.8.3 hotfix while v0.9.0 exists walks from v0.8.2,
 and with nothing below the bound it walks the whole history, as a first
 release does. The `release-notes` action is that step, packaged: it walks
 `below:` the tag, ships the two exits that are permanent at tag time — `1`,
-nothing release-worthy, and `3`, the wedge escape's own tag (DESIGN §4) — as a
-placeholder body that says why, and fails the job on any other. glyph's own
-`goreleaser.yml` runs it over the binary it just built; a repository that cuts
-tags by hand runs it over the installed one and hands GoReleaser the file:
+no commit lands in a `[[note.sections]]` entry, and `3`, the wedge escape's own
+tag (DESIGN §4) — as a placeholder body that says why, and fails the job on any
+other. glyph's own `goreleaser.yml` runs it over the binary it just built; a
+repository that cuts tags by hand runs it over the installed one and hands
+GoReleaser the file:
 
 ```yaml
 # after actions/checkout with fetch-depth: 0 — the walk reads the tags and their history
@@ -370,12 +371,24 @@ skipping them. `glyph notes --help` explains how `exclude_authors` and
 `note.line` is the same idea for the release body: `$name` placeholders
 (`glyph notes --help` lists them) and a `$[ … ]` span that renders only when
 every placeholder inside it resolves. That is what lets the shipped line cite a
-pull when there is one and drop the parens with it when there is not. `@$author` pages the
-contributor only when GitHub knows who that is — the login the API reports for
-a listed commit, or the one a `@users.noreply.github.com` author address
-carries; a commit from any other address is credited by its git author name,
-plain, so a display name that happens to look like a handle never pages the
-stranger who owns it.
+pull when there is one and drop the parens with it when there is not. The
+template opens with a list marker (`- `, `* ` or `+ `) — each rendered line is
+fenced against @mentions on its own, which holds only when each line is its own
+list item (DESIGN §3) — and the loader refuses one that does not. It refuses a
+`<` where a rendered line can start a block, too, because GitHub opens an HTML
+block there, and no escape works inside one: a value in it would render raw —
+write text of the template's own before the `<` on its line (blanks, list-item
+or quote markers, at-signs, placeholders and text inside an optional `$[ … ]`
+span do not count: each can leave the block start where it was). `@$author` pages the
+contributor only when GitHub knows who that is — the `author.login` the API
+reports for a listed commit; a commit the API did not describe (every commit
+under `--range`, every direct push under `--since-tag`) or mapped to no
+account is credited by its git author name, plain, so a display name that
+happens to look like a handle never pages the stranger who owns it. The
+author address is never read for a login, GitHub's own
+`<id>+<login>@users.noreply.github.com` form included: the login it spells
+is typed by whoever configured git, and GitHub attributes the commit by the
+id beside it.
 
 The commit author's own text — the subject, the scope, any group a pattern
 captures — renders as prose that cannot reach past its line: outside the
@@ -424,10 +437,19 @@ name  = "why"   # the $placeholder note.line writes
 
 A declared trailer renders as fenced prose, like any other text a commit
 author typed, and an absent one resolves empty so the `$[ … ]` span carrying
-it drops. What a trailer block IS follows git exactly: the last paragraph of
-the message, above any `---`, every line of it trailer-shaped — **one prose
-line in it and the whole block is not a trailer block**, credits included, so
-write the trailers together at the very bottom and indent any wrapped line.
+it drops. What a trailer block IS is what git 2.56.0's commit reader reads
+(`git log --format=%(trailers)`, with git's defaults — a repository's
+`trailer.*` config is not read): the last paragraph of the message, above
+whatever git ignores at its end (trailing comment lines, an old-style
+`Conflicts:` list, a `# ------------------------ >8 ------------------------`
+scissors line), every line of it trailer-shaped — **one prose line in it and
+the whole block is not a trailer block**, credits included — unless git
+itself wrote into the block: beside a `Signed-off-by:` or a `(cherry picked
+from commit …)` line, prose stands as long as at least a quarter of the lines
+are trailers, and the trailers around it are read. A `---` line is message
+text, not a divider: that divider belongs to `git interpret-trailers` reading
+a patch, and a landed commit carries none. Write the trailers together at the
+very bottom and indent any wrapped line.
 
 ## Packages — several version lines in one repository
 
@@ -474,17 +496,27 @@ alone (what a tag-time notes step needs; a release candidate on the line,
 tag), a bare `--since-tag` walks every line from its own highest tag the
 released branch holds, and `--range` attributes from local git with every
 commit pending on every line.
-A package with no tag yet is baselined
-by cutting `<prefix>v0.0.0` (`haiku/v0.0.0`) at the commit before its first
-change — `<prefix>vN.0.0` on a line whose path ends in a major-version
-subdirectory (`pubsub/v2` → `pubsub/v2.0.0`); the refusal names the tag. On
+A package with no tag yet walks its whole history, and the warning offers a
+baseline where one can be cut: `<prefix>v0.0.0` (`haiku/v0.0.0`) at the
+commit before its first change — `<prefix>vN.0.0` on a line whose path ends
+in a major-version subdirectory (`pubsub/v2` → `pubsub/v2.0.0`) — a tag that
+takes that number, so the line's first release steps from it
+(`pubsub/v2.1.0`); a line whose first change is the root commit has no
+commit before it and is offered none. Past the walk cap the refusal names
+the same tag. On
 stdout `bump` prints the next **tag** of every line that moves, one per line
 (`haiku/v0.2.0`), and exits `1` only when every line folds to none; `--json`
-carries `packages: [{path, current, level, next, commits, reason}]` with the
+carries `packages: [{path, current, level, next, tag, commits, reason}]` with the
 scalar `current` / `level` **empty** and `next` absent, as on a none verdict —
 there is no one line for them to describe, so a consumer reading only the
 scalars fails safe provided it reads an absent key as empty
-(`jq -r '.next // empty'`; a plain `.next` prints `null`). `notes`
+(`jq -r '.next // empty'`; a plain `.next` prints `null`). In a row `current`
+and `next` are bare versions (`v0.1.1`) and `tag` is the line's tag — the
+declared path is the prefix, a nested line's whole path included
+(`travel/onsen/v0.0.1`), the major folded on a `/vN` path, bare for the root
+package — so upload to `tag`, never to `next`. A line that folds to none
+carries neither `next` nor `tag`, so an all-none walk is a full array with
+no `tag` in it. `notes`
 mirrors it: `packages: [{path, sections}]`, and on stdout one body per line
 under a `# <path>` heading (bare when one line is selected). `--pr` is
 refused on both — a pull's listing carries messages and no files.
@@ -501,7 +533,11 @@ with no tag), `--footer-file` appended to every draft, and `--json` carrying
 `packages: [{path, current, level, next, tag, body, action, url, commits,
 reason}]` with the scalar `current` / `level` / `action` empty, `next` /
 `tag` / `body` / `url` absent, and `target` shared — omitted, as the single
-line omits it, when no line has a draft to write. A bare `vX.Y.Z` draft in a
+line omits it, when no line has a draft to write. Every line's draft points
+at that one `target` — the checkout's HEAD unless `--target` names another
+commit: a line the push did not touch is retargeted too, so the tag GitHub
+cuts when a human publishes its draft lands on that target, not on the
+line's last change. A bare `vX.Y.Z` draft in a
 repository that declares packages but no root package is the single
 line's residue and is deleted with a notice on the first packages run —
 `release --dry-run` names it without deleting it, so move any hand-written
@@ -511,7 +547,10 @@ sets `make_latest`. A tag that selects one line converges that line alone.
 
 `preview --pr` posts one headline per line the pull touches — `**haiku** —
 🔼 Merging this PR raises **minor** — the next release becomes
-**haiku/v0.1.0 → haiku/v0.2.0**.` — with one commit table per line and the
+**haiku/v0.1.0 → haiku/v0.2.0**.`, a line with no tag naming its first
+release instead (`the first release here would be **travel/v0.1.0**`) except
+on a shallow checkout, which names no version for a line with no tag within
+its reach — with one commit table per line and the
 notes preview per line; a line the pull does not touch is not mentioned, and
 a shared-only `^` is refused at exit 3 here first, while the branch can
 still be fixed. The reusables (`pr-verdict.yml`, `release.yml`) render what
@@ -524,8 +563,10 @@ byte.
 
 ## Exit codes
 
-`0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
-(a commit under `lint`, the repository's own configuration under `doctor`) ·
+`0` ok · `1` no release (soft), on the condition the *soft no-release* entry
+in [`docs/glossary.md`](docs/glossary.md#6-exit-codes-and-streams) gives each
+command · `2` usage · `3` convention violation (a commit under `lint`, the
+repository's own configuration under `doctor`) ·
 `4` no trustworthy answer — API/git/IO, or a refusal to hand down a verdict
 glyph will not stand behind (an incomplete walk, the published floor, the
 whole-history walk cap, a `release` body over GitHub's cap, a `release` write

@@ -1,0 +1,13 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 69da191..a221870 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -214,7 +214,7 @@ func trailerBlock(lines []string) []string {
+ 				continue
+ 			}
+ 			nonTrailerLines += possibleContinuation
+-			if (recognized && trailerLines*3 >= nonTrailerLines) || (trailerLines > 0 && nonTrailerLines == 0) {
++			if (recognized && nonTrailerLines == 0) || (trailerLines > 0 && nonTrailerLines == 0) {
+ 				return lines[i+1:]
+ 			}
+ 			return nil

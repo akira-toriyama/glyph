@@ -634,8 +634,13 @@ func TestSinceTagPackagesBelowNothingUnderTheBoundNamesTheBound(t *testing.T) {
 
 // TestSinceTagPackagesUntaggedLineWalksTheWholeHistory: a package with no tag
 // of its own baselines at nothing — the whole history is walked, under the
-// single line's cap, and the warning names the remedy §4.1 gives (cut
-// <prefix>v0.0.0 at the commit before the line's first change).
+// single line's cap, and the warning says so FIRST, then names the remedy
+// §4.1 gives (cut <prefix>v0.0.0 at the commit before the line's first
+// change) with its price: a baseline takes that number and the first release
+// steps from it (t-ngac; mutation row packages-baseline-remedy-hides-its-cost).
+// The remedy is named because curry's first change, the declaring commit,
+// has a parent to cut the tag at — the control for
+// TestSinceTagPackagesRootFirstChangeNamesNoBaseline.
 func TestSinceTagPackagesUntaggedLineWalksTheWholeHistory(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	appendTo(t, dir, "glyph.toml", testutil.PackagesSnippet)
@@ -658,8 +663,12 @@ func TestSinceTagPackagesUntaggedLineWalksTheWholeHistory(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "no version tag on the curry/ line(s) in HEAD's history") || !strings.Contains(stderr, "cut curry/v0.0.0") {
-		t.Fatalf("the whole-history warning must name the untagged line and its remedy:\n%s", stderr)
+	walking, remedy := strings.Index(stderr, "no version tag on the curry/ line(s) in HEAD's history — walking the repository's whole history ("), strings.Index(stderr, "; to start from a tag instead, cut curry/v0.0.0 at the commit before that line's first change — a baseline says nothing of the line was released before there, and it takes its number: the line's first release then steps from it")
+	if walking < 0 || remedy < 0 || remedy < walking {
+		t.Fatalf("the whole-history warning must say the walk proceeds, then name the untagged line's remedy and its price:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "haiku/v0.0.0") {
+		t.Fatalf("the tagged line gets no baseline remedy:\n%s", stderr)
 	}
 	res := decodeJSON[packagesVerdict](t, stdout)
 	h, c := res.Packages[0], res.Packages[1]

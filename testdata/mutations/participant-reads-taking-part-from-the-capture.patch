@@ -1,0 +1,11 @@
+diff --git a/internal/config/match.go b/internal/config/match.go
+--- a/internal/config/match.go
++++ b/internal/config/match.go
+@@ -148,6 +148,6 @@ func participant(re *regexp.Regexp, loc []int, name string) int {
+ 	at := -1
+ 	for gi, n := range re.SubexpNames() {
+-		if n == name && loc[2*gi] >= 0 {
++		if n == name && loc[2*gi+1] > loc[2*gi] {
+ 			at = gi
+ 		}
+ 	}

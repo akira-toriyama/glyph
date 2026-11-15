@@ -30,9 +30,11 @@ range_gate_changed() {
 # base..head (head is HEAD unless named, as for range_gate_changed) holds at
 # least one non-merge commit and every one carries a `<Key>:` trailer
 # with a real reason. A range-wide claim cannot be made by one commit in the
-# range — go-bite's rule for Bite-exempt. The trailer is parsed by `git
-# interpret-trailers`, so a matching line inside a body paragraph asserts
-# nothing.
+# range — go-bite's rule for Bite-exempt. The trailer is read by git's commit
+# reader, `%(trailers)`, the oracle DESIGN §3 rules for a landed commit's
+# trailers: a matching line inside a body paragraph asserts nothing, and a
+# trailer below a `---` line counts, where `git interpret-trailers` stops
+# reading (TestRangeGatesReadATrailerBelowADivider).
 #
 # A trailer with no reason, or still the `<placeholder>`, exits 1 on the spot.
 # Otherwise the answer is the return code, with RANGE_GATE_MISSING set to the
@@ -45,7 +47,7 @@ require_trailer_on_every_commit() {
   examined=0
   for commit in $(git rev-list --no-merges "$2".."${3:-HEAD}"); do
     examined=$((examined + 1))
-    line="$(git show -s --format=%B "$commit" | git interpret-trailers --parse | grep "^$1:" | sed -n '1p')"
+    line="$(git show -s --format='%(trailers:only,unfold)' "$commit" | grep "^$1:" | sed -n '1p')"
     if [ -z "$line" ]; then
       RANGE_GATE_MISSING="$commit"
       return 1

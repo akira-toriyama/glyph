@@ -1,0 +1,14 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 871d661..27f8b80 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -1066,9 +1066,6 @@ func runRead(ctx context.Context, dir string, stdin io.Reader, args ...string) (
+ 	var out, serr bytes.Buffer
+ 	cmd.Stdout, cmd.Stderr = &out, &serr
+ 	if rerr := cmd.Run(); rerr != nil {
+-		if ierr := interrupted(ctx); ierr != nil {
+-			return nil, nil, -1, ierr
+-		}
+ 		status = -1
+ 		if ee, ok := errors.AsType[*exec.ExitError](rerr); ok {
+ 			status = ee.ExitCode()

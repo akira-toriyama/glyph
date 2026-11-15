@@ -1,0 +1,13 @@
+diff --git a/internal/hook/hook.go b/internal/hook/hook.go
+index 420a1b6..1c59a8d 100644
+--- a/internal/hook/hook.go
++++ b/internal/hook/hook.go
+@@ -310,6 +310,8 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
+ 		}
+ 		if write {
+ 			plans = append(plans, k)
++			_ = os.MkdirAll(hooksDir, 0o755)                                                 //nolint:gosec
++			_ = os.WriteFile(filepath.Join(hooksDir, k.Name), []byte(k.Script), 0o755) //nolint:gosec
+ 		}
+ 	}
+ 	if len(plans) == 0 {

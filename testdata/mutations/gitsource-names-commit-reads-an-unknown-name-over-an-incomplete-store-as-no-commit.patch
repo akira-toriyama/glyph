@@ -1,0 +1,20 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index bbef741..ed40f16 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -342,12 +342,12 @@ func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
+ 	if err != nil {
+ 		return false, err
+ 	}
+-	if _, unreadable := errorLine(stderr); unreadable {
+-		return false, terr
+-	}
+ 	if !known {
+ 		return false, nil
+ 	}
++	if _, unreadable := errorLine(stderr); unreadable {
++		return false, terr
++	}
+ 	_, held, err := runAnswer(ctx, dir, "cat-file", "cat-file", "-e", "--end-of-options", rev)
+ 	switch {
+ 	case err != nil:

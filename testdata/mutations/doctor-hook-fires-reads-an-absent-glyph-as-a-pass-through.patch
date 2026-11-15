@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
+index 97b17a9..68858a3 100644
+--- a/internal/doctor/hook.go
++++ b/internal/doctor/hook.go
+@@ -141,7 +141,7 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
+ 		c.Observed = fmt.Sprintf("the hook blocked the probe message at exit %d", gate)
+ 		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +
+ 			"stops a commit are in working order on this machine"
+-	case probe.Exit == 0 && probe.GlyphAbsent:
++	case probe.Exit == 0 && probe.GlyphAbsent && false:
+ 		c.Status = StatusFail
+ 		c.Observed = "glyph is not on PATH, so the hook warned and let a violating message through at exit 0"
+ 		c.Message = "the hook resolves glyph with `command -v glyph` each time it runs, and with none there it warns and " +

@@ -71,18 +71,23 @@ const scopeSubject = "[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(\\((?P<
 // placement reads spelling the name is enough — which pattern wins is a
 // property of each commit, the union validateLineNames takes — and a group
 // placement never reads spells nothing: a skip pattern's commit is placed
-// nowhere, an unlandable one is reported unclaimed with no groups, and of two
-// groups named scope in one pattern Match keeps the last, whose capture
-// overwrites the first even when its own alternative did not take part. The
+// nowhere, and an unlandable one is reported unclaimed with no groups. Of two
+// groups named scope in one pattern each spells: Match hands on the capture
+// of the alternative the message took (participant), so `(my_lib)` and
+// `(MYLIB)` both reach attribution under the two-group pattern below — read
+// as the last group alone, `(my_lib)` reached it as no scope at all (measured
+// 2026-09-29) and my_lib was refused as a name no commit could write. The
 // group is read under the pattern's own flags, so a (?i) group spells MyLib.
 func TestPackageNameScopeIsTheUnionOfReadScopes(t *testing.T) {
-	const shadowed = "[[patterns]]\npattern = '^:x:\\((?:(?P<scope>[a-z_]+)|(?P<scope>[A-Z]+))\\)(?P<semver_sigil>[=~^!%]) '\n"
+	const twoGroups = "[[patterns]]\npattern = '^:x:\\((?:(?P<scope>[a-z_]+)|(?P<scope>[A-Z]+))\\)(?P<semver_sigil>[=~^!%]) '\n"
 	for name, src := range map[string]string{
-		"a second grammar spells it":           scopeSubject + "[[patterns]]\npattern = '^(?P<type>[a-z]+)\\((?P<scope>[a-z_]+)\\)(?P<semver_sigil>[=~^!%]): .+'\n\n[[packages]]\npath = \"my_lib\"\n",
-		"a narrow scope beside a wide one":     "[[patterns]]\npattern = '^(?P<scope>deps)(?P<semver_sigil>[=~^!%]) '\n" + scopeSubject + "\n[[packages]]\npath = \"haiku\"\n",
-		"a fixed-sigil pattern's scope counts": scopeSubject + "[[patterns]]\npattern = '^revert\\((?P<scope>[a-z_]+)\\) .+'\nsemver_sigil = '~'\n\n[[packages]]\npath = \"my_lib\"\n",
-		"the last of two scope groups spells":  shadowed + "\n[[packages]]\npath = \"lib\"\nname = \"MYLIB\"\n",
-		"a case-folding group spells it":       "[[patterns]]\npattern = '(?i)^:[a-z]+:\\((?P<scope>[a-z]+)\\)(?P<semver_sigil>[=~^!%]) '\n\n[[packages]]\npath = \"MyLib\"\n",
+		"a second grammar spells it":            scopeSubject + "[[patterns]]\npattern = '^(?P<type>[a-z]+)\\((?P<scope>[a-z_]+)\\)(?P<semver_sigil>[=~^!%]): .+'\n\n[[packages]]\npath = \"my_lib\"\n",
+		"a narrow scope beside a wide one":      "[[patterns]]\npattern = '^(?P<scope>deps)(?P<semver_sigil>[=~^!%]) '\n" + scopeSubject + "\n[[packages]]\npath = \"haiku\"\n",
+		"a fixed-sigil pattern's scope counts":  scopeSubject + "[[patterns]]\npattern = '^revert\\((?P<scope>[a-z_]+)\\) .+'\nsemver_sigil = '~'\n\n[[packages]]\npath = \"my_lib\"\n",
+		"the second of two scope groups spells": twoGroups + "\n[[packages]]\npath = \"lib\"\nname = \"MYLIB\"\n",
+		"the first of two scope groups spells":  twoGroups + "\n[[packages]]\npath = \"my_lib\"\n",
+		"two scope groups spell one name each":  twoGroups + "\n[[packages]]\npath = \"my_lib\"\n\n[[packages]]\npath = \"lib\"\nname = \"MYLIB\"\n",
+		"a case-folding group spells it":        "[[patterns]]\npattern = '(?i)^:[a-z]+:\\((?P<scope>[a-z]+)\\)(?P<semver_sigil>[=~^!%]) '\n\n[[packages]]\npath = \"MyLib\"\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Load([]byte("schema = 1\n" + src)); err != nil {
@@ -93,7 +98,7 @@ func TestPackageNameScopeIsTheUnionOfReadScopes(t *testing.T) {
 	for name, src := range map[string]string{
 		"only a skip pattern spells it":         scopeSubject + "[[patterns]]\npattern = '^Merge (?P<scope>.+)'\nskip = true\n",
 		"only an unlandable pattern spells it":  scopeSubject + "[[patterns]]\npattern = '^amend! (?P<scope>.+)'\nunlandable = 'rebase with --autosquash first'\n",
-		"only a shadowed scope group spells it": shadowed,
+		"neither of two scope groups spells it": "[[patterns]]\npattern = '^:x:\\((?:(?P<scope>[a-z]+)|(?P<scope>[A-Z]+))\\)(?P<semver_sigil>[=~^!%]) '\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load([]byte("schema = 1\n" + src + "\n[[packages]]\npath = \"my_lib\"\n"))
