@@ -59,11 +59,11 @@ func TestParseLineOptionalSpan(t *testing.T) {
 }
 
 // TestParseLineLeavesABareBracketLiteral: only `$[` opens a span. A bare `[`
-// is Markdown the author wrote — the `- [$scope] $subject` idiom and every
-// link — and compiling it as a span would silently delete the text inside it
-// for any commit whose scope is empty.
+// is Markdown the author wrote — every link, and the escaped brackets around
+// a scope — and compiling it as a span would silently delete the text inside
+// it for any commit whose scope is empty.
 func TestParseLineLeavesABareBracketLiteral(t *testing.T) {
-	spans, err := parseLine("- [$scope] $subject [docs](https://example.invalid)")
+	spans, err := parseLine(`- \[$scope\] $subject [docs](https://example.invalid)`)
 	if err != nil {
 		t.Fatalf("parseLine: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestParseLineLeavesABareBracketLiteral(t *testing.T) {
 		}
 	}
 	got := render(spans, map[string]string{"subject": "fix it"})
-	if got != "- [] fix it [docs](https://example.invalid)" {
+	if got != `- \[\] fix it [docs](https://example.invalid)` {
 		t.Errorf("literal brackets must survive verbatim, got %q", got)
 	}
 }
@@ -228,6 +228,143 @@ func TestLoadRefusesAnHTMLBlockAtABlockStart(t *testing.T) {
 	}
 }
 
+// TestLoadRefusesAConstructOpenAtAPlaceholder: a template whose literal text
+// leaves an HTML tag, a link's brackets or a character reference open where a
+// placeholder begins does not load, and the refusal names the construct, the
+// placeholder and where the construct stands. Each loaded before, and the value
+// completed what the template opened (measured 2026-11-15 through `glyph notes
+// --range` and POST /markdown, t-gwsr; checkLineLeavesNothingOpen has the table):
+// `- x <$subject` with the subject "i>live</i> y" rendered a live <i> open into
+// the next item, `- [$subject](https://example.com)` with
+// "click](https://evil.example) y" a link to evil.example, `- [x]$subject` with
+// "(https://evil.example) y" the same link, and `- &#64;$subject` with "octocat
+// now" a live @octocat.
+func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
+	const grammar = "schema = 1\n[[patterns]]\npattern = '^(?P<subject>:[a-z]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
+	tag := func(name, at string) string {
+		return "leaves an HTML tag open where $" + name + ` begins, its "<" at ` + at + ": "
+	}
+	open := func(name, at string) string {
+		return `leaves a "[" open where $` + name + " begins, " + at + ": "
+	}
+	closed := func(name, at string) string {
+		return "puts $" + name + ` right behind the "]" at ` + at + `, which closes a "[": `
+	}
+	ref := func(name, at string) string {
+		return "puts $" + name + " behind the character reference at " + at + " with no blank between them: "
+	}
+	for _, c := range []struct{ name, line, want string }{
+		{"the value names the tag", "- x <$subject", tag("subject", "line 1 column 5")},
+		{"the value is an attribute", "- x <i $subject>", tag("subject", "line 1 column 5")},
+		{"the value is an attribute's value", `- x <a href="$subject">k</a>`, tag("subject", "line 1 column 5")},
+		{"a closing tag", "- x </$subject", tag("subject", "line 1 column 5")},
+		{"a > inside double quotes closes no tag", `- x <a title=">" $subject>k</a>`, tag("subject", "line 1 column 5")},
+		{"a > inside single quotes closes no tag", "- x <a title='>' $subject>k</a>", tag("subject", "line 1 column 5")},
+		{"the open tag behind a closed one", "- x <b>y</b> <i $subject", tag("subject", "line 1 column 14")},
+		{"a tag on the template's second line", "- x\n  y <i $subject", tag("subject", "line 2 column 5")},
+		{"a tag closed only inside a dropped span", "- x <b$[>$pr] $subject", tag("subject", "line 1 column 5")},
+		{"a placeholder inside an optional span", "- x <$[i$pr]i $subject>", tag("pr", "line 1 column 5")},
+
+		{"the value is the link text", "- [$subject](https://example.com)", open("subject", "line 1 column 3")},
+		{"an image", "- ![$subject](https://example.com/a.png)", open("subject", "line 1 column 4")},
+		{"the outer bracket behind a closed inner one", "- [a [b] $subject", open("subject", "line 1 column 3")},
+		{"a bracket inside an optional span", "- $subject$[ [$pr]]", open("pr", "line 1 column 14")},
+		{"a backslash that is itself escaped", `- \\[$subject]`, open("subject", "line 1 column 5")},
+		{"a backslash the value before the bracket uses up", `- x \$hash[$subject]`, open("subject", "line 1 column 11")},
+		{"the value right behind the closing bracket", "- [x]$subject", closed("subject", "line 1 column 5")},
+		{"behind the closing bracket once a span drops", "- [x]$[ ($pr)]$subject", closed("subject", "line 1 column 5")},
+		{"behind a reference link's second pair", "- [x][y]$subject", closed("subject", "line 1 column 8")},
+
+		{"a decimal reference", "- &#64;$subject", ref("subject", "line 1 column 3")},
+		{"a decimal reference with leading zeros", "- &#0064;$subject", ref("subject", "line 1 column 3")},
+		{"a hex reference", "- &#x40;$subject", ref("subject", "line 1 column 3")},
+		{"a hex reference, capital X", "- &#X4a;$subject", ref("subject", "line 1 column 3")},
+		{"a named reference", "- &commat;$subject", ref("subject", "line 1 column 3")},
+		{"a named reference with a digit", "- &frac12;$subject", ref("subject", "line 1 column 3")},
+		{"the template's text between them", "- &#64;oct$subject", ref("subject", "line 1 column 3")},
+		{"the later of two references", "- x &amp;&#64;$subject", ref("subject", "line 1 column 10")},
+		{"a blank only inside a dropped span", "- x &#64;$[ ($pr) ]$subject", ref("subject", "line 1 column 5")},
+		{"a reference around an empty placeholder", "- &$pr#64;$subject", ref("subject", "line 1 column 3")},
+		{"a reference around a dropped span", "- &$[$pr]#64;$subject", ref("subject", "line 1 column 3")},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := Load([]byte(grammar + "[note]\nline = " + strconv.Quote(c.line) + "\n"))
+			if err == nil {
+				t.Fatalf("Load accepted note.line %q, which leaves a construct open for a value to complete", c.line)
+			}
+			if want := "note.line: " + strconv.Quote(c.line) + " " + c.want; !strings.Contains(err.Error(), want) {
+				t.Errorf("error = %q, want substring %q", err, want)
+			}
+		})
+	}
+}
+
+// TestLoadAcceptsAConstructClosedBeforeAPlaceholder holds
+// checkLineLeavesNothingOpen to what it measured: the refusal is for a
+// construct open at a placeholder, and a template that closed its construct,
+// escaped its opener, or wrote the opener behind the placeholder keeps loading.
+// The heads of a reference load because rule 4 escapes one a value completes
+// (markdown's TestAReferenceAValueCompletesIsEscaped).
+func TestLoadAcceptsAConstructClosedBeforeAPlaceholder(t *testing.T) {
+	const grammar = "schema = 1\n[[patterns]]\npattern = '^(?P<subject>:[a-z]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
+	for _, c := range []struct{ name, line string }{
+		{"a tag the template closed", "- x <b>y</b> $subject"},
+		{"a value between a tag and its closer", "- x <b>$subject</b>"},
+		{"a > inside quotes, then the tag's own", `- x <span title="a>b" lang='c>d'>$subject</span>`},
+		{"a comment the template closed", "- x <!-- c --> $subject"},
+		{"a < and a blank", "- x < $subject"},
+		{"a < and a digit", "- x <1$subject"},
+		{"an escaped <", `- x \<$subject`},
+
+		{"brackets closed, then a blank", "- [x] $subject"},
+		{"brackets closed, then a tab", "- [x]\t$subject"},
+		{"a link the template wrote whole", "- [x](https://example.com) $subject"},
+		{"a value inside a destination the template wrote", "- [x](https://example.com/$subject)"},
+		{"a ] that closes nothing", "- x]$subject"},
+		{"an escaped [", `- \[$subject]`},
+		{"escaped brackets inside an optional span", `- $subject$[ \[$pr\]]`},
+
+		{"a reference and a blank", "- &amp; $subject"},
+		{"an at-sign reference and a blank", "- &#64; $subject"},
+		{"a reference and a tab", "- &#64;\t$subject"},
+		{"a bare ampersand", "- R&D $subject"},
+		{"an ampersand and a blank", "- x & $subject"},
+		{"an escaped reference", `- \&#64;$subject`},
+		{"a reference's head: &", "- &$subject"},
+		{"a reference's head: &#", "- &#$subject"},
+		{"a reference's head: &#x", "- &#x$subject"},
+		{"a reference's head: digits", "- &#64$subject"},
+		{"a reference's head: a name", "- &comm$subject"},
+		{"a name with no semicolon", "- &amp $subject"},
+
+		{"an open tag behind the last placeholder", "- x $subject <i"},
+		{"an open bracket behind the last placeholder", "- x $subject [y"},
+		{"a link's closer behind the placeholder", "- x $subject](https://example.com)"},
+		{"a reference behind the last placeholder", "- x $subject &#64;"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := Load([]byte(grammar + "[note]\nline = " + strconv.Quote(c.line) + "\n")); err != nil {
+				t.Errorf("Load refused note.line %q: %v", c.line, err)
+			}
+		})
+	}
+	for _, name := range []string{"gemoji", "conventional"} {
+		t.Run("the "+name+" preset", func(t *testing.T) {
+			preset, ok := Preset(name)
+			if !ok {
+				t.Fatalf("no %s preset", name)
+			}
+			cfg, err := Load(preset)
+			if err != nil {
+				t.Fatalf("Load refused the shipped preset: %v", err)
+			}
+			if len(cfg.Note.Spans) == 0 {
+				t.Errorf("the %s preset compiled no note.line, so its template was not judged", name)
+			}
+		})
+	}
+}
+
 // TestLoadFileMalformedLineNamesTheFile: a malformed template is a CONFIG
 // failure, and the message has to say which file and which key — the reader
 // is a developer whose commit-lint job just went red, holding only stderr.
@@ -276,7 +413,7 @@ func TestLoadRefusesAPlaceholderNothingBinds(t *testing.T) {
 	})
 
 	t.Run("a group only the second pattern captures", func(t *testing.T) {
-		if _, err := Load([]byte("schema = 1\n" + patterns + "[note]\nline = '- $subject$[ [$scope]]'\n")); err != nil {
+		if _, err := Load([]byte("schema = 1\n" + patterns + "[note]\nline = '- $subject$[ \\[$scope\\]]'\n")); err != nil {
 			t.Errorf("Load rejected a group one pattern captures: %v", err)
 		}
 	})

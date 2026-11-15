@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 70214c8..7ebd110 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -347,7 +347,7 @@ func addInlineState(set []inlineState, st inlineState) []inlineState {
+ 
+ // step is the state after the literal byte c, which stands at offset at.
+ func (s inlineState) step(c byte, at int) inlineState {
+-	live := !s.escaped
++	live := true
+ 	s.escaped = c == '\\' && live
+ 
+ 	switch s.tag {

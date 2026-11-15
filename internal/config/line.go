@@ -17,7 +17,7 @@ var varRE = regexp.MustCompile(`\$[a-z_][a-z0-9_]*`)
 
 // spanOpen marks an optional span. `[` is outside varRE's name alphabet, so
 // `$[` never collides with a placeholder; a bare `[` stays literal too, which
-// is what leaves the `- [$scope] $subject` idiom and Markdown links alone.
+// is what leaves the template's own Markdown links alone.
 const spanOpen = "$["
 
 // Built-in placeholder names. glyph binds these whatever the patterns capture,
@@ -198,6 +198,265 @@ func stepBlockState(states int, c byte) int {
 	return next
 }
 
+// checkLineLeavesNothingOpen refuses a template whose literal text leaves an
+// inline construct open where a placeholder begins, for the value to complete.
+// The prose escape puts its backslash on the byte that opens a construct, and
+// only on a value's byte (markdown.escapeProseLine), so an opener the template
+// wrote stays live and the value lands inside it, where no escape of the value
+// closes the hole. Three constructs, each measured 2026-11-15 through `glyph
+// notes --range` and POST /markdown (gfm):
+//
+//	template                             value                            GitHub renders
+//	`- x <$subject`                      i>live</i> y                     a live <i>, open into the next item
+//	`- x <i $subject>`                   title=a                          <i title="a">
+//	`- x <a title=">" $subject>k</a>`    href=//evil.example              <a href="//evil.example">
+//	`- [$subject](https://example.com)`  click](https://evil.example) y   a link to evil.example ("https\://" loses its backslash inside a destination)
+//	`- [x]$subject`                      (https://evil.example) y         a link to evil.example
+//	`- [x]$subject`                      : /url                           a link reference definition: "[x]" links to /url
+//	`- &#64;$subject`                    octocat now                      a live @octocat (so "&commat;", "&#x40;", "&#0064;")
+//	`- &#64;oct$subject`                 ocat now                         a live @octocat
+//	`- &$pr#64;$subject`                 octocat now, no pull             a live @octocat
+//
+// What loads, measured the same way with the same values: a tag the template
+// closed (`- x <b>$subject</b>`, `- x <b>y</b> $subject`: the value is text), a
+// "<" no tag can start at (`- x < $subject`, `- x <1$subject`), brackets closed
+// with something of the template's own behind them (`- [x] $subject`,
+// `- [x](https://example.com/$subject)`, whose value ends the destination at
+// its ")" or its blank and is escaped prose from there), a reference with a
+// blank behind it (`- &#64; $subject` renders "@ octocat"), an escaped opener
+// (`- x \<$subject`, `- \[$subject]`, `- \&#64;$subject`), and the head of a
+// reference (`- &$subject`, `- &#$subject`, `- &#64$subject`), which rule 4
+// escapes on the assembled line once a value completes it.
+//
+// Each test is blunter than the grammar it stands for, on the refusing side:
+//
+//   - A tag is open from a "<" that a letter, "/", "!" or "?" follows (the "<"
+//     rule 5 reads as an opener), or that the placeholder itself follows, to
+//     the next ">" outside a quoted attribute value. Whether the bytes between
+//     are a valid tag is not asked.
+//   - Link text is open while a "[" has no "]" of its own, and the "]" that
+//     closes one refuses a placeholder right behind it. Images, footnotes and
+//     reference links are the same brackets.
+//   - A character reference is any that has the shape (markdown.entityAt's:
+//     decimal, hex or named, closed by ";"), whatever it decodes to, and it
+//     reaches the placeholder across every byte but a blank: a table of the
+//     references that decode to an at-sign would owe this boundary to
+//     GitHub's.
+//
+// A backslash makes the opener behind it text, as it does at GitHub; inside an
+// open tag it does not, as in HTML. Nothing else of Markdown is read: a
+// template's own code span or line ending closes nothing here.
+//
+// A commit decides what stands before a placeholder, and the loader sees none
+// (checkLineOpensNoHTMLBlock): an optional span is read as rendered and as
+// dropped, and an earlier placeholder as a value and as empty, which is how
+// `- &$pr#64;$subject` writes "&#64;" for a commit with no pull. So the walk
+// carries the set of states the rendered line can be in.
+func checkLineLeavesNothingOpen(template string, spans []LineSpan) error {
+	states, at := []inlineState{{}}, 0
+	for _, span := range spans {
+		dropped := states
+		if span.Optional {
+			at += len(spanOpen)
+		}
+		for _, p := range span.Parts {
+			if p.Placeholder {
+				next := make([]inlineState, 0, 2*len(states))
+				for _, st := range states {
+					if err := st.refusal(template, p.Text); err != nil {
+						return err
+					}
+					next = addInlineState(addInlineState(next, st), st.behindAValue())
+				}
+				states = next
+				at += len("$") + len(p.Text)
+				continue
+			}
+			for i := 0; i < len(p.Text); i++ {
+				next := make([]inlineState, 0, len(states))
+				for _, st := range states {
+					next = addInlineState(next, st.step(p.Text[i], at))
+				}
+				states = next
+				at++
+			}
+		}
+		if span.Optional {
+			merged := slices.Clone(states)
+			for _, st := range dropped {
+				merged = addInlineState(merged, st)
+			}
+			states = merged
+			at += len("]")
+		}
+	}
+	return nil
+}
+
+// inlineState is what a rendered line's literal text has left open at some
+// byte, as checkLineLeavesNothingOpen reads it. The zero value is nothing
+// open; every offset is into the template and is zero while its construct is
+// not open, so that equal states compare equal.
+type inlineState struct {
+	escaped bool // the last byte is a backslash no backslash escaped
+
+	tag   tagState
+	tagAt int // the "<" of a tag that is not tagNone
+
+	depth  int // "[" with no "]" of their own yet
+	linkAt int // the outermost of them
+
+	closed   bool // the last byte is a "]" that closed a "["
+	closedAt int
+
+	ref   refState
+	refAt int // the "&" of a reference that is not refNone
+
+	pending   bool // a whole character reference, and no blank since
+	pendingAt int  // its "&"
+}
+
+type tagState uint8
+
+const (
+	tagNone   tagState = iota
+	tagLess            // behind "<": the next byte decides
+	tagOpen            // inside a tag, outside its quotes
+	tagDouble          // inside a double-quoted attribute value
+	tagSingle          // inside a single-quoted one
+)
+
+type refState uint8
+
+const (
+	refNone    refState = iota
+	refAmp              // &
+	refHash             // &#
+	refHexMark          // &#x
+	refDigits           // &#1
+	refHex              // &#x1
+	refName             // &a
+)
+
+func addInlineState(set []inlineState, st inlineState) []inlineState {
+	if slices.Contains(set, st) {
+		return set
+	}
+	return append(set, st)
+}
+
+// step is the state after the literal byte c, which stands at offset at.
+func (s inlineState) step(c byte, at int) inlineState {
+	live := !s.escaped
+	s.escaped = c == '\\' && live
+
+	switch s.tag {
+	case tagDouble:
+		if c == '"' {
+			s.tag = tagOpen
+		}
+	case tagSingle:
+		if c == '\'' {
+			s.tag = tagOpen
+		}
+	case tagOpen:
+		switch c {
+		case '"':
+			s.tag = tagDouble
+		case '\'':
+			s.tag = tagSingle
+		case '>':
+			s.tag, s.tagAt = tagNone, 0
+		}
+	default:
+		switch {
+		case s.tag == tagLess && (isASCIILetter(c) || c == '/' || c == '!' || c == '?'):
+			s.tag = tagOpen
+		case c == '<' && live:
+			s.tag, s.tagAt = tagLess, at
+		default:
+			s.tag, s.tagAt = tagNone, 0
+		}
+	}
+
+	s.closed, s.closedAt = false, 0
+	switch {
+	case c == '[' && live:
+		if s.depth == 0 {
+			s.linkAt = at
+		}
+		s.depth++
+	case c == ']' && live && s.depth > 0:
+		s.depth--
+		if s.depth == 0 {
+			s.linkAt = 0
+		}
+		s.closed, s.closedAt = true, at
+	}
+
+	if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+		s.pending, s.pendingAt = false, 0
+	}
+	digit := c >= '0' && c <= '9'
+	hex := digit || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+	ref, refAt := s.ref, s.refAt
+	s.ref, s.refAt = refNone, 0
+	switch {
+	case c == '&' && live:
+		s.ref, s.refAt = refAmp, at
+	case ref == refAmp && c == '#':
+		s.ref, s.refAt = refHash, refAt
+	case ref == refAmp && isASCIILetter(c):
+		s.ref, s.refAt = refName, refAt
+	case ref == refHash && (c == 'x' || c == 'X'):
+		s.ref, s.refAt = refHexMark, refAt
+	case (ref == refHash || ref == refDigits) && digit:
+		s.ref, s.refAt = refDigits, refAt
+	case (ref == refHexMark || ref == refHex) && hex:
+		s.ref, s.refAt = refHex, refAt
+	case ref == refName && (isASCIILetter(c) || digit):
+		s.ref, s.refAt = refName, refAt
+	case (ref == refDigits || ref == refHex || ref == refName) && c == ';':
+		s.pending, s.pendingAt = true, refAt
+	}
+	return s
+}
+
+// behindAValue is the state after a placeholder that rendered a value, for a
+// state refusal let pass: the value's bytes stand between the template's, so a
+// backslash before the placeholder escapes none of the template's bytes behind
+// it (`- x \$hash[$subject]` leaves its "[" live behind the hash). A
+// placeholder that rendered empty leaves the state as it was, a reference's
+// head included, and the walk keeps both.
+func (s inlineState) behindAValue() inlineState {
+	s.escaped = false
+	return s
+}
+
+// refusal is the load error for a placeholder $name that begins in this state,
+// nil when nothing is open.
+func (s inlineState) refusal(template, name string) error {
+	switch {
+	case s.tag != tagNone:
+		line, col := linePosition(template, s.tagAt)
+		return fmt.Errorf("%q leaves an HTML tag open where $%s begins, its \"<\" at line %d column %d: no backslash escape works inside a tag, so the value completes the tag instead of standing in it as text — \"i>\" there renders a live <i>, \"img src=x>\" a live image — close the tag with \">\" before the placeholder, or write \"\\<\" where the \"<\" is text", template, name, line, col)
+	case s.depth > 0:
+		line, col := linePosition(template, s.linkAt)
+		return fmt.Errorf("%q leaves a \"[\" open where $%s begins, line %d column %d: the value's \"]\" closes the link text and its \"(\" opens a destination no escape reaches — \"click](https://evil.example)\" there renders a link to evil.example — write \"\\[\" where the bracket is text", template, name, line, col)
+	case s.closed:
+		line, col := linePosition(template, s.closedAt)
+		return fmt.Errorf("%q puts $%s right behind the \"]\" at line %d column %d, which closes a \"[\": a value that opens with \"(\" or \":\" gives the brackets a destination — \"(https://evil.example)\" there renders a link to evil.example — put a blank or text of the template's own between them, or write \"\\[\" where the bracket is text", template, name, line, col)
+	case s.pending:
+		line, col := linePosition(template, s.pendingAt)
+		return fmt.Errorf("%q puts $%s behind the character reference at line %d column %d with no blank between them: the mention fence reads the line's bytes and GitHub resolves a reference after it has read them, so \"&#64;\" and the value \"octocat\" render a live @octocat — put a blank between them, or write the character itself", template, name, line, col)
+	}
+	return nil
+}
+
+func isASCIILetter(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
 // linePosition is the 1-based line and column of byte at in s. A line ends
 // where CommonMark's does — "\n", "\r\n" or a lone "\r" — and a column counts
 // runes.
@@ -216,8 +475,10 @@ func linePosition(s string, at int) (line, col int) {
 // span holding no placeholder. Callers parse at LOAD time so a bad template
 // fails the config — the same exit every other config error takes — rather
 // than the release that would have rendered it. Whether the template opens
-// with a list marker is checkLineOpensAList's, asked beside it, and whether it
-// puts "<" at a block start checkLineOpensNoHTMLBlock's, asked of the spans.
+// with a list marker is checkLineOpensAList's, asked beside it; whether it
+// puts "<" at a block start is checkLineOpensNoHTMLBlock's and whether it leaves
+// a construct open at a placeholder checkLineLeavesNothingOpen's, asked of the
+// spans.
 //
 // An empty template is not an error: [note] is optional, and a config with no
 // line renders no lines.
@@ -258,8 +519,8 @@ func parseLine(template string) ([]LineSpan, error) {
 }
 
 // spanEnd finds the ] closing a span whose text starts at the head of s.
-// Brackets inside a span NEST — a Markdown link and the `[$scope]` idiom both
-// live inside one — so the closing bracket is the first at depth zero, not
+// Brackets inside a span NEST — a Markdown link lives inside one, and so do
+// the escaped brackets of `\[$scope\]` — so the closing bracket is the first at depth zero, not
 // the first of any kind. Taking the first of any kind was measured writing
 // `- add the demo feature]` from `- $subject$[ [$scope]]`: the stray bracket
 // of a span that closed one character early, which is the same class of

@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 70214c8..f17e033 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -446,7 +446,7 @@ func (s inlineState) refusal(template, name string) error {
+ 	case s.closed:
+ 		line, col := linePosition(template, s.closedAt)
+ 		return fmt.Errorf("%q puts $%s right behind the \"]\" at line %d column %d, which closes a \"[\": a value that opens with \"(\" or \":\" gives the brackets a destination — \"(https://evil.example)\" there renders a link to evil.example — put a blank or text of the template's own between them, or write \"\\[\" where the bracket is text", template, name, line, col)
+-	case s.pending:
++	case false:
+ 		line, col := linePosition(template, s.pendingAt)
+ 		return fmt.Errorf("%q puts $%s behind the character reference at line %d column %d with no blank between them: the mention fence reads the line's bytes and GitHub resolves a reference after it has read them, so \"&#64;\" and the value \"octocat\" render a live @octocat — put a blank between them, or write the character itself", template, name, line, col)
+ 	}

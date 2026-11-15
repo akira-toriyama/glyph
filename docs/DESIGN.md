@@ -566,8 +566,9 @@ pattern says it means:
     delimiter (escape.go's theorem), so the price is rendering, paid only by a
     repository whose own pattern captures such bytes — accepted.
 - Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
-  `note.line`, a `note.line` that opens with no list-item marker or puts `<`
-  at a block start (§3) and a section that does not state exactly one axis
+  `note.line`, a `note.line` that opens with no list-item marker, puts `<`
+  at a block start or leaves a construct open where a placeholder begins (§3)
+  and a section that does not state exactly one axis
   are LOAD errors, never repairs (mutation row
   `config-unknown-schema-accepted.patch`): this file decides CI
   verdicts, and a silently-misread key is a silently-changed verdict. **A key
@@ -1120,6 +1121,76 @@ and a lone CR line ending,
 `config-note-line-html-block-behind-a-paren-ordinal`,
 `config-note-line-html-block-behind-a-multi-digit-ordinal`,
 `config-note-line-html-block-behind-a-carriage-return`).
+**No construct of the template's stands open where a placeholder begins**
+(t-gwsr, 2026-11-15; the loader refuses one at exit 2 and names the construct,
+the placeholder, and the construct's line and column). The prose escape puts
+its backslash on the byte that opens a construct, and only where that byte is
+a value's, so an opener the template wrote stays live and the value lands
+inside it. Three constructs, each measured through `glyph notes --range` and
+`POST /markdown` (gfm) on a template that loaded at c06e426:
+
+- **An HTML tag.** `- x <$subject` with the subject `i>live</i> y` rendered a
+  live `<i>` that stayed open into the next item, `- x <i $subject>` with
+  `title=a` rendered `<i title="a">`, and `- x <a title=">" $subject>k</a>`
+  with `href=//evil.example` rendered that href. A tag is open from a `<` that
+  a letter, `/`, `!` or `?` follows, or that the placeholder itself follows, to
+  the next `>` outside a quoted attribute value.
+- **A link's brackets.** `- [$subject](https://example.com)` with
+  `click](https://evil.example) y` rendered a link to evil.example: the value's
+  `]` closes the link text, and rule 2's backslash in `https\://` is consumed
+  inside a destination. `- [x]$subject` rendered the same link from
+  `(https://evil.example) y`, and from `: /url` a link reference definition, so
+  `[x]` linked to /url. Link text is open while a `[` has no `]` of its own, and
+  the `]` that closes one refuses a placeholder right behind it; an image, a
+  footnote and a reference link are the same brackets.
+- **A character reference.** `- &#64;$subject` with `octocat now` rendered a
+  live @octocat, as `&commat;`, `&#x40;` and `&#0064;` did, as `- &#64;oct$subject`
+  did with `ocat now`, and as `- &$pr#64;$subject` did for a commit with no
+  pull: the mention fence reads the line's bytes, and GitHub resolves the
+  reference into an at-sign after it has read them. The identity gate below
+  falls with it: `- $subject &#64;$author` rendered a live @octocat for a git
+  author named `octocat` under `--range`, where `@$author` renders the name.
+  A reference is any that has the shape rule 4 tests (decimal, hex or named,
+  closed by `;`), whatever it decodes to, and it reaches the placeholder
+  across every byte but a blank.
+
+Each test is blunter than the grammar it stands for, on the refusing side, as
+the block-start rule is: whether the bytes of a tag are a valid one is not
+asked, a template's own code span or line ending closes nothing, and no table
+says which references decode to an at-sign (that would owe the boundary to
+GitHub's table, the reasoning `markdown.entityAt` gives for its shape). A
+backslash makes the opener behind it text, as at GitHub, and inside an open
+tag it does not, as in HTML. The loader sees no commit, so it reads an
+optional span as rendered and as dropped and an earlier placeholder as a value
+and as empty, and nothing may be open under any of those readings. What loads, measured with the same values: a construct the template closed
+(`- x <b>$subject</b>` and `- x <b>y</b> $subject` render the value as text,
+`- [x] $subject` and `- &#64; $subject` no link and no mention), a `<` no tag
+starts at (`- x < $subject`, `- x <1$subject`), an escaped opener
+(`- x \<$subject`, `- \[$subject]`, `- \&#64;$subject`), and an opener behind
+the last placeholder. A placeholder inside a destination the template wrote
+loads too: under `- [x](https://example.com/$subject)` the value ends the
+destination at its `)` or its blank and is escaped prose from there, and under
+`- [x]($subject)` or `- https://$subject` the template wrote a link to wherever
+the value says. Rejected: escaping the value harder (no escape of the value
+closes a construct it stands inside — the `https\://` above), narrowing the
+README's guarantee to the shipped presets (it holds for every template the
+loader accepts), and refusing the head of a reference (`- &$subject`,
+`- &#$subject`, `- &#x$subject`, `- &comm$subject`, `- &#64$subject`): rule 4
+already escapes a reference a value completes, and each rendered the
+reference's own text and no mention. Reach, measured the same day: three
+`note.line` values are all that a preset or a `glyph.toml` ever carried — the
+presets at all 43 tags, the `glyph.toml` of 47 fleet clones, and every revision
+of one on every ref of glyph-test and glyph-monorepo-test — and each loads
+(`config.checkLineLeavesNothingOpen` has the table of renders;
+`TestLoadRefusesAConstructOpenAtAPlaceholder`,
+`TestLoadAcceptsAConstructClosedBeforeAPlaceholder`,
+`TestNotesRefusesATemplateThatLeavesAConstructOpen`; mutation rows
+`config-note-line-leaves-a-tag-open`, `config-note-line-leaves-link-text-open`,
+`config-note-line-value-behind-a-closing-bracket` and
+`config-note-line-reference-before-a-value` for the four refusals, and the
+ledger's rows from `config-note-line-tag-named-by-a-value` to
+`config-note-line-refuses-a-reference-head`, one for each shape refused and
+each shape that must keep loading).
 The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
 live mention — crediting the contributor is intended behaviour, and every

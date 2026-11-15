@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 70214c8..cf09c66 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -437,7 +437,7 @@ func (s inlineState) behindAValue() inlineState {
+ // nil when nothing is open.
+ func (s inlineState) refusal(template, name string) error {
+ 	switch {
+-	case s.tag != tagNone:
++	case false:
+ 		line, col := linePosition(template, s.tagAt)
+ 		return fmt.Errorf("%q leaves an HTML tag open where $%s begins, its \"<\" at line %d column %d: no backslash escape works inside a tag, so the value completes the tag instead of standing in it as text — \"i>\" there renders a live <i>, \"img src=x>\" a live image — close the tag with \">\" before the placeholder, or write \"\\<\" where the \"<\" is text", template, name, line, col)
+ 	case s.depth > 0:

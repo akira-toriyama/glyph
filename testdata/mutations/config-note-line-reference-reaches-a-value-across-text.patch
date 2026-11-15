@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 70214c8..4e6c98e 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -394,7 +394,7 @@ func (s inlineState) step(c byte, at int) inlineState {
+ 		s.closed, s.closedAt = true, at
+ 	}
+ 
+-	if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
++	if c != ';' {
+ 		s.pending, s.pendingAt = false, 0
+ 	}
+ 	digit := c >= '0' && c <= '9'
