@@ -142,7 +142,7 @@ func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
 	testutil.Git(t, dir, "akira-toriyama", "tag", "100.0.0")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the unreleased crash")
 
-	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testutil.Config(t), Auto)
+	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), Auto)
 	if err != nil {
 		t.Fatalf("sinceTagRange: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ third")
 
-	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testutil.Config(t), Auto)
+	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), Auto)
 	if err != nil {
 		t.Fatalf("sinceTagRange: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestWholeHistoryAtTheCapStillWalks(t *testing.T) {
 	// AT the cap.
 	dir := testutil.NewUntaggedHistory(t, 189, 10)
 
-	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testutil.Config(t), Auto)
+	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), Auto)
 	if err != nil {
 		t.Fatalf("200 commits are AT the cap and must still walk (a skip would "+
 			"verdict the first release out of existence), got %v", err)
