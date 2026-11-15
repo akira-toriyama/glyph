@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 64467cd..921bc32 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -183,7 +183,7 @@ func jobWith(lines []string, usesLine int) map[string]string {
+ 		}
+ 		if k, v, found := strings.Cut(trimmed, ":"); found {
+ 			last = strings.TrimSpace(k)
+-			with[last] = withoutComment(strings.TrimSpace(v))
++			with[last] = strings.TrimSpace(v)
+ 		}
+ 	}
+ 	return with

@@ -17,9 +17,8 @@ import (
 // reusableNeeds is what each glyph reusable DECLARES — workflow level plus any
 // job-level elevation — and therefore the minimum a caller must grant, with
 // the newest release whose reusable declared otherwise (After; callerpin.go).
-// Needs mirror the permissions blocks in this repo's own workflow files and the
-// caller stubs those files distribute; TestReusableNeedsMatchTheShippedWorkflows
-// holds the two in lockstep, so a grant added to a reusable without a row here
+// Needs mirror the permissions blocks in this repo's own workflow files;
+// TestReusableNeedsMatchTheShippedWorkflows holds the two in lockstep, so a grant added to a reusable without a row here
 // fails a test instead of shipping a check that blesses broken callers, and
 // TestCallerDeclarationBoundsMatchReleasedTags holds After to glyph's tags.
 var reusableNeeds = map[string]permRow{
@@ -95,8 +94,7 @@ func checkCallerPermissions(root string, rootVerified bool, workflows []workflow
 			"the reusable declares never starts: the run dies as startup_failure before any job (measured in " +
 			"akira-toriyama/.github#186) — no step runs, nothing prints, and no runtime diagnosis can see it. " +
 			"This static read is the only check that can",
-		failFix: "add the missing grant to the caller's permissions block — the commented stub in each reusable's " +
-			"header is the known-good copy",
+		failFix:      "add the missing grant to the caller's permissions block — " + readmeCallers,
 		death:        "whether every caller gets past GitHub's startup permission gate",
 		noCaller:     "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to misgrant)",
 		passObserved: "%d workflow file(s) call glyph reusables; every judged caller covers what its pinned release declares",

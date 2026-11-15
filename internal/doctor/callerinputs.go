@@ -20,9 +20,12 @@ import (
 // lockstep, so a reusable growing a required input without a row here fails a
 // test instead of shipping a check that blesses callers GitHub will kill, and
 // TestCallerDeclarationBoundsMatchReleasedTags holds After to glyph's tags.
+// No reusable requires an input today — release.yml required install-notes
+// through v6.1.0 — so the judging below is exercised by a fixture table in
+// its tests, never by a live row.
 var reusableRequiredInputs = map[string]inputRow{
 	"lint.yml":       {After: "v0.1.0"},
-	"release.yml":    {After: "v0.7.0", Required: []string{"install-notes"}},
+	"release.yml":    {After: "v6.1.0"},
 	"pr-verdict.yml": {After: "v0.3.0"},
 }
 
@@ -67,7 +70,7 @@ func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile,
 		failMessage: "GitHub kills a reusable call that omits a required input as startup_failure before any job — and " +
 			"it surfaces no error anywhere: not in the run, not in the check suite, not in the API (measured, " +
 			"glyph-test3 2026-08-26). This static read is the only check that can see it coming",
-		failFix:      "add the missing input to the caller's with: block — the commented stub in each reusable's header is the known-good copy",
+		failFix:      "add the missing input to the caller's with: block — " + readmeCallers,
 		death:        "whether every caller gets past GitHub's silent startup input gate",
 		noCaller:     "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to starve)",
 		passObserved: "%d workflow file(s) call glyph reusables; every judged caller passes what its pinned release requires",
@@ -97,17 +100,35 @@ func inputsExpected(glyph string) string {
 }
 
 // jobWithKeys returns the top-level keys of the `with:` mapping belonging to
-// the job whose `uses:` sits on usesLine (1-indexed). The job block's bounds
-// are walked out from the uses line itself — up to the job-name line (the
-// first shallower-indented content line), then forward until the block closes
-// — so a `with:` written above its `uses:` is still seen; YAML orders siblings
-// freely and a miss in either direction would cry wolf over a healthy caller.
-// The forward walk reads only contentLines: an install-notes heredoc's content
-// must not read as keys.
+// the job whose `uses:` sits on usesLine (1-indexed): jobWith's keys, for a
+// check that asks only whether an input is named.
 func jobWithKeys(lines []string, usesLine int) map[string]bool {
 	keys := map[string]bool{}
+	for k := range jobWith(lines, usesLine) {
+		keys[k] = true
+	}
+	return keys
+}
+
+// jobWith returns the `with:` mapping belonging to the job whose `uses:` sits
+// on usesLine (1-indexed): each top-level key and its value as the file
+// spells it — the text after the key's colon with any deeper content line
+// folded onto it behind one space, each line's trailing comment dropped
+// BEFORE the fold: a comment ends at its line's end, so the line under
+// `binary: # which tool` is the value, and folded behind the comment it read
+// as part of it — an artifact input GitHub refuses graded as empty
+// (glyph-monorepo-test-2 run 43689423925, 2026-11-15). A block scalar's value
+// is its header alone (`|`): contentLines yields none of its text. The job
+// block's bounds are walked out from the uses line itself — up
+// to the job-name line (the first shallower-indented content line), then
+// forward until the block closes — so a `with:` written above its `uses:` is
+// still seen; YAML orders siblings freely and a miss in either direction
+// would cry wolf over a healthy caller. The forward walk reads only
+// contentLines: an install-notes heredoc's content must not read as keys.
+func jobWith(lines []string, usesLine int) map[string]string {
+	with := map[string]string{}
 	if usesLine < 1 || usesLine > len(lines) {
-		return keys
+		return with
 	}
 	jobIndent := indentOf(lines[usesLine-1])
 	start := usesLine - 1
@@ -123,6 +144,7 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 	}
 	inWith := false
 	withKeyIndent := -1 // indent of the keys directly inside with:, learned from the first one
+	last := ""          // the with: key a deeper line continues
 	for _, line := range contentLines(lines, start) {
 		trimmed := strings.TrimLeft(line, " \t")
 		ind := indentOf(line)
@@ -134,10 +156,10 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 			inWith = isWith
 			if isWith {
 				// Flow form: with: { a: 1, b: 2 } — the keys sit on this line.
-				if rest = strings.TrimSpace(rest); strings.HasPrefix(rest, "{") {
+				if rest = withoutComment(strings.TrimSpace(rest)); strings.HasPrefix(rest, "{") {
 					for part := range strings.SplitSeq(strings.Trim(rest, "{} "), ",") {
-						if k, _, found := strings.Cut(part, ":"); found {
-							keys[strings.TrimSpace(k)] = true
+						if k, v, found := strings.Cut(part, ":"); found {
+							with[strings.TrimSpace(k)] = strings.TrimSpace(v)
 						}
 					}
 					inWith = false
@@ -152,11 +174,36 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 			withKeyIndent = ind
 		}
 		if ind != withKeyIndent {
-			continue // deeper content: a nested value, never a with: key
+			// Deeper content: a nested value or a plain scalar's next line,
+			// never a with: key.
+			if last != "" {
+				with[last] = strings.TrimSpace(with[last] + " " + withoutComment(strings.TrimSpace(trimmed)))
+			}
+			continue
 		}
-		if k, _, found := strings.Cut(trimmed, ":"); found {
-			keys[strings.TrimSpace(k)] = true
+		if k, v, found := strings.Cut(trimmed, ":"); found {
+			last = strings.TrimSpace(k)
+			with[last] = withoutComment(strings.TrimSpace(v))
 		}
 	}
-	return keys
+	return with
+}
+
+// withoutComment drops a trailing YAML comment from one line of a value: a
+// `#` at the start or behind whitespace, outside quotes.
+func withoutComment(v string) string {
+	var quote rune
+	for i, r := range v {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '\'':
+			quote = r
+		case r == '#' && (i == 0 || v[i-1] == ' ' || v[i-1] == '\t'):
+			return strings.TrimSpace(v[:i])
+		}
+	}
+	return v
 }

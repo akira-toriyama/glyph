@@ -23,6 +23,23 @@ func crlf(s string) string {
 	return strings.ReplaceAll(s, "\n", "\r\n")
 }
 
+// requiringInstallNotes swaps the shipped table for the one of the era the
+// measured incident happened in — release.yml requiring install-notes from
+// v0.8.0 through v6.1.0 — for the rest of the test. No reusable requires an
+// input today, so the judging has no live row to exercise it; the fixture
+// table keeps it exercised. The doctor tests run sequentially (none calls
+// t.Parallel), so the swap is safe.
+func requiringInstallNotes(t *testing.T) {
+	t.Helper()
+	shipped := reusableRequiredInputs
+	reusableRequiredInputs = map[string]inputRow{
+		"lint.yml":       {After: "v0.1.0"},
+		"release.yml":    {After: "v0.7.0", Required: []string{"install-notes"}},
+		"pr-verdict.yml": {After: "v0.3.0"},
+	}
+	t.Cleanup(func() { reusableRequiredInputs = shipped })
+}
+
 // TestReusableRequiredInputsMatchTheShippedWorkflows holds the requirements
 // table to the reusables it describes, exactly as the permissions table is
 // held: a reusable growing a `required: true` input without a row here would
@@ -90,11 +107,13 @@ func shippedRequiredInputs(t *testing.T, body string) map[string]bool {
 	return required
 }
 
-// TestCallerInputsOutcomes walks the verdicts over real files: the measured
-// silent startup_failure (a release caller omitting install-notes,
-// glyph-test3 2026-08-26), the healthy shapes in both YAML orders and both
-// with: forms, and the not-a-caller cases.
+// TestCallerInputsOutcomes walks the verdicts over real files, under the
+// fixture table (requiringInstallNotes): the measured silent startup_failure
+// (a release caller omitting install-notes, glyph-test3 2026-08-26), the
+// healthy shapes in both YAML orders and both with: forms, and the
+// not-a-caller cases.
 func TestCallerInputsOutcomes(t *testing.T) {
+	requiringInstallNotes(t)
 	blockWith := "    with:\n      install-notes: |\n        ## Install\n        nothing: to install\n"
 	tests := []struct {
 		name       string
@@ -172,6 +191,109 @@ func TestCallerInputsOutcomes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestJobWithDropsEachLinesCommentBeforeTheFold holds the value jobWith hands
+// a check that grades it: a comment ends where its line ends, so it is cut
+// from each line before a deeper line folds on. Folded first, the value under
+// `binary: # which tool` sat behind the comment and read as no value at all —
+// an artifact input GitHub refuses, passed by workflow-caller-artifact
+// (glyph-monorepo-test-2 run 43689423925; PyYAML reads `probe` there too).
+func TestJobWithDropsEachLinesCommentBeforeTheFold(t *testing.T) {
+	tests := []struct {
+		name, with, want string
+	}{
+		{"a comment on the key line, the value under it", "    with:\n      binary: # which tool\n        probe\n", "probe"},
+		{"a comment on the value's own line", "    with:\n      binary:\n        probe  # the tool\n", "probe"},
+		{"a comment behind the value", "    with:\n      binary: probe # the tool\n", "probe"},
+		{"a comment and nothing else", "    with:\n      binary: # nothing yet\n      dry-run: true\n", ""},
+		{"a # inside quotes is the value", "    with:\n      binary: \"a # b\"  # c\n", `"a # b"`},
+		{"a # with no space before it is the value", "    with:\n      binary: a#b\n", "a#b"},
+		{"a block scalar's header", "    with:\n      binary: >-  # folded\n        probe\n", ">-"},
+		{"flow form behind a comment", "    with: { binary: probe }  # the tool", "probe"},
+		{"flow form, an empty value behind a comment", "    with: { binary: \"\" }  # none", `""`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := strings.Split(callerWith("release.yml", tt.with), "\n")
+			uses := 0
+			for i, l := range lines {
+				if strings.Contains(l, "uses:") {
+					uses = i + 1
+				}
+			}
+			got, named := jobWith(lines, uses)["binary"]
+			if !named {
+				t.Fatalf("binary is not a with: key of %q", tt.with)
+			}
+			if got != tt.want {
+				t.Errorf("binary = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCallerFixesNameWhereEachCallerLives holds the pointer both caller
+// checks close their fix with to README itself: the lint.yml caller sits
+// under Install, the other two under Getting started's step 3, and a fix
+// naming step 3 for all three sent a failing lint.yml caller to a step that
+// holds no lint caller.
+func TestCallerFixesNameWhereEachCallerLives(t *testing.T) {
+	requiringInstallNotes(t)
+	lint := map[string]string{".github/workflows/commit-lint.yml": caller("lint.yml", "permissions:\n  contents: read")}
+	if c := permsAt(checkoutAt(t, lint), true, "dev"); c.Status != StatusFail || !strings.HasSuffix(c.Fix, readmeCallers) {
+		t.Errorf("workflow-caller-permissions: status %s, fix %q — want a fail whose fix ends with %q", c.Status, c.Fix, readmeCallers)
+	}
+	release := map[string]string{".github/workflows/release.yml": callerWith("release.yml", "")}
+	if c := inputsAt(checkoutAt(t, release), true, "dev"); c.Status != StatusFail || !strings.HasSuffix(c.Fix, readmeCallers) {
+		t.Errorf("workflow-caller-inputs: status %s, fix %q — want a fail whose fix ends with %q", c.Status, c.Fix, readmeCallers)
+	}
+
+	body, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatalf("reading README: %v", err)
+	}
+	readme := string(body)
+	section := func(from, to string) string {
+		t.Helper()
+		_, rest, found := strings.Cut(readme, from)
+		if !found {
+			t.Fatalf("README has no %q", from)
+		}
+		sect, _, found := strings.Cut(rest, to)
+		if !found {
+			t.Fatalf("README has no %q after %q", to, from)
+		}
+		return sect
+	}
+	const uses = "uses: akira-toriyama/glyph/.github/workflows/"
+	homes := []struct {
+		pointer, from, to string
+		holds, lacks      []string
+	}{
+		{`lint.yml's under Install ("GitHub Actions")`, "\n## Install\n", "\n## ", []string{"lint.yml"}, nil},
+		{"pr-verdict.yml's and release.yml's under Getting started, step 3", "\n**3. ", "\n## ",
+			[]string{"pr-verdict.yml", "release.yml"}, []string{"lint.yml"}},
+	}
+	for _, h := range homes {
+		if !strings.Contains(readmeCallers, h.pointer) {
+			t.Errorf("readmeCallers = %q, which never says %q", readmeCallers, h.pointer)
+		}
+		sect := section(h.from, h.to)
+		for _, reusable := range h.holds {
+			if !strings.Contains(sect, uses+reusable+"@") {
+				t.Errorf("README's section from %q holds no %s caller, and the fix sends a reader there", h.from, reusable)
+			}
+		}
+		for _, reusable := range h.lacks {
+			if strings.Contains(sect, uses+reusable+"@") {
+				t.Errorf("README's section from %q holds a %s caller: the fix names another home for it", h.from, reusable)
+			}
+		}
+	}
+	if install := section("\n## Install\n", "\n## "); !strings.Contains(install, "**GitHub Actions**") {
+		t.Errorf("README's Install has no **GitHub Actions** paragraph, the one the fix names")
 	}
 }
 

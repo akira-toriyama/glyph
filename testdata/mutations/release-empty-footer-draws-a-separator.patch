@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 0fdc3e5..3637d75 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -354,7 +354,7 @@ func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw wa
+ 	// Each line's link starts at that line's own base tag — never the
+ 	// union's merge base, never a sibling's tag (§4.1).
+ 	body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, target)
+-	if footer != "" {
++	{
+ 		// One --- line between the notes and the caller's install block
+ 		// (Q11) — composed here so a dry run previews the EXACT published
+ 		// body and no caller ever concatenates markdown in shell.
