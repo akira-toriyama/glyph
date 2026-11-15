@@ -1,11 +1,11 @@
 diff --git a/README.md b/README.md
-index 4fa884a..5477ac2 100644
+index 072279d..dea8978 100644
 --- a/README.md
 +++ b/README.md
-@@ -554,10 +554,8 @@ byte.
- 
- `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
- (a commit under `lint`, the repository's own configuration under `doctor`) ·
+@@ -545,10 +545,8 @@ byte.
+ in [`docs/glossary.md`](docs/glossary.md#6-exit-codes-and-streams) gives each
+ command · `2` usage · `3` convention violation (a commit under `lint`, the
+ repository's own configuration under `doctor`) ·
 -`4` no trustworthy answer — API/git/IO, or a refusal to hand down a verdict
 -glyph will not stand behind (an incomplete walk, the published floor, the
 -whole-history walk cap, a `release` body over GitHub's cap, a `release` write

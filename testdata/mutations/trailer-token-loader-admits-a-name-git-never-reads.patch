@@ -1,0 +1,13 @@
+diff --git a/internal/config/trailers.go b/internal/config/trailers.go
+index d4a4b94..36cedba 100644
+--- a/internal/config/trailers.go
++++ b/internal/config/trailers.go
+@@ -84,7 +84,7 @@ func buildTrailers(raws []rawTrailer, patterns []Pattern) ([]NoteTrailer, error)
+ 		if token == "" {
+ 			return nil, fmt.Errorf("note.trailers[%d]: token is required — it is the git trailer this entry reads", i)
+ 		}
+-		if !isTrailerToken(token) {
++		if strings.ContainsAny(token, " \t\n\v\f\r:") { // MUTATION: any token without whitespace or a colon loads
+ 			return nil, fmt.Errorf("note.trailers[%d]: token %q holds a byte outside ASCII letters, digits and hyphens — the only bytes git reads in a trailer token, so no trailer git reads is named that and this entry could never bind", i, token)
+ 		}
+ 		if rt.Name == "" {

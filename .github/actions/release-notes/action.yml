@@ -2,12 +2,13 @@ name: Render release notes with glyph
 description: >-
   Render the body of the release a tag-push job is cutting: `glyph notes
   --since-tag=below:<tag>` into a file, with the two exits that are permanent
-  at tag time — 1 (nothing release-worthy below the tag) and 3 (the walk below
-  the tag reaches a commit glyph refuses: the wedge escape's own tag) — shipped
-  as a placeholder body that says why, and every other exit failing the step
-  with glyph's own code. glyph must already be on PATH (the install action
-  next door puts it there) or be named by `glyph:`, and the checkout must hold
-  the tags and the history behind them (`fetch-depth: 0`): the walk reads both.
+  at tag time — 1 (no commit below the tag lands in a [[note.sections]] entry,
+  so there are no notes to write) and 3 (the walk below the tag reaches a
+  commit glyph refuses: the wedge escape's own tag) — shipped as a placeholder
+  body that says why, and every other exit failing the step with glyph's own
+  code. glyph must already be on PATH (the install action next door puts it
+  there) or be named by `glyph:`, and the checkout must hold the tags and the
+  history behind them (`fetch-depth: 0`): the walk reads both.
 
 # This action is the ONE home of the tag-time notes rule (DESIGN §4 for the
 # rule, §6 for why it is an action: t-4fpn). glyph's own goreleaser.yml
@@ -64,9 +65,9 @@ outputs:
     value: ${{ steps.notes.outputs.file }}
   status:
     description: >-
-      glyph's exit: 0 (rendered), 1 (nothing release-worthy; placeholder body)
-      or 3 (the walk reaches a refused commit; placeholder body). Every other
-      exit failed the step with that code.
+      glyph's exit: 0 (rendered), 1 (no commit lands in a release-notes
+      section; placeholder body) or 3 (the walk reaches a refused commit;
+      placeholder body). Every other exit failed the step with that code.
     value: ${{ steps.notes.outputs.status }}
 
 runs:
@@ -99,13 +100,13 @@ runs:
           exit 2
         fi
 
-        # `glyph notes` exits 1 as a SOFT no-release signal ("nothing
-        # release-worthy in this range") — a distinct outcome from a hard
-        # failure, and one `set -e` cannot tell apart. Left to -e, a tag cut
-        # over an infra-only range (all :construction_worker: / :memo:) would
-        # abort the whole job: no binaries, no cask, no attestation, behind a
-        # tag that already exists. Honour the contract instead: 1 ships a
-        # release that says so.
+        # `glyph notes` exits 1 as a SOFT no-release signal (no commit in the
+        # range lands in a [[note.sections]] entry, so there are no notes to
+        # write) — a distinct outcome from a hard failure, and one `set -e`
+        # cannot tell apart. Left to -e, a tag cut over an infra-only range
+        # (all :construction_worker: / :memo:) would abort the whole job: no
+        # binaries, no cask, no attestation, behind a tag that already exists.
+        # Honour the contract instead: 1 ships a release that says so.
         #
         # 3 ships the same way, because at tag time it is as permanent as 1.
         # The wedge escape (DESIGN §4) is a tag cut where glyph's refusal
@@ -118,8 +119,8 @@ runs:
         status=0
         "$GLYPH" notes --since-tag="below:$tag" > "$out" || status=$?
         if [ "$status" -eq 1 ]; then
-          echo "::warning::no release-worthy commits below $tag — publishing with a placeholder body"
-          printf 'No release-worthy changes in %s.\n' "$tag" > "$out"
+          echo "::warning::no commit below $tag lands in a release-notes section — publishing with a placeholder body"
+          printf 'No release notes for %s: no commit below it lands in a release-notes section.\n' "$tag" > "$out"
         elif [ "$status" -eq 3 ]; then
           echo "::warning::the walk below $tag reaches a commit glyph refuses, and the tag was cut where the refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge — publishing with a placeholder body; glyph's error above names the commit and that point"
           printf "No release notes for %s: the walk below it reaches a commit glyph refuses, and this tag was cut where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge. The release job's log carries glyph's error, which names the commit and that point.\n" "$tag" > "$out"

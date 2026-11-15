@@ -1,0 +1,12 @@
+diff --git a/scripts/golden-gate.sh b/scripts/golden-gate.sh
+--- a/scripts/golden-gate.sh
++++ b/scripts/golden-gate.sh
+@@ -45,7 +45,7 @@
+ GOLDEN_PATTERN='(^|/)testdata/.*\.golden\..*$'
+ 
+ base="${1:?usage: sh scripts/golden-gate.sh <base-ref> [<head-ref>]}"
+-head="${2:-HEAD}"
++head=HEAD
+ 
+ # shellcheck source=scripts/lib/range-gate.sh
+ . ./scripts/lib/range-gate.sh

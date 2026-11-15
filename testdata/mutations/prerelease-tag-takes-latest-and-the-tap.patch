@@ -1,17 +1,15 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 9e18c30..47afb60 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -256,3 +256,2 @@ jobs:
+     needs: release
+-    if: needs.release.outputs.prerelease != 'true'
+     runs-on: ubuntu-latest
 diff --git a/.goreleaser.yaml b/.goreleaser.yaml
-index 8d93d5f..d28ce25 100644
+index a1cc480..0e80533 100644
 --- a/.goreleaser.yaml
 +++ b/.goreleaser.yaml
-@@ -65,7 +65,6 @@ homebrew_casks:
-     # least of all across a breaking grammar change. Without this the cask is
-     # regenerated on every `v*` tag, so the first rc of v3 would have made the
-     # tap serve v2's replacement to everyone who typed `brew upgrade`.
--    skip_upload: auto
-     directory: Casks
-     homepage: https://github.com/akira-toriyama/glyph
-     description: "sigil-driven commit-lint, semver, and release notes for squash-merge repos"
-@@ -104,4 +103,3 @@ release:
-   # breaking grammar on a real binary the reusables install without
-   # yet claiming the fleet should move to it. Deleting rc assets afterwards
+@@ -102,2 +102 @@ release:
    # cannot un-move `latest` for whoever looked in between.
 -  prerelease: auto

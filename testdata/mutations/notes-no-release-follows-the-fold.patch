@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
+index 0deeaac..efebbc1 100644
+--- a/internal/cli/cmd_notes.go
++++ b/internal/cli/cmd_notes.go
+@@ -148,7 +148,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
+ 		}
+ 		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.Render(sections)})
+ 	}
+-	if len(said) == 0 {
++	if n, _ := participating(cfg, walk.BumpCommits(w.All)); len(said) == 0 || n == 0 { // MUTATION: a range the fold reads nothing of is no notes
+ 		n, perr := participating(cfg, walk.BumpCommits(w.All))
+ 		if perr != nil {
+ 			return perr

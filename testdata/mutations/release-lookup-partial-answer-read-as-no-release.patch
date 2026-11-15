@@ -1,0 +1,9 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 5edaaa0..21eefb1 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -195,3 +195,3 @@ jobs:
+         run: |
+-          set -euo pipefail
++          set -eu
+           # shellcheck disable=SC2016 # GraphQL variables, bound with -F below

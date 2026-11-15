@@ -1,0 +1,13 @@
+diff --git a/internal/github/github.go b/internal/github/github.go
+index 250aed4..fb28fa8 100644
+--- a/internal/github/github.go
++++ b/internal/github/github.go
+@@ -546,7 +546,7 @@ func IsRepoRefused(err error) bool {
+ // token-repo-read is could-not-run (4, re-run) rather than failed (3): the
+ // lesser wrong, since the window refills and the next run answers.
+ func rateLimited(h http.Header, message string) bool {
+-	return h.Get("Retry-After") != "" || h.Get("X-RateLimit-Remaining") == "0" ||
++	return h.Get("Retry-After") != "" ||
+ 		strings.Contains(strings.ToLower(message), "rate limit")
+ }
+ 

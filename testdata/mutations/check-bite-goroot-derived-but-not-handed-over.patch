@@ -1,13 +1,12 @@
 diff --git a/scripts/check.sh b/scripts/check.sh
-index 7427fdb..857b71e 100755
 --- a/scripts/check.sh
 +++ b/scripts/check.sh
-@@ -277,7 +277,7 @@ fi
- # nothing outside the devshell.
- BITE_GOROOT="$(go env GOROOT)"
- BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$(git rev-parse HEAD)" \
--  GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" sh "$BITE"
-+  GOROOT= PATH="$PATH" sh "$BITE"
+@@ -379,7 +379,7 @@
+ # bash, as the action's `shell: bash` runs it: the script is bash (pipefail,
+ # process substitution), and `sh` is bash only on some machines.
+ BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$CI_HEAD" \
+-  GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" bash "$BITE"
++  GOROOT= PATH="$PATH" bash "$BITE"
  ran bite
  
  # A CI gate whose tool is missing is a FAILURE and not a skip: a `command -v`

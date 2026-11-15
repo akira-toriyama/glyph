@@ -1,0 +1,12 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -190,7 +190,7 @@
+ # at the gate.
+ echo "→ the hub at the tags the callers pin"
+ hub_at go-bite.yml build.yml
+-BITE="$HUB_AT/actions/go-bite/go-bite.sh"
++BITE="$HUB/actions/go-bite/go-bite.sh"
+ hub_at go-ci.yml build.yml
+ GO_CI="$HUB_AT/.github/workflows/go-ci.yml"
+ hub_at repo-policy.yml repo-policy.yml

@@ -1,0 +1,15 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 9e841f0..a353b0e 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -340,10 +340,2 @@ jobs:
+           git clone --quiet --depth 1 "$TAP_URL" "$tap"
+-          if [ -f "$tap/Casks/glyph.rb" ]; then
+-            have="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$tap/Casks/glyph.rb" | head -n 1)"
+-            want="${TAG#v}"
+-            if [ -n "$have" ] && [ "$have" != "$want" ] && [ "$(printf '%s\n%s\n' "$have" "$want" | sort -V | tail -n 1)" != "$want" ]; then
+-              echo "::error::the tap carries glyph $have, newer than $TAG; pushing this cask would move \`brew upgrade\` backward for everyone. The tap is untouched. Rolling it back is a hand edit of akira-toriyama/homebrew-tap."
+-              exit 1
+-            fi
+-          fi
+           mkdir -p "$tap/Casks"

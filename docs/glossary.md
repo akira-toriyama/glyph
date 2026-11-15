@@ -261,12 +261,20 @@ one that never landed. The only member of `Facts` that is a property of the
 **checkout** rather than of an API answer, and the likeliest to appear
 (`actions/checkout` defaults to `fetch-depth: 1`). Probed once per walk, before
 any expansion, because a walk where nothing resolves is still a walk over a
-truncated history, and once per `--range` read (`lint`, `bump`, `notes`), which
-warns. Its **boundary** commit — the one whose parents were cut off — has no
-diff the clone can compute: git reads it as a root, and its whole tree is not
-its diff (DESIGN §4.1). `internal/gitsource/checkout.go: Checkout.IsShallow`,
+truncated history, once per `--range` read (`lint`, `bump`, `notes`), which
+warns, and by `preview`'s floor guard before it concludes that no tag exists,
+since a shallow clone holds only the tags its depth reached. Two sentences,
+two facts: the walk and `preview`'s floor guard say `walk.ShallowWarning` — the
+footprint question, a merged pull's commits counted again — and the `--range`
+reads say their own, that git lists the range only as far as the clone goes
+(`cli.logRange`); a reader prints the one about what it does. Its **boundary**
+commit — the one whose parents were cut off — has no diff the clone can
+compute: git reads it as a root, and its whole tree is not its diff (DESIGN
+§4.1), so neither a file listing nor a line's first change is read off it
+(`FirstChange` answers it as `DiffTreeFiles` does, and the walk names no
+baseline behind it). `internal/gitsource/checkout.go: Checkout.IsShallow`,
 `internal/gitsource/gitsource.go: IsShallowBoundary`,
-`Facts.shallow`, `internal/cli/range.go: logRange`
+`Facts.shallow`, `internal/cli/range.go: logRange`, `internal/cli/cmd_preview.go: previewPending`
 
 **truncated listing** — a pull whose commit listing came back at GitHub's hard
 cap of **250**, however far pagination follows. A listing of exactly the cap is
@@ -370,7 +378,9 @@ no package's — no line's walk or floor reads its tags, and its drafts are
 **locked line** vs **free line** — the two kinds of line DESIGN §4.1's
 major-subdirectory rule makes. A package whose path ends in a Go major version
 subdirectory `vN` (N ≥ 2) is on a **locked** line: its prefix drops the `/vN`,
-it holds major N alone, and its first release is `vN.0.0` whatever the level.
+it holds major N alone, and its first release is `vN.0.0` whatever the level —
+unless `vN.0.0` was cut as its baseline, which takes that number: the first
+release then steps from it (DESIGN §4.1, the priced remedy).
 Every other line is **free**: it holds every major no locked line on its prefix
 claims. Lines that share a prefix are told apart by the major alone, and a step
 off the majors a line holds — a `!` past a locked line's N, or a free line's
@@ -653,8 +663,9 @@ commit-msg hook, still holding the editor template, the status block and, under
 `commit.verbose`, a scissors line with the whole diff) to the message git will
 actually record. Only the authoring path (`--stdin`, and doctor's replay of
 it) calls it: a `--range` walk reads messages git has already cleaned (all but
-the closing newline git records them with, which `gitsource` strips — DESIGN
-§2.1), and running it there would swallow a genuinely empty message and any
+the closing newline git records them with, which `gitsource` strips from
+`Message` and keeps in `Recorded` for the trailer parser alone — DESIGN §2.1
+and §3), and running it there would swallow a genuinely empty message and any
 body line starting with `#`.
 `internal/cleanup/cleanup.go: Apply`
 
@@ -856,14 +867,14 @@ and unknown is the point.
   survive.
 
 The fail/unknown line is drawn on **what the API said**, not on whether the call
-returned an error: a 404 from the repository read *is* an answer (there is no such
-repository for this credential) and fails at 3, while a 403 rate limit, a 5xx that
-outlived the retry schedule, a dead socket or an unparseable body is no answer at
-all —
+returned an error: a 401, a 403 that is no rate limit and a 404 from the repository
+read *are* answers about the credential and fail at 3, while a rate limit, a 5xx
+that outlived the retry schedule, a dead socket or an unparseable body is no answer
+at all —
 [DESIGN §7](DESIGN.md#7-repository-preconditions-glyph-doctor) has the incident
 that drew the line there.
 `internal/doctor/doctor.go: Status, checkTokenAccess`, `internal/github/github.go:
-IsRepoUnknown`
+IsRepoRefused`
 
 Two severities are argued rather than obvious, and both are **coupled to the
 walk**: `allow_squash_merge=false` is a *fail*, and `allow_merge_commit` /
@@ -915,10 +926,15 @@ is emphatically **not** 2 (the invocation itself was fine) and not 4 (glyph has
 no answer it will stand behind). `internal/core/errors.go: CodeLint`,
 `internal/cli/cmd_doctor.go: doctorVerdict`
 
-**soft no-release** — exit **1**: every participating commit classified `none`. A
-normal answer, not an error — which is why `preview` deliberately exits **0** on
-the same fold ("this PR moves nothing" is exactly what a reviewer asked), while
-`bump`, `notes` and `release` exit 1. `internal/core/errors.go: CodeNoRelease`
+**soft no-release** — exit **1**, a normal answer and not an error, on each
+command's own condition. `bump` and `release`: every participating commit folds
+to `none`, so no version moves. `notes`: no commit lands in a
+`[[note.sections]]` entry, so there is nothing to write — the sections decide
+what the notes hold, so the two part ways: a fix no section takes is a version
+with no notes, and a `dependabot[bot]` commit an author section holds is notes
+with no version (`TestNotesNoReleaseIsTheSectionsCondition`). `preview`
+deliberately exits **0** on a `none` fold ("this PR moves nothing" is exactly
+what a reviewer asked). `internal/core/errors.go: CodeNoRelease`
 
 **annotation** — a `::warning::`, `::error::` or `::notice::` workflow command
 on **stderr**. Folded onto one physical line, because a workflow command *is*
@@ -991,15 +1007,24 @@ to nobody), and neither are the fleet-synced consumers (`commit-lint.yml`,
 
 **dist-gate** — the pull-request gate that makes evidence for a distribution-layer
 change *mandatory*: such a file in the diff with no `internal/workflows`
-`*_test.go` change fails the PR. It closes a measured gap — `bite` acts on Go
+`*_test.go` added or modified fails the PR. It closes a measured gap — `bite` acts on Go
 diffs only and the extras smoke reads no YAML, so a `:bug:` fix touching only
 `.goreleaser.yaml` or only the install action used to ship with zero tests.
 Stands down on its own when every changed line of the distribution-layer
 files is a SHA-pinned `uses:` step put back as the same line at another SHA —
 dependabot's bump, which no text assertion can express and no bot can waive
 (six bot pulls went red before the gate learned the shape). Waived by a
-`Dist-gate-exempt: <reason>` git trailer on every non-merge commit, go-bite's
-exact shape. `scripts/dist-gate.sh` (`pin_swaps` is the stand-down),
+`Dist-gate-exempt: <reason>` git trailer on every non-merge commit, stating a
+real reason (an empty one or the `<reason>` placeholder is refused) — go-bite's
+`Bite-exempt:` shape, but not its reader. dist-gate takes the trailer block
+git's commit reader reports, the one closing the message (`%(trailers)`, DESIGN
+§3); go-bite reads `git interpret-trailers --parse`, which stops at the first
+`---` line and takes the block closing the text above it. So a body holding a
+`---` line can waive one gate and not the other: a trailer below the line
+waives dist-gate and not bite, one just above it bite and not dist-gate
+(measured 2026-11-09 with go-bite's line at the hub's v2, the tag
+`build.yml` pins, under git 2.54.0 and 2.56.0). `scripts/dist-gate.sh`
+(`pin_swaps` is the stand-down),
 `.github/workflows/build.yml` (the `dist-gate` job),
 `internal/workflows/distgate_test.go`
 

@@ -32,9 +32,11 @@ exclude_authors = ['dependabot[bot]', 'renovate[bot]']
 # (machine-readable list: https://api.github.com/emojis)
 #
 # The template is for humans; glyph never parses it. lint quotes its first
-# line back when a message matches no pattern, so keep that line the form.
+# line back when a message matches no pattern, so keep that line the form —
+# the scope's alphabet and the spacing around the sigil included, since that
+# line is all a refused author is told.
 template = '''
-<:code:>[(scope)]<semver_sigil> <subject>
+<:code:>[(scope: a-z 0-9 -)]<semver_sigil> <subject>
 
 [<body>]
 '''
@@ -130,8 +132,8 @@ unlandable = 'autosquash lands this body as its target message (after a squash! 
 # Outside a span they render as a bare `()` for such a commit.
 #
 # $coauthors is the commit's `Co-authored-by` names — address stripped,
-# comma-joined, parsed by git's trailer rules (glyph's parser is held to
-# `git interpret-trailers --parse`) rather than grepped. Most commits carry
+# comma-joined, parsed by git's trailer rules (glyph's parser is held to git
+# 2.56.0's commit reader, `git log --format=%(trailers)`) rather than grepped. Most commits carry
 # none, so it takes a span of its own. It renders as prose and never as a
 # mention: a co-author address asserts a login glyph cannot verify.
 line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'

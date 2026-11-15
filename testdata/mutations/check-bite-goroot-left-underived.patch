@@ -1,12 +1,11 @@
 diff --git a/scripts/check.sh b/scripts/check.sh
-index eec60f5..8dd4633 100755
 --- a/scripts/check.sh
 +++ b/scripts/check.sh
-@@ -283,7 +283,6 @@ fi
+@@ -375,7 +375,6 @@
  # root; handing it over as GOROOT plus PATH is what setup-go does in CI. On a
  # machine whose go IS go.mod's toolchain this resolves to that same go, so it costs
  # nothing outside the devshell.
 -BITE_GOROOT="$(go env GOROOT)"
- BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$(git rev-parse HEAD)" \
-   GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" sh "$BITE"
- ran bite
+ # bash, as the action's `shell: bash` runs it: the script is bash (pipefail,
+ # process substitution), and `sh` is bash only on some machines.
+ BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$CI_HEAD" \

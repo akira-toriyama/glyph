@@ -1,0 +1,10 @@
+diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
+index b4e527c..5d49ec9 100644
+--- a/.github/workflows/pr-verdict.yml
++++ b/.github/workflows/pr-verdict.yml
+@@ -300,4 +300,3 @@ jobs:
+             # step under `set -o pipefail` on every Silent error.
+-            sed -n '/^[{]/,$p' "$RUNNER_TEMP/preview.err" \
+-              | jq -r '"::error::glyph preview: \(.error.message)"' || true
++            cat "$RUNNER_TEMP/preview.err" | jq -r '"::error::glyph preview: \(.error.message)"' >&2 || true
+             exit "$status"

@@ -1,0 +1,8 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index a91b47d..0442aae 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -270,2 +270,3 @@ jobs:
+       - name: publish the release
++        continue-on-error: true
+         env:

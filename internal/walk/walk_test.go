@@ -191,3 +191,46 @@ func TestSinceReadsThroughItsPortsUnderPackages(t *testing.T) {
 		t.Errorf("a typed tag names its line alone with the tag as its base: got %+v", one.Lines)
 	}
 }
+
+// TestNoteCommitsCreditOnlyTheLoginGitHubAttached pins the one source of a
+// live credit (t-ayhq): the login the API attached to a listed commit passes
+// through, and a commit the API did not describe — or described with
+// author: null — hands the notes no login at all, whatever its author
+// address says. The commits are read off git, the record an address would
+// reach the walk through, so the row holds the whole path: the record carries
+// no address (gitsource's logFormat) and NoteCommits reads none. The
+// addresses are the shape GitHub's own noreply writes, with an id that is not
+// the login's: measured on glyph-test-2 (2026-11-04),
+// `92862731+refute-a3-nonexistent-zz@users.noreply.github.com` is attributed
+// by GitHub to the account the id names and `9999999999+akira-toriyama@…` to
+// nobody, so the login in the address is text anyone can type (mutation row
+// noreply-address-trusted-as-identity).
+func TestNoteCommitsCreditOnlyTheLoginGitHubAttached(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	for _, a := range []struct{ name, email string }{
+		{"Saleh", "root@lr0.org"},
+		{"akira-toriyama", "92862731+refute-a3-nonexistent-zz@users.noreply.github.com"},
+		{"akira-toriyama", "9999999999+akira-toriyama@users.noreply.github.com"},
+		{"akira-toriyama", "akira-toriyama@users.noreply.github.com"},
+	} {
+		testutil.CommitFrom(t, dir, a.name, a.email, ":bug:~ fix a crash")
+	}
+	raws, err := gitsource.LogRevs(t.Context(), dir, []string{base + "..HEAD"})
+	if err != nil || len(raws) != 4 {
+		t.Fatalf("LogRevs = %d commit(s), %v; want the 4 just made", len(raws), err)
+	}
+	raws[0].Login = "larrasket" // the author.login the API attached to Saleh's listed commit
+	got := NoteCommits([]Commit{
+		{Raw: raws[0], Pull: 7},
+		{Raw: raws[1], Landed: true},
+		{Raw: raws[2], Pull: 8},
+		{Raw: raws[3], Landed: true},
+	})
+	want := []string{"larrasket", "", "", ""}
+	for i, c := range got {
+		if c.Login != want[i] {
+			t.Errorf("commit %s by %s: Login = %q, want %q — a live credit comes from the API's author.login alone", c.SHA, c.Author, c.Login, want[i])
+		}
+	}
+}

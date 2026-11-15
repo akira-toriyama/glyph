@@ -1,0 +1,13 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 69da191..afc22c3 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -231,7 +231,7 @@ func trailerBlock(lines []string) []string {
+ 			case isGitSpace(l[0]):
+ 				possibleContinuation++
+ 			default:
+-				nonTrailerLines += 1 + possibleContinuation
++				nonTrailerLines++ // MUTATION: the continuations under this prose line count as nothing
+ 				possibleContinuation = 0
+ 			}
+ 		}

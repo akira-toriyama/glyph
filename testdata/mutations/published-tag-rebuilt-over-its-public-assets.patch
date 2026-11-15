@@ -1,0 +1,8 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index a91b47d..ee1f9f4 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -254,3 +254,2 @@ jobs:
+           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+-        if: steps.existing.outputs.release != 'published'
+ 

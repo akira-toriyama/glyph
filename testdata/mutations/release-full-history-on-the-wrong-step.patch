@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index ffd2fb0..ac7a31a 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -278,3 +278,2 @@ jobs:
+           # must be here.
+-          fetch-depth: 0
+           # Every release write goes through glyph/gh + the GH_TOKEN env,
+@@ -292,2 +291,3 @@ jobs:
+           xcode-version: latest-stable
++          fetch-depth: 0
+ 

@@ -1,0 +1,11 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -400,5 +400,5 @@ func lines(paths []string) (subject, have, them string) {
+ 	case 2:
+-		return paths[0] + " and " + paths[1], "have", "them"
++		return paths[0] + " and " + paths[1], "has", "it"
+ 	default:
+-		return strings.Join(paths[:len(paths)-1], ", ") + " and " + paths[len(paths)-1], "have", "them"
++		return strings.Join(paths[:len(paths)-1], ", ") + " and " + paths[len(paths)-1], "has", "it"
+ 	}

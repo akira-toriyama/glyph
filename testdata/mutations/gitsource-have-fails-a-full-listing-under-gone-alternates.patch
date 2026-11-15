@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 871d661..e477ef0 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -693,7 +693,7 @@ func have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
+ 			missing = true
+ 		}
+ 	}
+-	if line, unreadable := errorLine(stderr); missing && unreadable {
++	if line, unreadable := errorLine(stderr); (missing || true) && unreadable {
+ 		return nil, core.APIf("git cat-file: %s", line)
+ 	}
+ 	return have, nil
