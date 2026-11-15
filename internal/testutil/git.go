@@ -109,8 +109,8 @@ func NewTaggedRepo(t *testing.T) (dir, base string) {
 
 // NewUntaggedHistory is NewRepo — its root commit, no tag — plus humans
 // commits by akira-toriyama and then bots commits by dependabot[bot], and
-// returns the path: the untagged history the walk-cap tests count, where a
-// bot's commit is not walk-visible and the root is.
+// returns the path: the untagged history the walk-cap tests count, every
+// commit of it — the root and a bot's too, which the walk asks about.
 func NewUntaggedHistory(t *testing.T, humans, bots int) string {
 	t.Helper()
 	dir := NewRepo(t)

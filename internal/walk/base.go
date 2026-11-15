@@ -3,7 +3,6 @@ package walk
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
@@ -76,7 +75,7 @@ func CheckTag(tag string) error {
 // HEAD contains). baseTag is the range's left side when it is a tag, in its
 // own spelling (Line.BaseTag): the resolved forms' answer, a typed value only
 // when it is a tag (tagBase), "" on the whole-history arm.
-func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (revRange, baseTag string, base *bump.Version, err error) {
+func (w Walker) sinceTagRange(ctx context.Context, tagFlag string) (revRange, baseTag string, base *bump.Version, err error) {
 	tag := strings.TrimSpace(tagFlag)
 	if tag == Auto {
 		latest, v, lerr := w.LatestVersionTag(ctx, config.Line{}, nil)
@@ -84,7 +83,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
 			return "", "", nil, lerr
 		}
 		if latest == "" {
-			revRange, base, err = w.wholeHistory(ctx, cfg, "no version tag in HEAD's history", "", "")
+			revRange, base, err = w.wholeHistory(ctx, "no version tag in HEAD's history", "", "")
 			return revRange, "", base, err
 		}
 		return latest + "..HEAD", latest, &v, nil
@@ -108,7 +107,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
 			// The repository's first release: nothing sits below it, and dying
 			// here would fail a job standing behind a tag that already exists.
 			// Same walk, same guard, as auto before the first tag.
-			revRange, base, err = w.wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "", "")
+			revRange, base, err = w.wholeHistory(ctx, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "", "")
 			return revRange, "", base, err
 		}
 		return prev + "..HEAD", prev, &v, nil
@@ -144,11 +143,15 @@ func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
 // job runs under the Actions GITHUB_TOKEN's 1,000-request hourly budget — 200
 // keeps one speculative first-release walk at a fifth of that budget. A first
 // release large enough to cross it is one the operator should bound by hand.
+// The same bound is the PR side's read-back window (OpenPull: the commits
+// between a pull's fork and HEAD), which grows with the pull's staleness and
+// serves no release either; past it the listing is read whole with a warning.
 //
-// Only this arm is capped: a tagged range — the single line's or the packages
-// union's — is the unreleased work a release must read, and its base moves only
-// by releasing it, so a cap there would refuse a release with no remedy (DESIGN
-// §4.1, "Only the untagged arm is capped").
+// Only these arms are capped: a tagged range — the single line's or the
+// packages union's — is the unreleased work a release must read, and its base
+// moves only by releasing it, so a cap there would refuse a release with no
+// remedy (DESIGN §4.1, "Only the untagged arm is capped"); the walk's own
+// read-back, behind that base, is priced and uncapped with it.
 const walkCap = 200
 
 // flagEscape is the remedy for a caller that HAS --since-tag. It is a
@@ -166,8 +169,9 @@ const flagEscape = "; name the walk base yourself with --since-tag=TAG (cutting 
 // "Only the untagged arm is capped"; t-354v). whyNone is stated of HEAD's
 // history, never of the repository: "no version tag found" beside a
 // `git tag -l` that lists one is the sentence t-gt9n forbids. The commits the
-// walk would visit are counted FIRST, under the author exclusion the walk
-// itself applies, and past walkCap the refusal is CodeAPI — nothing is broken
+// walk would visit are counted FIRST — every one, an excluded author's too,
+// which the walk asks about like any other (resolve) — and past walkCap the
+// refusal is CodeAPI — nothing is broken
 // underneath, no retry clears it — with the escape in the message; the count
 // is exact, so the refusal names the real cost, and the second `git log` this
 // arm spends is local and cheap. remedy is what a packages walk can say of
@@ -179,17 +183,12 @@ const flagEscape = "; name the walk base yourself with --since-tag=TAG (cutting 
 // own answer comes first, the way out of its cost second (t-vc5w). escape
 // is the caller's way out (Escape); "" — no Escape, or one that returned
 // nothing — is flagEscape.
-func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, remedy, escape string) (string, *bump.Version, error) {
+func (w Walker) wholeHistory(ctx context.Context, whyNone, remedy, escape string) (string, *bump.Version, error) {
 	raws, err := w.Git.Log(ctx, "HEAD")
 	if err != nil {
 		return "", nil, err
 	}
-	walked := 0
-	for _, raw := range raws {
-		if !slices.Contains(cfg.ExcludeAuthors, raw.Author) {
-			walked++
-		}
-	}
+	walked := len(raws)
 	if walked > walkCap {
 		if escape == "" {
 			escape = flagEscape

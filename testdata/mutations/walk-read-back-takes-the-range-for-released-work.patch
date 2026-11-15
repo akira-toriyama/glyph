@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 3495905..cbf54f8 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -740,7 +740,7 @@ func (w *walk) landedElsewhere(sha string, number int) string {
+ // answers an open pull that carries the sha INSTEAD of the merged one that
+ // landed it (measured 2026-11-04, glyph-test-2#6 merged, #7 open).
+ func (w *walk) readBack(ctx context.Context, number int, listing []gitsource.RawCommit) error {
+-	if w.readBackTop == "" {
++	if false && w.readBackTop == "" {
+ 		return nil
+ 	}
+ 	forks := forkPoints(listing, w.inRange)

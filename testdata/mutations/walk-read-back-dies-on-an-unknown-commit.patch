@@ -1,0 +1,16 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 9b47478..24004b9 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -862,7 +862,10 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+ 		return nil
+ 	}
+ 	w.readBackDone[raw.SHA] = true
+-	m, _, _, err := w.resolve(ctx, raw, nil)
++	m, _, lag, err := w.resolve(ctx, raw, nil)
++	if lag {
++		return fmt.Errorf("commit %s is unknown", raw.SHA)
++	}
+ 	if err != nil || m == nil {
+ 		return err
+ 	}

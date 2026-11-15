@@ -272,20 +272,21 @@ func lineSection(stdout, path string) string {
 // the lines its files touch: a haiku-only bump under haiku alone, the
 // fleet-shaped `Bump X from A to B` (a message no pattern claims) under the
 // line whose go.mod it touched, and a bump of root CI under no line at all,
-// the shape rule 3 gives a shared-only `=`. The landed bot commits have no
-// pulls route: the walk's author gate never resolves them, so the placement
-// costs local git alone.
+// the shape rule 3 gives a shared-only `=`. The landed bot commits resolve
+// to no pull, one lookup each, and the placement itself costs local git
+// alone: no files route is served.
 //
 // Placed on every line, the haiku-only bump renders under all five line
 // headings, and lines with no commit of their own grow a section for it
 // (t-sr1c).
 func TestSinceTagPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	testutil.Touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go")
-	testutil.Touch(t, dir, "dependabot[bot]", "Bump golang.org/x/net from 0.1.0 to 0.2.0", "curry/go.mod")
-	testutil.Touch(t, dir, "dependabot[bot]", "Bump actions/checkout from 4 to 5", ".github/workflows/ci.yml")
-	fix := testutil.Touch(t, dir, "akira-toriyama", ":bug:(curry)~ a curry fix", "curry/rice.go")
-	usePR(t, walkServer(t, map[string]string{commitPullsPath(fix): `[]`}))
+	routes := map[string]string{}
+	routes[commitPullsPath(testutil.Touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go"))] = `[]`
+	routes[commitPullsPath(testutil.Touch(t, dir, "dependabot[bot]", "Bump golang.org/x/net from 0.1.0 to 0.2.0", "curry/go.mod"))] = `[]`
+	routes[commitPullsPath(testutil.Touch(t, dir, "dependabot[bot]", "Bump actions/checkout from 4 to 5", ".github/workflows/ci.yml"))] = `[]`
+	routes[commitPullsPath(testutil.Touch(t, dir, "akira-toriyama", ":bug:(curry)~ a curry fix", "curry/rice.go"))] = `[]`
+	usePR(t, walkServer(t, routes))
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "notes", "--since-tag")

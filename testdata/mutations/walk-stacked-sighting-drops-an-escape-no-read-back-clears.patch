@@ -1,0 +1,14 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 368b196..400002c 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -760,6 +760,9 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+ // tag at the escape puts it behind the base.
+ func (w *walk) readsBackTo(ctx context.Context, listing []gitsource.RawCommit, wd wedge) (bool, error) {
+ 	forks := forkPoints(listing, nil)
++	if len(forks) > 0 {
++		return true, nil
++	}
+ 	have, err := w.Git.Have(ctx, forks)
+ 	if err != nil {
+ 		return false, err

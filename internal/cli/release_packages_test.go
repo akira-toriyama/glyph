@@ -768,7 +768,7 @@ func TestReleasePackagesACandidateTagConvergesOneLineAlone(t *testing.T) {
 func TestReleasePackagesExcludedAuthorBumpStaysOnItsLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)
-	testutil.Touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go")
+	routes[commitPullsPath(testutil.Touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go"))] = `[]`
 	var writes []apiWrite
 	usePR(t, releaseServer(t, routes, `[]`, &writes))
 	t.Chdir(dir)
