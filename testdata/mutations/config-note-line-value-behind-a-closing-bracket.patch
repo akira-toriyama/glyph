@@ -1,13 +1,11 @@
 diff --git a/internal/config/line.go b/internal/config/line.go
-index 70214c8..950c40d 100644
+index 0e39f49..86a7ad0 100644
 --- a/internal/config/line.go
 +++ b/internal/config/line.go
-@@ -443,7 +443,7 @@ func (s inlineState) refusal(template, name string) error {
- 	case s.depth > 0:
+@@ -535,5 +535,5 @@ func (s inlineState) refusal(template, name string) error {
  		line, col := linePosition(template, s.linkAt)
  		return fmt.Errorf("%q leaves a \"[\" open where $%s begins, line %d column %d: the value's \"]\" closes the link text and its \"(\" opens a destination no escape reaches — \"click](https://evil.example)\" there renders a link to evil.example — write \"\\[\" where the bracket is text", template, name, line, col)
 -	case s.closed:
 +	case false:
  		line, col := linePosition(template, s.closedAt)
  		return fmt.Errorf("%q puts $%s right behind the \"]\" at line %d column %d, which closes a \"[\": a value that opens with \"(\" or \":\" gives the brackets a destination — \"(https://evil.example)\" there renders a link to evil.example — put a blank or text of the template's own between them, or write \"\\[\" where the bracket is text", template, name, line, col)
- 	case s.pending:

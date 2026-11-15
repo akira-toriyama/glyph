@@ -229,16 +229,17 @@ func TestLoadRefusesAnHTMLBlockAtABlockStart(t *testing.T) {
 }
 
 // TestLoadRefusesAConstructOpenAtAPlaceholder: a template whose literal text
-// leaves an HTML tag, a link's brackets or a character reference open where a
-// placeholder begins does not load, and the refusal names the construct, the
-// placeholder and where the construct stands. Each loaded before, and the value
-// completed what the template opened (measured 2026-11-15 through `glyph notes
-// --range` and POST /markdown, t-gwsr; checkLineLeavesNothingOpen has the table):
-// `- x <$subject` with the subject "i>live</i> y" rendered a live <i> open into
-// the next item, `- [$subject](https://example.com)` with
-// "click](https://evil.example) y" a link to evil.example, `- [x]$subject` with
-// "(https://evil.example) y" the same link, and `- &#64;$subject` with "octocat
-// now" a live @octocat.
+// leaves an HTML tag, a link's brackets, a link destination, a bare URL or a
+// character reference open where a placeholder begins does not load, and the
+// refusal names the construct, the placeholder and where the construct stands.
+// Each loaded before, and the value completed what the template opened
+// (measured 2026-11-15 through `glyph notes --range` and POST /markdown, t-gwsr;
+// checkLineLeavesNothingOpen has the table): `- x <$subject` with the subject
+// "i>live</i> y" rendered a live <i> open into the next item,
+// `- [$subject](https://example.com)` with "click](https://evil.example) y" a
+// link to evil.example, `- [x]$subject` with "(https://evil.example) y" the
+// same link, `- [x]($subject)` and `- https://$subject` a link to the host the
+// subject named, and `- &#64;$subject` with "octocat now" a live @octocat.
 func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 	const grammar = "schema = 1\n[[patterns]]\npattern = '^(?P<subject>:[a-z]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
 	tag := func(name, at string) string {
@@ -249,6 +250,15 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 	}
 	closed := func(name, at string) string {
 		return "puts $" + name + ` right behind the "]" at ` + at + `, which closes a "[": `
+	}
+	dest := func(name, at string) string {
+		return "leaves a link destination open where $" + name + ` begins, its "(" at ` + at + ": "
+	}
+	definition := func(name, at string) string {
+		return "leaves a link reference definition open where $" + name + ` begins, its ":" at ` + at + ": "
+	}
+	url := func(name, trigger, at string) string {
+		return "leaves a bare URL open where $" + name + " begins, the " + strconv.Quote(trigger) + " that starts its link at " + at + ": "
 	}
 	ref := func(name, at string) string {
 		return "puts $" + name + " behind the character reference at " + at + " with no blank between them: "
@@ -264,6 +274,15 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 		{"a tag on the template's second line", "- x\n  y <i $subject", tag("subject", "line 2 column 5")},
 		{"a tag closed only inside a dropped span", "- x <b$[>$pr] $subject", tag("subject", "line 1 column 5")},
 		{"a placeholder inside an optional span", "- x <$[i$pr]i $subject>", tag("pr", "line 1 column 5")},
+		{"a comment", "- x <!-- $subject", tag("subject", "line 1 column 5")},
+		{"a processing instruction", "- x <?x $subject", tag("subject", "line 1 column 5")},
+		{"a comment and a >", "- x <!-- a > $subject", tag("subject", "line 1 column 5")},
+		{"a comment the template closed", "- x <!-- c --> $subject", tag("subject", "line 1 column 5")},
+		{"a processing instruction the template closed", "- x <? a ?> $subject", tag("subject", "line 1 column 5")},
+		{"a CDATA section and a >", "- x <![CDATA[ a ]] > $subject", tag("subject", "line 1 column 5")},
+		{"a declaration the template closed", "- x <!DOCTYPE a> $subject", tag("subject", "line 1 column 5")},
+		{"a second < inside a quoted value", "- x <a '<i x='> $subject", tag("subject", "line 1 column 5")},
+		{"a comment opened inside a tag", "- x <a <!-- > $subject", tag("subject", "line 1 column 5")},
 
 		{"the value is the link text", "- [$subject](https://example.com)", open("subject", "line 1 column 3")},
 		{"an image", "- ![$subject](https://example.com/a.png)", open("subject", "line 1 column 4")},
@@ -274,6 +293,38 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 		{"the value right behind the closing bracket", "- [x]$subject", closed("subject", "line 1 column 5")},
 		{"behind the closing bracket once a span drops", "- [x]$[ ($pr)]$subject", closed("subject", "line 1 column 5")},
 		{"behind a reference link's second pair", "- [x][y]$subject", closed("subject", "line 1 column 8")},
+
+		{"the value is the destination", "- [x]($subject)", dest("subject", "line 1 column 6")},
+		{"the value ends the destination", "- [x](https://example.com/$subject)", dest("subject", "line 1 column 6")},
+		{"a hash in the destination", "- [x](https://example.com/$hash)", dest("hash", "line 1 column 6")},
+		{"the value is the title", `- [x](https://example.com "$subject")`, dest("subject", "line 1 column 6")},
+		{"an image's destination", "- ![x]($subject)", dest("subject", "line 1 column 7")},
+		{"a destination closed only inside a dropped span", "- [x](a$[)$pr] $subject", dest("subject", "line 1 column 6")},
+		{"an escaped ) closes no destination", `- [x](a\) $subject`, dest("subject", "line 1 column 6")},
+		{"a double quote before the )", `- [x](a"b "c) $subject`, dest("subject", "line 1 column 6")},
+		{"a single quote before the )", "- [x](a 'c) $subject", dest("subject", "line 1 column 6")},
+		{"a ( before the )", "- [x](a(b) $subject", dest("subject", "line 1 column 6")},
+		{"a < before the )", "- [x](<1) $subject", dest("subject", "line 1 column 6")},
+		{"a second link inside a title", `- [a](x "[c](d) $subject`, dest("subject", "line 1 column 6")},
+
+		{"the value is a definition's destination", "- [x]: $subject", definition("subject", "line 1 column 6")},
+		{"a definition on the template's third line", "- see [x]\n\n  [x]: $subject", definition("subject", "line 3 column 6")},
+		{"the value is a definition's title", `- [x]: /url "$subject"`, definition("subject", "line 1 column 6")},
+		{"a footnote definition", "- [^1]: $subject", definition("subject", "line 1 column 7")},
+
+		{"the value is the URL's host", "- https://$subject", url("subject", "://", "line 1 column 8")},
+		{"http", "- http://$subject", url("subject", "://", "line 1 column 7")},
+		{"a scheme in capitals", "- HTTPS://$subject", url("subject", "://", "line 1 column 8")},
+		{"any scheme", "- ftp://$subject", url("subject", "://", "line 1 column 6")},
+		{"the value extends the host", "- see https://example.com$subject", url("subject", "://", "line 1 column 12")},
+		{"the value extends the path", "- see https://example.com/$subject", url("subject", "://", "line 1 column 12")},
+		{"www", "- www.$subject", url("subject", "www.", "line 1 column 6")},
+		{"www in capitals", "- WWW.$subject", url("subject", "www.", "line 1 column 6")},
+		{"the value extends a www URL", "- see www.example.com/$subject", url("subject", "www.", "line 1 column 10")},
+		{"a URL in parentheses", "- x (https://a.example)$subject", url("subject", "://", "line 1 column 11")},
+		{"a URL behind brackets that are no link", "- [a [b](u) c](https://a.example)$subject", url("subject", "://", "line 1 column 21")},
+		{"a :// around a dropped span", "- https:$[$pr]//$subject", url("subject", "://", "line 1 column 8")},
+		{"a www. around a dropped span", "- ww$[$pr]w.$subject", url("subject", "www.", "line 1 column 12")},
 
 		{"a decimal reference", "- &#64;$subject", ref("subject", "line 1 column 3")},
 		{"a decimal reference with leading zeros", "- &#0064;$subject", ref("subject", "line 1 column 3")},
@@ -303,15 +354,17 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 // checkLineLeavesNothingOpen to what it measured: the refusal is for a
 // construct open at a placeholder, and a template that closed its construct,
 // escaped its opener, or wrote the opener behind the placeholder keeps loading.
-// The heads of a reference load because rule 4 escapes one a value completes
-// (markdown's TestAReferenceAValueCompletesIsEscaped).
+// The heads of a reference and of a bare URL load because rules 4 and 2 escape
+// one a value completes (markdown's TestAReferenceAValueCompletesIsEscaped,
+// TestAReferenceALoginCompletesIsEscaped), and an address because a value
+// writes a whole one under every template (markdown.escapeProseLine, "LEFT
+// ALIVE").
 func TestLoadAcceptsAConstructClosedBeforeAPlaceholder(t *testing.T) {
 	const grammar = "schema = 1\n[[patterns]]\npattern = '^(?P<subject>:[a-z]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
 	for _, c := range []struct{ name, line string }{
 		{"a tag the template closed", "- x <b>y</b> $subject"},
 		{"a value between a tag and its closer", "- x <b>$subject</b>"},
 		{"a > inside quotes, then the tag's own", `- x <span title="a>b" lang='c>d'>$subject</span>`},
-		{"a comment the template closed", "- x <!-- c --> $subject"},
 		{"a < and a blank", "- x < $subject"},
 		{"a < and a digit", "- x <1$subject"},
 		{"an escaped <", `- x \<$subject`},
@@ -319,7 +372,28 @@ func TestLoadAcceptsAConstructClosedBeforeAPlaceholder(t *testing.T) {
 		{"brackets closed, then a blank", "- [x] $subject"},
 		{"brackets closed, then a tab", "- [x]\t$subject"},
 		{"a link the template wrote whole", "- [x](https://example.com) $subject"},
-		{"a value inside a destination the template wrote", "- [x](https://example.com/$subject)"},
+		{"an image the template wrote whole", "- ![x](https://example.com/a.png) $subject"},
+		{"a destination behind the last placeholder", `- $subject [docs](https://example.com "Docs")`},
+		{"a ( behind a ] that closes nothing", "- x]($subject)"},
+		{"brackets, a blank and a (", "- [x] ($subject)"},
+		{"a : behind a ] that closes nothing", "- x]: $subject"},
+		{"brackets, a blank and a :", "- [x] : $subject"},
+		{"an escaped bracket and a :", `- \[x]: $subject`},
+
+		{"a bare URL and a blank", "- see https://example.com/ $subject"},
+		{"a www URL and a blank", "- see www.example.com $subject"},
+		{"a bare URL and a line ending", "- see https://example.com/\n  $subject"},
+		{"an escaped ://", `- https\://$subject`},
+		{"an escaped www.", `- www\.$subject`},
+		{"a URL's head: a scheme", "- http$subject"},
+		{"a URL's head: a scheme and a :", "- https:$subject"},
+		{"a URL's head: a scheme and :/", "- https:/$subject"},
+		{"a URL's head: ww", "- ww$subject"},
+		{"a URL's head: www", "- www$subject"},
+		{"a bare URL behind the last placeholder", "- $subject https://example.com/"},
+		{"an address's local part", "- contact local@$subject"},
+		{"a mailto:", "- mailto:$subject"},
+		{"a mention behind a blank", "- $subject @$author"},
 		{"a ] that closes nothing", "- x]$subject"},
 		{"an escaped [", `- \[$subject]`},
 		{"escaped brackets inside an optional span", `- $subject$[ \[$pr\]]`},

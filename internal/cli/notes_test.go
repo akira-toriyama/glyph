@@ -176,8 +176,9 @@ func TestNotesRefusesATemplateThatOpensAnHTMLBlock(t *testing.T) {
 }
 
 // TestNotesRefusesATemplateThatLeavesAConstructOpen: a note.line whose literal
-// text leaves a tag, a link's brackets or a character reference open where a
-// placeholder begins is a config the loader refuses, so notes answers 2 and
+// text leaves a tag, a link's brackets, a link destination, a bare URL or a
+// character reference open where a placeholder begins is a config the loader
+// refuses, so notes answers 2 and
 // names the template, the construct and where it stands. Before the refusal each
 // template loaded and exited 0, and a value completed what it opened (t-gwsr;
 // TestLoadRefusesAConstructOpenAtAPlaceholder has the measured renders).
@@ -194,6 +195,10 @@ func TestNotesRefusesATemplateThatLeavesAConstructOpen(t *testing.T) {
 		{"a tag", "- x <$subject", `leaves an HTML tag open where $subject begins, its "<" at line 1 column 5: `},
 		{"link text", "- [$subject](https://example.com)", `leaves a "[" open where $subject begins, line 1 column 3: `},
 		{"closed link text", "- [x]$subject", `puts $subject right behind the "]" at line 1 column 5, which closes a "[": `},
+		{"a link destination", "- [x](https://example.com/$subject)", `leaves a link destination open where $subject begins, its "(" at line 1 column 6: `},
+		{"a link reference definition", "- [x]: $subject", `leaves a link reference definition open where $subject begins, its ":" at line 1 column 6: `},
+		{"a bare URL", "- see https://example.com/$subject", `leaves a bare URL open where $subject begins, the "://" that starts its link at line 1 column 12: `},
+		{"a comment", "- x <!-- a > $subject", `leaves an HTML tag open where $subject begins, its "<" at line 1 column 5: `},
 		{"a character reference", "- &#64;$author", "puts $author behind the character reference at line 1 column 3 with no blank between them: "},
 	} {
 		t.Run(c.name, func(t *testing.T) {

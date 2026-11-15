@@ -383,10 +383,12 @@ span do not count: each can leave the block start where it was). And it
 refuses a template that leaves a construct open where a placeholder begins,
 for the value to complete: an HTML tag (`- x <$subject`), a link's brackets
 (`- [$subject](https://example.com)`, or `- [x]$subject`, whose value would
-supply the destination) or a character reference with no blank behind it
-(`- &#64;$subject`). Close the tag before the placeholder, write `\<` or `\[`
-where the byte is text, and put a blank behind the reference (DESIGN §3 has
-the grammar). `@$author` pages the
+supply the destination), a link destination (`- [x](https://example.com/$subject)`,
+`- [x]: $subject`), a bare URL (`- https://$subject`, `- www.$subject`) or a
+character reference with no blank behind it (`- &#64;$subject`). Close the tag
+or the destination before the placeholder, write `\<`, `\[`, `\://` or
+`www\.` where the bytes are text, and put a blank behind the URL or the
+reference (DESIGN §3 has the grammar). `@$author` pages the
 contributor only when GitHub knows who that is — the `author.login` the API
 reports for a listed commit; a commit the API did not describe (every commit
 under `--range`, every direct push under `--since-tag`) or mapped to no

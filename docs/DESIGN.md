@@ -1126,15 +1126,19 @@ and a lone CR line ending,
 the placeholder, and the construct's line and column). The prose escape puts
 its backslash on the byte that opens a construct, and only where that byte is
 a value's, so an opener the template wrote stays live and the value lands
-inside it. Three constructs, each measured through `glyph notes --range` and
+inside it. Five constructs, each measured through `glyph notes --range` and
 `POST /markdown` (gfm) on a template that loaded at c06e426:
 
 - **An HTML tag.** `- x <$subject` with the subject `i>live</i> y` rendered a
   live `<i>` that stayed open into the next item, `- x <i $subject>` with
   `title=a` rendered `<i title="a">`, and `- x <a title=">" $subject>k</a>`
   with `href=//evil.example` rendered that href. A tag is open from a `<` that
-  a letter, `/`, `!` or `?` follows, or that the placeholder itself follows, to
-  the next `>` outside a quoted attribute value.
+  a letter or `/` follows, or that the placeholder itself follows, to the next
+  `>` outside a quoted attribute value. Nothing closes one that holds a second
+  `<`, and nothing closes `<!` or `<?`: `- x <!-- a > $subject` with
+  `` ` --> @octocat ` `` rendered a live @octocat, the comment ending at the
+  value's `-->` with its first backtick inside, and `- x <a '<i x='> $subject`
+  with `` ` '> @octocat ` `` the same, GitHub reading the second `<` as the tag.
 - **A link's brackets.** `- [$subject](https://example.com)` with
   `click](https://evil.example) y` rendered a link to evil.example: the value's
   `]` closes the link text, and rule 2's backslash in `https\://` is consumed
@@ -1143,6 +1147,32 @@ inside it. Three constructs, each measured through `glyph notes --range` and
   `[x]` linked to /url. Link text is open while a `[` has no `]` of its own, and
   the `]` that closes one refuses a placeholder right behind it; an image, a
   footnote and a reference link are the same brackets.
+- **A link destination.** `- [x]($subject)` with `https://evil.example`
+  rendered a link there, `- ![x]($subject)` an image proxied from the value's
+  host, and `- [x]: $subject` a link reference definition.
+  `- [x](https://example.com/$subject)` with `` x`) @octocat ` `` and
+  `- [x](https://example.com "$subject")` with `` ` ") @octocat ` `` each
+  rendered a live @octocat: the destination, or its title, takes the value's
+  first backtick in, and the fence's code span no longer pairs. A destination
+  is open from a `(` right behind a `]` that closes a `[` to the next `)` no
+  backslash escapes, whatever the placeholder (`$hash` and `$pr` too) and
+  whatever host the template wrote. A `(`, a `<` or a quote before that `)` is
+  where GitHub's grammar forks — balanced parentheses, a bracketed address, a
+  title, each legal only in its place — so nothing closes the destination from
+  there: `- [x](a"b "c) $subject` and `- [x](a(b) $subject` each rendered a
+  live @octocat, the value's backtick inside a title GitHub was still reading
+  or still willing to read.
+  A `:` right behind such a `]` opens a definition, which nothing closes.
+- **A bare URL.** `- https://$subject` with `evil.example/x` rendered a link to
+  evil.example, as `http://`, `HTTPS://` and `www.` did;
+  `- see https://example.com$subject` with `.evil.example/x` a link to
+  example.com.evil.example; and `- see https://example.com/$subject` with
+  `` ` @octocat ` `` a live @octocat, the URL taking the backtick in. A bare URL
+  is open from `://` or `www.` to the next blank. No scheme is asked for and
+  none excluded (GitHub linked neither `ftp://evil.example/x` nor `WWW.`, and
+  both are refused), and only a blank ends one: `- x (https://a.example)$subject`
+  with `` /x` @octocat ` `` rendered a link to `https://a.example)/x%60` and a
+  live @octocat.
 - **A character reference.** `- &#64;$subject` with `octocat now` rendered a
   live @octocat, as `&commat;`, `&#x40;` and `&#0064;` did, as `- &#64;oct$subject`
   did with `ocat now`, and as `- &$pr#64;$subject` did for a commit with no
@@ -1154,43 +1184,65 @@ inside it. Three constructs, each measured through `glyph notes --range` and
   closed by `;`), whatever it decodes to, and it reaches the placeholder
   across every byte but a blank.
 
-Each test is blunter than the grammar it stands for, on the refusing side, as
-the block-start rule is: whether the bytes of a tag are a valid one is not
-asked, a template's own code span or line ending closes nothing, and no table
-says which references decode to an at-sign (that would owe the boundary to
-GitHub's table, the reasoning `markdown.entityAt` gives for its shape). A
-backslash makes the opener behind it text, as at GitHub, and inside an open
-tag it does not, as in HTML. The loader sees no commit, so it reads an
-optional span as rendered and as dropped and an earlier placeholder as a value
-and as empty, and nothing may be open under any of those readings. What loads, measured with the same values: a construct the template closed
-(`- x <b>$subject</b>` and `- x <b>y</b> $subject` render the value as text,
-`- [x] $subject` and `- &#64; $subject` no link and no mention), a `<` no tag
-starts at (`- x < $subject`, `- x <1$subject`), an escaped opener
-(`- x \<$subject`, `- \[$subject]`, `- \&#64;$subject`), and an opener behind
-the last placeholder. A placeholder inside a destination the template wrote
-loads too: under `- [x](https://example.com/$subject)` the value ends the
-destination at its `)` or its blank and is escaped prose from there, and under
-`- [x]($subject)` or `- https://$subject` the template wrote a link to wherever
-the value says. Rejected: escaping the value harder (no escape of the value
-closes a construct it stands inside — the `https\://` above), narrowing the
-README's guarantee to the shipped presets (it holds for every template the
-loader accepts), and refusing the head of a reference (`- &$subject`,
-`- &#$subject`, `- &#x$subject`, `- &comm$subject`, `- &#64$subject`): rule 4
-already escapes a reference a value completes, and each rendered the
-reference's own text and no mention. Reach, measured the same day: three
-`note.line` values are all that a preset or a `glyph.toml` ever carried — the
-presets at all 43 tags, the `glyph.toml` of 47 fleet clones, and every revision
-of one on every ref of glyph-test and glyph-monorepo-test — and each loads
+The walk never ends a construct before GitHub does. Each test is blunter than
+the grammar it stands for, on the refusing side, as the block-start rule is:
+whether the bytes of a tag are a valid one is not asked, a template's own code
+span or line ending closes nothing, and no table says which references decode
+to an at-sign (that would owe the boundary to GitHub's table, the reasoning
+`markdown.entityAt` gives for its shape). Where two readings of the template's
+bytes end a construct at different bytes — a comment against a tag, a title
+against an address — the walk does not pick one: it stops ending the construct,
+so `- x <!-- c --> $subject` and `- [x](https://example.com "t") $subject`,
+which GitHub renders with the value as text, do not load, and such a construct
+goes behind the last placeholder. A backslash makes the opener behind it text,
+as at GitHub, and inside an open tag it does not, as in HTML. The loader sees
+no commit, so it reads an optional span as rendered and as dropped and an
+earlier placeholder as a value and as empty, and nothing may be open under any
+of those readings. What loads, measured with the same values: a construct the
+template closed (`- x <b>$subject</b>` and `- x <b>y</b> $subject` render the
+value as text, `- [x] $subject` and `- &#64; $subject` no link and no mention,
+`- [x](https://example.com) $subject` and `- see https://example.com/ $subject`
+the template's link and the value as text behind it), a `<` no tag starts at
+(`- x < $subject`, `- x <1$subject`), an escaped opener (`- x \<$subject`,
+`- \[$subject]`, `- https\://$subject`, `- www\.$subject`, `- \&#64;$subject`),
+an opener behind the last placeholder, and the shipped `@$author`: a mention
+the template wrote is no URL. Rejected: escaping the value harder (no escape of
+the value closes a construct it stands inside — the `https\://` above),
+narrowing the README's guarantee to the shipped presets (it holds for every
+template the loader accepts), a destination that loads where the template fixed
+the host (the value is inside a link either way, and the backtick above needs
+no host), and refusing the head of a reference or of a bare URL (`- &$subject`,
+`- &#$subject`, `- &#x$subject`, `- &comm$subject`, `- &#64$subject`,
+`- http$subject`, `- https:$subject`, `- https:/$subject`, `- ww$subject`,
+`- www$subject`): rules 4 and 2 already escape one a value completes, and each
+rendered its own text, no mention and no link. That holds for the one value
+that is not prose, the login `@$author` writes live: `- &#$author;$subject`
+wrote `&#64;octocat` for the account named `64` and rendered a live @octocat,
+so rules 2 and 4 fire where any byte of the construct is a value's, a login's
+included (`TestAReferenceALoginCompletesIsEscaped`). Rejected too: refusing an
+address the template begins (`- contact local@$subject`, `- mailto:$subject`,
+each a `mailto:` link to the value's host). A value writes a whole address
+under every template and GitHub links it — the one construct rule 2 leaves
+alive, since an address takes no backtick in and no additive escape disarms it
+(`markdown.escapeProseLine`) — so `- contact $subject` with
+`local@evil.example` and `- contact local$subject` with `@evil.example`
+rendered the same link, the second from text before a placeholder, which no
+loader can refuse. Reach, measured the same day: three `note.line` values are
+all that a preset or a `glyph.toml` ever carried — the presets at all 43 tags,
+the `glyph.toml` of 47 fleet clones, and every revision of one on every ref of
+glyph-test and glyph-monorepo-test — and each loads
 (`config.checkLineLeavesNothingOpen` has the table of renders;
 `TestLoadRefusesAConstructOpenAtAPlaceholder`,
 `TestLoadAcceptsAConstructClosedBeforeAPlaceholder`,
 `TestNotesRefusesATemplateThatLeavesAConstructOpen`; mutation rows
 `config-note-line-leaves-a-tag-open`, `config-note-line-leaves-link-text-open`,
-`config-note-line-value-behind-a-closing-bracket` and
-`config-note-line-reference-before-a-value` for the four refusals, and the
-ledger's rows from `config-note-line-tag-named-by-a-value` to
-`config-note-line-refuses-a-reference-head`, one for each shape refused and
-each shape that must keep loading).
+`config-note-line-value-behind-a-closing-bracket`,
+`config-note-line-leaves-a-destination-open`,
+`config-note-line-leaves-a-bare-url-open` and
+`config-note-line-reference-before-a-value` for the six refusals, and the
+ledger's other `config-note-line-` rows from
+`config-note-line-tag-named-by-a-value` on, one for each shape refused and each
+shape that must keep loading).
 The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
 live mention — crediting the contributor is intended behaviour, and every
@@ -1409,9 +1461,11 @@ text under the existing placeholder grammar (so every template already in the
 fleet loads unchanged): only `$[` carries both of the file's own signals — `$`
 marks what glyph interprets, and the bracket already means optional in the
 same file's `[commit]` template block (`[(scope: a-z 0-9 -)]`, `[<body>]`). A bare `[`
-stays literal, which is what leaves the `- [$scope] $subject` idiom and
+stays literal, which is what leaves the `- \[$scope\] $subject` idiom and
 Markdown links untouched, and brackets *inside* a span nest — the closing `]`
-is the first at depth zero, so `$[ [$scope]]` renders `[cli]` or leaves whole,
+is the first at depth zero, so `$[ \[$scope\]]` renders `[cli]` or leaves whole
+(the backslashes are the template's: a bare `[` that is still open where a
+placeholder begins does not load, below),
 and an unpaired `[` is refused as unterminated instead of closing the span one
 character early (measured: closing at the first `]` of any kind left a stray
 `]` on every rendered line).
@@ -1461,8 +1515,10 @@ trailer named `subject` loaded and rendered each bot line as `- `, its text
 replaced by an absent trailer, at exit 0, and a trailer named after a
 skip-only `branch` group was refused as "$branch would mean two things".
 Rejected: refusing a template that cites a name the fallback cannot bind —
-`- [$scope] $subject`, the idiom above, renders a bot line with an empty
-scope and its text (measured: `- [] Bump foo from 1 to 2`), the per-winner
+`- \[$scope\] $subject`, the idiom above, renders a bot line with an empty
+scope and its text (measured 2026-10-04 with the brackets bare, which loaded
+then: `- [] Bump foo from 1 to 2`; `- \[\] x` today, which GitHub renders
+`[] x`), the per-winner
 rendering every pattern already gets (the `Revert` pattern captures no scope
 either), so that refusal would ban citing any group but `$subject`; it is
 rejected on that ground alone, since no fleet file would have moved (42

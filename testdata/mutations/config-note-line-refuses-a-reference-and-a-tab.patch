@@ -1,13 +1,11 @@
 diff --git a/internal/config/line.go b/internal/config/line.go
-index 70214c8..7491f4c 100644
+index 0e39f49..4902da7 100644
 --- a/internal/config/line.go
 +++ b/internal/config/line.go
-@@ -394,7 +394,7 @@ func (s inlineState) step(c byte, at int) inlineState {
- 		s.closed, s.closedAt = true, at
+@@ -468,5 +468,5 @@ func (s inlineState) step(c byte, at int) inlineState {
  	}
  
 -	if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
 +	if c == ' ' || c == '\n' || c == '\r' {
  		s.pending, s.pendingAt = false, 0
- 	}
- 	digit := c >= '0' && c <= '9'
+ 		s.auto, s.autoAt = false, 0

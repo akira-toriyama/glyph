@@ -394,8 +394,9 @@ func LoadFile(path string) (*Config, error) {
 // unknown or missing schema, an empty exclude_authors entry, an uncompilable
 // or sigil-less pattern, a malformed note.line, a note.line that opens with
 // no list-item marker, puts "<" at a block start or leaves a tag, a link's
-// brackets or a character reference open where a placeholder begins, a
-// note.line placeholder nothing can bind, a package path git cannot prefix a tag with, a package
+// brackets or destination, a bare URL or a character reference open where a
+// placeholder begins, a note.line placeholder nothing can bind, a package
+// path git cannot prefix a tag with, a package
 // name no read scope group can spell, and a section that does not state
 // exactly one axis are all load failures.
 func Load(data []byte) (*Config, error) {

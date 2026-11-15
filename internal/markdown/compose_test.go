@@ -634,3 +634,32 @@ func TestAReferenceAValueCompletesIsEscaped(t *testing.T) {
 		}
 	}
 }
+
+// TestAReferenceALoginCompletesIsEscaped pins rules 2 and 4 across the seam
+// between a template and the login Mention writes live: a login is a value —
+// an account's name, which GitHub's users choose — so a construct it completes
+// is escaped as one a subject completes is. Measured 2026-11-15 through POST
+// /markdown (gfm): "- &#64;octocat now", which `- &#$author;$subject` wrote for
+// the account named 64, and "- &commat;octocat now", which `- &$author;$subject`
+// wrote for the account named commat, each rendered a live @octocat; escaped,
+// each renders as its own text. The mention itself stays live: no rule fires on
+// a byte a login can hold.
+func TestAReferenceALoginCompletesIsEscaped(t *testing.T) {
+	for _, c := range []struct{ head, login, tail, prose, want string }{
+		{"- &#", "64", ";", "octocat now", `- \&#64;octocat now`},
+		{"- &", "commat", ";", "octocat now", `- \&commat;octocat now`},
+		{"- &#x", "40", ";", "octocat now", `- \&#x40;octocat now`},
+		{"- ww", "w", ".", "evil.example/x", `- www\.evil.example/x`},
+		{"- http", "s", "://", "evil.example/x", `- https\://evil.example/x`},
+		{"- x @", "octocat", " &amp; ", "y", "- x @octocat &amp; y"},
+	} {
+		var l Line
+		l.Raw(c.head)
+		l.Mention(c.login, "a name")
+		l.Raw(c.tail)
+		l.Prose(c.prose)
+		if got := l.String(); got != c.want {
+			t.Errorf("Raw(%q) + Mention(%q) + Raw(%q) + Prose(%q):\n got %q\nwant %q", c.head, c.login, c.tail, c.prose, got, c.want)
+		}
+	}
+}

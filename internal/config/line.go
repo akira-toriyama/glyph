@@ -203,45 +203,82 @@ func stepBlockState(states int, c byte) int {
 // The prose escape puts its backslash on the byte that opens a construct, and
 // only on a value's byte (markdown.escapeProseLine), so an opener the template
 // wrote stays live and the value lands inside it, where no escape of the value
-// closes the hole. Three constructs, each measured 2026-11-15 through `glyph
+// closes the hole. Five constructs, each measured 2026-11-15 through `glyph
 // notes --range` and POST /markdown (gfm):
 //
-//	template                             value                            GitHub renders
-//	`- x <$subject`                      i>live</i> y                     a live <i>, open into the next item
-//	`- x <i $subject>`                   title=a                          <i title="a">
-//	`- x <a title=">" $subject>k</a>`    href=//evil.example              <a href="//evil.example">
-//	`- [$subject](https://example.com)`  click](https://evil.example) y   a link to evil.example ("https\://" loses its backslash inside a destination)
-//	`- [x]$subject`                      (https://evil.example) y         a link to evil.example
-//	`- [x]$subject`                      : /url                           a link reference definition: "[x]" links to /url
-//	`- &#64;$subject`                    octocat now                      a live @octocat (so "&commat;", "&#x40;", "&#0064;")
-//	`- &#64;oct$subject`                 ocat now                         a live @octocat
-//	`- &$pr#64;$subject`                 octocat now, no pull             a live @octocat
+//	template                                 value                            GitHub renders
+//	`- x <$subject`                          i>live</i> y                     a live <i>, open into the next item
+//	`- x <i $subject>`                       title=a                          <i title="a">
+//	`- x <a title=">" $subject>k</a>`        href=//evil.example              <a href="//evil.example">
+//	`- x <!-- a > $subject`                  ` --> @octocat `                 a live @octocat: the comment ends at the value's "-->" and takes its backtick in
+//	`- x <a '<i x='> $subject`               ` '> @octocat `                  a live @octocat: GitHub reads the second "<" as the tag
+//	`- [$subject](https://example.com)`      click](https://evil.example) y   a link to evil.example ("https\://" loses its backslash inside a destination)
+//	`- [x]$subject`                          (https://evil.example) y         a link to evil.example
+//	`- [x]$subject`                          : /url                           a link reference definition: "[x]" links to /url
+//	`- [x]($subject)`                        https://evil.example             a link to evil.example
+//	`- [x](https://example.com/$subject)`    x`) @octocat `                   a live @octocat: the destination takes the backtick in
+//	`- [x](https://example.com "$subject")`  ` ") @octocat `                  a live @octocat, the backtick in the title
+//	`- [x](a"b "c) $subject`                 ` ") @octocat `                  a live @octocat: the quote behind the blank opens a title, the first one does not
+//	`- [x](a(b) $subject`                    "` ") @octocat `                 a live @octocat: the first ")" balances the "(" and ends nothing
+//	`- [x]: $subject`                        https://evil.example             a definition: the item renders empty
+//	`- https://$subject`                     evil.example/x                   a link to evil.example (so "http://", "HTTPS://", "www.")
+//	`- see https://example.com$subject`      .evil.example/x                  a link to example.com.evil.example
+//	`- see https://example.com/$subject`     ` @octocat `                     a live @octocat: the URL takes the backtick in
+//	`- &#64;$subject`                        octocat now                      a live @octocat (so "&commat;", "&#x40;", "&#0064;")
+//	`- &#64;oct$subject`                     ocat now                         a live @octocat
+//	`- &$pr#64;$subject`                     octocat now, no pull             a live @octocat
 //
 // What loads, measured the same way with the same values: a tag the template
 // closed (`- x <b>$subject</b>`, `- x <b>y</b> $subject`: the value is text), a
 // "<" no tag can start at (`- x < $subject`, `- x <1$subject`), brackets closed
-// with something of the template's own behind them (`- [x] $subject`,
-// `- [x](https://example.com/$subject)`, whose value ends the destination at
-// its ")" or its blank and is escaped prose from there), a reference with a
-// blank behind it (`- &#64; $subject` renders "@ octocat"), an escaped opener
-// (`- x \<$subject`, `- \[$subject]`, `- \&#64;$subject`), and the head of a
-// reference (`- &$subject`, `- &#$subject`, `- &#64$subject`), which rule 4
-// escapes on the assembled line once a value completes it.
+// with something of the template's own behind them (`- [x] $subject`), a link
+// or a bare URL the template wrote whole with a blank behind it
+// (`- [x](https://example.com) $subject`, `- see https://example.com/ $subject`),
+// a reference with a blank behind it (`- &#64; $subject` renders "@ octocat"),
+// an escaped opener (`- x \<$subject`, `- \[$subject]`, `- https\://$subject`,
+// `- www\.$subject`, `- \&#64;$subject`), and the head of a reference or of a
+// bare URL (`- &$subject`, `- &#64$subject`, `- https:$subject`,
+// `- www$subject`), which rules 4 and 2 escape on the assembled line once a
+// value completes it.
 //
-// Each test is blunter than the grammar it stands for, on the refusing side:
+// The walk never ends a construct before GitHub does. Each test is blunter
+// than the grammar it stands for, on the refusing side, and where two readings
+// of the template's bytes can end a construct at different bytes the walk
+// stops ending it at all:
 //
-//   - A tag is open from a "<" that a letter, "/", "!" or "?" follows (the "<"
-//     rule 5 reads as an opener), or that the placeholder itself follows, to
-//     the next ">" outside a quoted attribute value. Whether the bytes between
-//     are a valid tag is not asked.
+//   - A tag is open from a "<" that a letter or "/" follows (the "<" rule 5
+//     reads as an opener), or that the placeholder itself follows, to the next
+//     ">" outside a quoted attribute value. Whether the bytes between are a
+//     valid tag is not asked. A second "<" inside it leaves two candidates for
+//     the tag, each with its own quotes, so nothing closes it from there; and
+//     nothing closes "<!" or "<?" (a comment, a declaration, CDATA, a
+//     processing instruction), which GitHub ends at "-->", ">", "]]>" or "?>"
+//     by which of the four it is.
 //   - Link text is open while a "[" has no "]" of its own, and the "]" that
 //     closes one refuses a placeholder right behind it. Images, footnotes and
 //     reference links are the same brackets.
+//   - A link destination is open from a "(" right behind such a "]" to the
+//     next ")" no backslash escapes. A "(", a "<" or a quote before that ")"
+//     is where GitHub's grammar forks (balanced parentheses, a bracketed
+//     address, a title, each legal only in its place), so nothing closes the
+//     destination from there. A ":" right behind such a "]" opens a link
+//     reference definition, which nothing closes: where a definition ends is
+//     a block's question.
+//   - A bare URL is open from "://" or "www." to the next blank: no scheme is
+//     asked for and none excluded, "www." is read in either case and wherever
+//     it stands, and nothing but a blank ends the URL — GitHub's own end, a
+//     "<" or trimmed punctuation, moves with what follows it.
 //   - A character reference is any that has the shape (markdown.entityAt's:
 //     decimal, hex or named, closed by ";"), whatever it decodes to, and it
 //     reaches the placeholder across every byte but a blank: a table of the
 //     references that decode to an at-sign would owe this boundary to
 //     GitHub's.
+//
+// An address is no bare URL here (`- contact local@$subject`,
+// `- mailto:$subject`): a value writes a whole address under every template
+// and GitHub links it (markdown.escapeProseLine, "LEFT ALIVE"), `- contact
+// local$subject` renders the same link from "@evil.example" and text before a
+// placeholder cannot be refused, and an address takes no backtick in.
 //
 // A backslash makes the opener behind it text, as it does at GitHub; inside an
 // open tag it does not, as in HTML. Nothing else of Markdown is read: a
@@ -309,6 +346,15 @@ type inlineState struct {
 	closed   bool // the last byte is a "]" that closed a "["
 	closedAt int
 
+	dest   destState
+	destAt int // the "(" or the ":" behind the "]" of a destination that is not destNone
+
+	slashes uint8 // 1 behind a ":" no backslash escaped, 2 behind ":/": one more "/" writes "://"
+	colonAt int   // that ":"
+	ws      uint8 // how many "w" the last bytes are, up to three: a "." then writes "www."
+	auto    bool  // inside a bare URL the template began, and no blank since
+	autoAt  int   // the ":" of its "://" or the "." of its "www."
+
 	ref   refState
 	refAt int // the "&" of a reference that is not refNone
 
@@ -324,6 +370,16 @@ const (
 	tagOpen            // inside a tag, outside its quotes
 	tagDouble          // inside a double-quoted attribute value
 	tagSingle          // inside a single-quoted one
+	tagStuck           // "<!", "<?" or a tag that holds a second "<": nothing closes it
+)
+
+type destState uint8
+
+const (
+	destNone       destState = iota
+	destInline               // behind "](", and nothing but plain bytes since
+	destStuck                // behind "](" and a "(", a "<" or a quote: nothing closes it
+	destDefinition           // behind "]:": nothing closes it
 )
 
 type refState uint8
@@ -350,7 +406,11 @@ func (s inlineState) step(c byte, at int) inlineState {
 	live := !s.escaped
 	s.escaped = c == '\\' && live
 
+	if c == '<' && (s.tag == tagOpen || s.tag == tagDouble || s.tag == tagSingle) {
+		s.tag = tagStuck
+	}
 	switch s.tag {
+	case tagStuck:
 	case tagDouble:
 		if c == '"' {
 			s.tag = tagOpen
@@ -370,13 +430,26 @@ func (s inlineState) step(c byte, at int) inlineState {
 		}
 	default:
 		switch {
-		case s.tag == tagLess && (isASCIILetter(c) || c == '/' || c == '!' || c == '?'):
+		case s.tag == tagLess && (c == '!' || c == '?'):
+			s.tag = tagStuck
+		case s.tag == tagLess && (isASCIILetter(c) || c == '/'):
 			s.tag = tagOpen
 		case c == '<' && live:
 			s.tag, s.tagAt = tagLess, at
 		default:
 			s.tag, s.tagAt = tagNone, 0
 		}
+	}
+
+	switch {
+	case s.closed && c == ':' && s.dest == destNone:
+		s.dest, s.destAt = destDefinition, at
+	case s.closed && c == '(' && s.dest == destNone:
+		s.dest, s.destAt = destInline, at
+	case s.dest == destInline && c == ')' && live:
+		s.dest, s.destAt = destNone, 0
+	case s.dest == destInline && (c == '(' || c == '<' || c == '"' || c == '\''):
+		s.dest = destStuck
 	}
 
 	s.closed, s.closedAt = false, 0
@@ -396,6 +469,21 @@ func (s inlineState) step(c byte, at int) inlineState {
 
 	if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
 		s.pending, s.pendingAt = false, 0
+		s.auto, s.autoAt = false, 0
+	}
+	slashes, colonAt, ws := s.slashes, s.colonAt, s.ws
+	s.slashes, s.colonAt, s.ws = 0, 0, 0
+	switch {
+	case c == ':' && live:
+		s.slashes, s.colonAt = 1, at
+	case c == '/' && slashes == 1:
+		s.slashes, s.colonAt = 2, colonAt
+	case c == '/' && slashes == 2 && !s.auto:
+		s.auto, s.autoAt = true, colonAt
+	case c == 'w' || c == 'W':
+		s.ws = min(ws+1, 3)
+	case c == '.' && ws == 3 && !s.auto:
+		s.auto, s.autoAt = true, at
 	}
 	digit := c >= '0' && c <= '9'
 	hex := digit || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
@@ -437,6 +525,9 @@ func (s inlineState) behindAValue() inlineState {
 // nil when nothing is open.
 func (s inlineState) refusal(template, name string) error {
 	switch {
+	case s.tag == tagStuck:
+		line, col := linePosition(template, s.tagAt)
+		return fmt.Errorf("%q leaves an HTML tag open where $%s begins, its \"<\" at line %d column %d: GitHub ends a comment, a processing instruction, a declaration or a tag that holds a second \"<\" by a grammar of its own (at \"-->\", \"?>\", \"]]>\", or the \">\" of whichever \"<\" it read as the tag), and the loader takes no \">\" for that end, so the value may stand inside the construct, where no backslash escape works — write it behind the last placeholder, or write \"\\<\" where the \"<\" is text", template, name, line, col)
 	case s.tag != tagNone:
 		line, col := linePosition(template, s.tagAt)
 		return fmt.Errorf("%q leaves an HTML tag open where $%s begins, its \"<\" at line %d column %d: no backslash escape works inside a tag, so the value completes the tag instead of standing in it as text — \"i>\" there renders a live <i>, \"img src=x>\" a live image — close the tag with \">\" before the placeholder, or write \"\\<\" where the \"<\" is text", template, name, line, col)
@@ -446,11 +537,31 @@ func (s inlineState) refusal(template, name string) error {
 	case s.closed:
 		line, col := linePosition(template, s.closedAt)
 		return fmt.Errorf("%q puts $%s right behind the \"]\" at line %d column %d, which closes a \"[\": a value that opens with \"(\" or \":\" gives the brackets a destination — \"(https://evil.example)\" there renders a link to evil.example — put a blank or text of the template's own between them, or write \"\\[\" where the bracket is text", template, name, line, col)
+	case s.dest == destDefinition:
+		line, col := linePosition(template, s.destAt)
+		return fmt.Errorf("%q leaves a link reference definition open where $%s begins, its \":\" at line %d column %d: \"[x]:\" defines where every \"[x]\" in the body links to, and the value is that address or its title — \"https://evil.example\" there links them to evil.example — write \"\\[\" where the bracket is text", template, name, line, col)
+	case s.dest == destStuck:
+		line, col := linePosition(template, s.destAt)
+		return fmt.Errorf("%q leaves a link destination open where $%s begins, its \"(\" at line %d column %d: GitHub reads a \"(\", a \"<\" or a quote inside a destination by a grammar of its own (nested parentheses, a bracketed address, a title), and the loader takes no \")\" behind one for the destination's end, so the value may stand inside the link — write the destination without them, or write the link behind the last placeholder", template, name, line, col)
+	case s.dest == destInline:
+		line, col := linePosition(template, s.destAt)
+		return fmt.Errorf("%q leaves a link destination open where $%s begins, its \"(\" at line %d column %d: the value is the address or the title of the link, and no backslash escape works there — \"https://evil.example\" behind \"[x](\" links to evil.example, and a backtick the destination takes in leaves a @mention behind it live — close the destination with \")\" before the placeholder", template, name, line, col)
+	case s.auto:
+		line, col := linePosition(template, s.autoAt)
+		return fmt.Errorf("%q leaves a bare URL open where $%s begins, the %q that starts its link at line %d column %d: GitHub links a bare URL up to the next blank, so the value extends the link the template began — \"evil.example/x\" behind \"https://\" links to evil.example — and a backtick the link takes in leaves a @mention behind it live; put a blank before the placeholder, or write %q where the URL is text", template, name, autolinkTrigger(template[s.autoAt]), line, col, `\`+template[s.autoAt:s.autoAt+1])
 	case s.pending:
 		line, col := linePosition(template, s.pendingAt)
 		return fmt.Errorf("%q puts $%s behind the character reference at line %d column %d with no blank between them: the mention fence reads the line's bytes and GitHub resolves a reference after it has read them, so \"&#64;\" and the value \"octocat\" render a live @octocat — put a blank between them, or write the character itself", template, name, line, col)
 	}
 	return nil
+}
+
+// autolinkTrigger names what an inlineState's autoAt byte belongs to.
+func autolinkTrigger(c byte) string {
+	if c == ':' {
+		return "://"
+	}
+	return "www."
 }
 
 func isASCIILetter(c byte) bool {
