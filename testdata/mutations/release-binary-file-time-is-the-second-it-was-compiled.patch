@@ -1,0 +1,12 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index a56c72b..844d22f 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -15,7 +15,6 @@ builds:
+     # compiler wrote it.
+     # https://goreleaser.com/customization/builds/go/ (mod_timestamp)
+     # https://goreleaser.com/customization/templates/ (CommitDate, CommitTimestamp)
+-    mod_timestamp: "{{ .CommitTimestamp }}"
+     ldflags:
+       - -s -w
+       # {{.Tag}}, not {{.Version}}: GoReleaser's Version drops the leading v, so

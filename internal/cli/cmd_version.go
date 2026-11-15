@@ -23,10 +23,14 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print the glyph version",
 		Long: "version prints the build identity: the release tag, the commit it was built\n" +
-			"from, and the build date, stamped in by ldflags at release time and\n" +
-			"recovered from the module's build info otherwise (so a `go install` build\n" +
-			"still identifies itself). Like `emoji`, it reaches nothing — no git, no\n" +
-			"API, no repository — so it answers anywhere.\n\n" +
+			"from, and the commit date — when that commit was made, never when the\n" +
+			"binary was built, so a rebuild answers the same. A release binary and a\n" +
+			"build.sh build carry all three, stamped in by ldflags; a `go build` in a\n" +
+			"checkout recovers them from the VCS data the Go toolchain embeds. A\n" +
+			"module-mode `go install …@vX.Y.Z` build reports the release tag alone — no\n" +
+			"commit, no date — because Go embeds no VCS data in module mode. Like\n" +
+			"`emoji`, it reaches nothing — no git, no API, no repository — so it answers\n" +
+			"anywhere.\n\n" +
 			"The rules are NOT in the binary: the repository's glyph.toml decides the\n" +
 			"grammar, so this version identifies the engine alone, never the convention\n" +
 			"in force.",

@@ -11,11 +11,16 @@ import "runtime/debug"
 var (
 	Version = "dev" // release tag, e.g. v0.1.0
 	Commit  = ""    // git SHA (goreleaser {{.Commit}})
-	Date    = ""    // build timestamp (goreleaser {{.Date}})
+	// Date is the committer date of Commit, RFC 3339 in UTC — never the time of
+	// the build: a build-time stamp makes every rebuild of one commit a
+	// different binary. All three sources carry this one meaning: goreleaser's
+	// {{.CommitDate}}, build.sh's `git log -1`, and the toolchain's vcs.time.
+	Date = ""
 )
 
-// Info is the resolved build identity, with debug.ReadBuildInfo() filling the
-// commit/date when a bare `go build`/`go install` left the ldflags unset.
+// Info is the resolved build identity, with debug.ReadBuildInfo() filling
+// what the ldflags left unset: commit and date in a checkout build, the
+// version alone in a module-mode `go install pkg@version`.
 type Info struct {
 	Version string `json:"version"`
 	Commit  string `json:"commit,omitempty"`
@@ -24,7 +29,8 @@ type Info struct {
 
 // Resolve returns the build identity. When the linker stamped nothing (a bare
 // `go install`/`go build`), it falls back to what the Go toolchain embedded in
-// the binary — so even un-stamped builds are identifiable.
+// the binary: the VCS stamps of a checkout build, or — in module mode, which
+// has none — the module version alone.
 func Resolve() Info {
 	info := Info{Version: Version, Commit: Commit, Date: Date}
 	if info.Commit != "" && info.Date != "" {
