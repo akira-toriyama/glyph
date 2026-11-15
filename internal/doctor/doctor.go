@@ -375,7 +375,7 @@ func checkTokenWrite(in Input) Check {
 		"writes the rolling draft over the API, and this credential's write would be refused (403) only after the " +
 		"walk has already spent its API budget. On a repository that never runs release there is nothing to do"
 	c.Fix = "for a release repository: run with a credential that can write — in Actions, `permissions: contents: write` " +
-		"on the release caller (the reusable's stub carries it); locally, a token with repo write access"
+		"on the release caller (the one in glyph's README, Getting started step 3, grants it); locally, a token with repo write access"
 	return c
 }
 

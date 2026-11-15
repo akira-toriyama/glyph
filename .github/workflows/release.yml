@@ -9,7 +9,7 @@ name: glyph-release
 # Three shapes, decided by the artifact inputs. NEITHER `app` nor `binary`:
 # a repo whose release IS the notes gets the verdict and the draft upsert and
 # nothing else — ubuntu runner, no Xcode, no build, no assets; the live-fire
-# range (glyph-test-2) fires this shape at THIS file rather than at a hand
+# range (glyph-test) fires this shape at THIS file rather than at a hand
 # copy, since a range that fires a different gun proves nothing about this
 # one. `app:` builds an `<App>.app` bundle through the repo's package.sh and
 # attaches <App>.zip; `binary:` builds a bare binary through build.sh and
@@ -55,10 +55,6 @@ name: glyph-release
 # The caller is README's (Getting started, step 3): a few lines around
 #
 #   uses: akira-toriyama/glyph/.github/workflows/release.yml@vX.Y.Z  # pin a release tag
-#
-# granting `contents: write`, under a `release` concurrency group, with the
-# `with:` the inputs block below documents — every input is optional, so a
-# caller may pass nothing.
 #
 # @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
 # https://github.com/akira-toriyama/glyph/releases. No live version is written
@@ -372,18 +368,15 @@ jobs:
           DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
-          args=(release --json)
-          if [ "$DRY_RUN" = "true" ]; then
-            args=(release --dry-run --json)
-          fi
           # The caller's install block reaches glyph as a FILE (--footer-file)
           # — printf %s, no shell expansion of its backticks / $(…), and no
           # markdown ever concatenated in shell (ratified Q11). An empty input
-          # passes no flag: the draft is the notes alone, with no --- line
-          # over nothing.
-          if [ -n "$INSTALL_NOTES" ]; then
-            printf '%s' "$INSTALL_NOTES" > "$RUNNER_TEMP/install-notes.md"
-            args+=(--footer-file "$RUNNER_TEMP/install-notes.md")
+          # is an empty file, and glyph appends nothing for an empty footer:
+          # the draft is the notes alone (TestReleaseEmptyFooterAppendsNothing).
+          printf '%s' "$INSTALL_NOTES" > "$RUNNER_TEMP/install-notes.md"
+          args=(release --json --footer-file "$RUNNER_TEMP/install-notes.md")
+          if [ "$DRY_RUN" = "true" ]; then
+            args=(release --dry-run --json --footer-file "$RUNNER_TEMP/install-notes.md")
           fi
           status=0
           glyph "${args[@]}" > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/verdict.err" || status=$?

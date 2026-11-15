@@ -1,13 +1,13 @@
 diff --git a/internal/doctor/callerartifact.go b/internal/doctor/callerartifact.go
-index 9294f5d..b11d749 100644
+index b897c74..a2c3a4e 100644
 --- a/internal/doctor/callerartifact.go
 +++ b/internal/doctor/callerartifact.go
-@@ -64,7 +64,7 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
- 			callers++
- 			keys := jobWithKeys(lines, call.Line)
- 			for _, input := range artifactInputs {
--				if keys[input] {
-+				if keys[input] && len(cfg.Packages) == 0 {
- 					findings = append(findings, fmt.Sprintf(
- 						".github/workflows/%s calls %s@%s with %s, and this repository declares %d [[packages]] line(s)",
- 						f.Name, call.Reusable, call.Ref, input, len(cfg.Packages)))
+@@ -55,7 +55,7 @@ func gradeInput(v string) inputValue {
+ 	case v[0] == '|', v[0] == '>':
+ 		return valueUnread
+ 	}
+-	return valueNamed
++	return valueEmpty
+ }
+ 
+ // withoutComment drops a trailing YAML comment from a one-line value: a `#`

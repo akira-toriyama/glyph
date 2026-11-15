@@ -2252,7 +2252,8 @@ line (`internal/cli/cmd_preview.go: previewRun`, one loop over the lines
 the pull touches, the bare line among them; `preview.Package`), the pending
 side from one walk; and the reusable (t-dc9e): `release.yml` hands the
 per-line verdicts through as its `packages` output, the scalars `""`, and
-refuses `app` / `binary` once the verdict says packages. Every `e-7hat` task
+refuses `app` / `binary` on a packages repository ("The reusables", below,
+has where and why). Every `e-7hat` task
 was done by 2026-09-15: the line is complete, the fleet pins a tag that
 carries it (v3.3.0, the first), and its live fire is `glyph-monorepo-test`
 (below — the permanent packages harness, named beside `glyph-test` in
@@ -3614,9 +3615,14 @@ input-validation step because the declaration lives in the caller's
 class the outputs exist to avoid); the misconfigured run stays red until the
 input is dropped, and `glyph doctor` names the pair before the push
 (`workflow-caller-artifact`, §7). Executed by
-`TestReleaseRefusesArtifactInputsOnAPackagesRepository`; mutation rows
-`release-packages-probe-never-refuses` and
-`release-packages-refusal-waits-for-the-verdict`. `lint.yml` is unchanged, and
+`TestReleaseRefusesArtifactInputsOnAPackagesRepository`, which also reads the
+step's own `if:` and the absence of `continue-on-error` off the step (the
+Xcode and cache steps under it carry the same condition, and a search of the
+text between the refusal and the verdict was satisfied by theirs); mutation
+rows `release-packages-probe-never-refuses`,
+`release-packages-refusal-waits-for-the-verdict`,
+`release-packages-refusal-ignores-the-binary-input` and
+`release-packages-refusal-continues-on-error`. `lint.yml` is unchanged, and
 `pr-verdict.yml`'s one change is `breaking` following `level` into `""`
 (Preview, above). The rollout is the runbook's: the binary change is additive, so
 `fleet-preflight` must report zero verdict moves and zero body re-renders on
@@ -4473,16 +4479,27 @@ The severities are the argued part:
   `doctor-caller-checks-skip-an-unreadable-file`).
 - **A `release.yml` caller naming `app` or `binary` on a repository that
   declares `[[packages]]` ⇒ fail (`workflow-caller-artifact`).** The reusable
-  refuses the same pair at its first step after the install, before any draft
-  is touched (§4.1, "The reusables"), so the run is red on every push until
-  the input goes; doctor reads the same two facts — the caller's `with:` keys
-  through the inputs check's reader and the loaded `glyph.toml` — and names
-  the pair before the push. No pin rule: one artifact has no line to attach
-  to at any release, so the pair is wrong at every pin. Unknown when
-  `glyph.toml` was not loaded (the config check owns that) or a workflow file
-  could not be read; a repository without `[[packages]]` passes with nothing
-  to judge. `TestCallerArtifactOutcomes`; mutation row
-  `doctor-caller-artifact-blesses-a-packages-repository`.
+  refuses the same pair (§4.1, "The reusables"), so the run is red on every
+  push until the input goes; doctor reads the same two facts — the value the
+  caller's `with:` gives the input, through the inputs check's reader, and
+  the loaded `glyph.toml` — and names the pair before the push. The value,
+  not the key, because the reusable asks `inputs.app != '' || inputs.binary
+  != ''`: an input with no value or an empty quoted one is `""` at run time
+  and is not named (a key-presence check failed a caller the reusable ran
+  green; glyph-monorepo-test-2 runs 42450511719, `binary: ""`, and
+  43678383110, a bare `binary:`), and a value the checkout does not hold — a
+  `${{ }}` expression, a block scalar — is `unknown`, the grade both other
+  caller checks give what they cannot read, with a non-empty literal beside
+  it still failing. No pin rule: one artifact has no line to attach to at
+  any release, so the pair is wrong at every pin — which is also why the
+  check's text never says where in the run the refusal lands (after the
+  drafts are rewritten through v6.1.0, before the verdict from the next
+  release on). Unknown when `glyph.toml` was not loaded (the config check
+  owns that) or a workflow file could not be read; a repository without
+  `[[packages]]` passes with nothing to judge. `TestCallerArtifactOutcomes`;
+  mutation rows `doctor-caller-artifact-blesses-a-packages-repository`,
+  `doctor-caller-artifact-fails-an-empty-input` and
+  `doctor-caller-artifact-fails-an-expression`.
 - **Both caller checks judge a caller at the release it pins, and only where
   this binary can speak for that release — any other caller is `unknown`,
   never a verdict.** GitHub starts a caller against the reusable at the
@@ -4494,9 +4511,9 @@ The severities are the argued part:
   `release.yml` stopped requiring `app` at v0.8.0 and `install-notes` after
   v6.1.0 — a repository whose release is the notes has nothing to install, and
   the placeholder footer it had to pass to satisfy the input was the first
-  thing a README-only adopter tripped on (glyph-test-2, 2026-11-04; the
-  verdict step passes `--footer-file` only for a non-empty input,
-  `TestReleaseInstallNotesIsOptional`). Judging every pin by the
+  thing a README-only adopter tripped on (glyph-test-2, 2026-11-04; an empty
+  input reaches `release` as an empty `--footer-file`, for which it appends
+  nothing, `TestReleaseEmptyFooterAppendsNothing`). Judging every pin by the
   running binary's tables was wrong both ways at adfc5e1: a `lint.yml@v1.0.0`
   caller granting exactly what v1.0.0 declares failed at `3` — crying wolf, on
   nine of the 57 local checkouts measured (stale branches and worktrees, each

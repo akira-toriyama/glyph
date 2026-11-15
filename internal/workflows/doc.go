@@ -10,8 +10,9 @@
 // PLACEHOLDER instead of a concrete tag — a tag is cut on a tree that is already
 // frozen, so a version written into a comment is stale on arrival, and its
 // presence is what makes the fleet's grep for glyph pins wrong in both
-// directions. The callers themselves are README's ("Getting started", step 3),
-// and this package holds them to what the reusables declare.
+// directions. The callers themselves are README's (the lint caller under
+// "Install", the other two under "Getting started", step 3), and this package
+// holds them to what the reusables declare.
 //
 // It also reconciles the exit-code contract's out-of-Go copies — the prose
 // lists in README.md and docs/DESIGN.md §5, the table in docs/glossary.md §6,

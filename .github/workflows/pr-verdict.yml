@@ -46,15 +46,9 @@ name: glyph-pr-verdict
 # caller). Same rule for any future reusable: the DEFINITION and the CALLER
 # never share a filename.
 #
-# The caller is README's (Getting started, step 3), named
-# .github/workflows/version-preview.yml: a few lines around
+# The caller is README's (Getting started, step 3): a few lines around
 #
 #   uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@vX.Y.Z  # pin a release tag
-#
-# granting `contents: read` and `pull-requests: write`, on pull_request
-# opened / synchronize / reopened — synchronize is the point, since the
-# commits ARE the input and every push recomputes the verdict (a title edit
-# changes nothing, unlike a title-driven preview).
 #
 # @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
 # https://github.com/akira-toriyama/glyph/releases. No live version is written

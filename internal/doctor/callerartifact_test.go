@@ -21,6 +21,13 @@ func artifactAt(root string, verified bool, cfg *config.Config) Check {
 // [[packages]] (glyph-monorepo-test-2 run 41805408808, 2026-11-04: three
 // drafts rewritten before the refusal) — in both input spellings and both
 // with: forms, the healthy shapes, and the not-a-caller cases.
+//
+// The check judges the VALUE, because the reusable does (its refusal runs
+// for a non-empty input): judged by the key alone, a caller the reusable
+// runs green failed here at exit 3 — `binary: ""` on glyph-monorepo-test-2
+// run 42450511719 and a bare `binary:` on run 43678383110 both skipped the
+// refusal step and succeeded. A value the checkout does not hold is unknown,
+// never a verdict either way.
 func TestCallerArtifactOutcomes(t *testing.T) {
 	packages := loaded(t, packagesConfig("camp", "travel"))
 	single := loaded(t, minimalConfig)
@@ -78,6 +85,62 @@ func TestCallerArtifactOutcomes(t *testing.T) {
 			cfg:   packages, want: StatusPass,
 		},
 		{
+			name: "a literal behind a trailing comment is still named",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      binary: probe  # the tool\n")},
+			cfg: packages, want: StatusFail, wantDetail: "with binary",
+		},
+		{
+			name: "a plain scalar on the line under its key is still named",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      binary:\n        probe\n      dry-run: false\n")},
+			cfg: packages, want: StatusFail, wantDetail: "with binary",
+		},
+		{
+			name: "an empty quoted value names no artifact (run 42450511719)",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      binary: \"\"\n      app: ''  # nothing here\n")},
+			cfg: packages, want: StatusPass,
+		},
+		{
+			name: "an input with no value names no artifact (run 43678383110)",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      dry-run: false\n      binary:\n")},
+			cfg: packages, want: StatusPass,
+		},
+		{
+			name: "flow-form with: { binary: \"\" }",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with: { binary: \"\", dry-run: false }")},
+			cfg: packages, want: StatusPass,
+		},
+		{
+			name: "an expression is a value the checkout does not hold",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      binary: ${{ vars.RELEASE_BINARY }}\n")},
+			cfg: packages, want: StatusUnknown, wantDetail: "with binary: ${{ vars.RELEASE_BINARY }}",
+		},
+		{
+			name: "a quoted expression is one too",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      app: \"${{ inputs.app }}\"\n")},
+			cfg: packages, want: StatusUnknown, wantDetail: "with app",
+		},
+		{
+			name: "a block scalar is text this reader does not read",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      binary: >-\n        ${{ vars.RELEASE_BINARY }}\n")},
+			cfg: packages, want: StatusUnknown, wantDetail: "with binary: >-",
+		},
+		{
+			name: "a named artifact beside an expression still fails",
+			files: map[string]string{
+				".github/workflows/release.yml": callerWith("release.yml", "    with:\n      binary: ${{ vars.RELEASE_BINARY }}\n"),
+				".github/workflows/second.yml":  callerWith("release.yml", "    with:\n      app: MyApp\n"),
+			},
+			cfg: packages, want: StatusFail, wantDetail: "with app, and this repository",
+		},
+		{
 			name: "glyph.toml not loaded is could-not-run, never a verdict",
 			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
 				"    with:\n      binary: probe\n")},
@@ -95,9 +158,27 @@ func TestCallerArtifactOutcomes(t *testing.T) {
 				if !strings.Contains(joined, tt.wantDetail) {
 					t.Errorf("details %v never say %q", c.Details, tt.wantDetail)
 				}
-				if !strings.Contains(c.Fix, "packages") {
-					t.Errorf("the fix must send the caller to the packages output, got %q", c.Fix)
+			}
+			switch tt.want {
+			case StatusFail:
+				// README's per-line recipe sits under Getting started, step 3;
+				// its "Packages" section names the output and no recipe.
+				if !strings.Contains(c.Fix, "`packages` output") || !strings.Contains(c.Fix, "README (Getting started, step 3)") {
+					t.Errorf("the fix must send the caller to the packages output and to the recipe's home, got %q", c.Fix)
 				}
+				// The check has no pin rule, and where the refusal lands in the
+				// run differs by release: through v6.1.0 it follows the upsert.
+				for _, position := range []string{"before any draft", "right after", "before its verdict"} {
+					if strings.Contains(c.Message+c.Expected, position) {
+						t.Errorf("the check says where the refusal lands (%q), which is false of a caller pinned at "+
+							"v6.1.0 or below: %q", position, c.Message)
+					}
+				}
+			case StatusUnknown:
+				if tt.cfg != nil && !strings.Contains(c.Message, "unverified here, not verified") {
+					t.Errorf("an unknown must say it verified nothing, got %q", c.Message)
+				}
+			case StatusPass, StatusAdvice:
 			}
 		})
 	}

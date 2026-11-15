@@ -17,9 +17,8 @@ import (
 // reusableNeeds is what each glyph reusable DECLARES — workflow level plus any
 // job-level elevation — and therefore the minimum a caller must grant, with
 // the newest release whose reusable declared otherwise (After; callerpin.go).
-// Needs mirror the permissions blocks in this repo's own workflow files and the
-// caller stubs those files distribute; TestReusableNeedsMatchTheShippedWorkflows
-// holds the two in lockstep, so a grant added to a reusable without a row here
+// Needs mirror the permissions blocks in this repo's own workflow files;
+// TestReusableNeedsMatchTheShippedWorkflows holds the two in lockstep, so a grant added to a reusable without a row here
 // fails a test instead of shipping a check that blesses broken callers, and
 // TestCallerDeclarationBoundsMatchReleasedTags holds After to glyph's tags.
 var reusableNeeds = map[string]permRow{

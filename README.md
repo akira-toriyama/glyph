@@ -241,9 +241,8 @@ its verdict and CI's part.
 **3. Wire CI** — three callers, each a few lines around one `uses:` pinned
 to a release tag; `glyph doctor` checks that each grants and passes what its
 pinned reusable declares. The `lint.yml` caller above is the gate.
-`pr-verdict.yml` posts a merge-preview comment on every pull request — its
-caller is named `version-preview.yml`, never `pr-verdict.yml`, so a caller
-synced into glyph's own fleet can never overwrite the reusable it calls:
+`pr-verdict.yml` posts a merge-preview comment on every pull request, from a
+caller named `version-preview.yml` here:
 
 ```yaml
 # .github/workflows/version-preview.yml
@@ -328,10 +327,13 @@ GoReleaser the file:
 ```
 
 Two facts of that last step are easy to lose. Unset, `GORELEASER_CURRENT_TAG`
-leaves GoReleaser to pick its tag with `git describe`, and a commit carrying
-two tags — a release cut on the same tree as its last candidate — makes that a
-coin toss (glyph's own v3.3.0 push built `3.3.0-rc.2` artifacts and tried to
-upload them onto the rc release; `goreleaser.yml` states the tag). And
+leaves GoReleaser to take the first of the tags that point at `HEAD`, sorted
+`-version:refname` (`git describe` is asked only when none does), and on a
+commit carrying two tags — a release cut on the same tree as its last
+candidate — git sorts the candidate first: `v3.3.0-rc.2` ahead of `v3.3.0`
+(GoReleaser v2.20.2's `getTag`; git 2.39.5, 2.54 and 2.56, measured
+2026-11-15). glyph's own v3.3.0 push built `3.3.0-rc.2` artifacts that way and
+tried to upload them onto the rc release; `goreleaser.yml` states the tag. And
 `--release-notes` is read inside GoReleaser's changelog pipe, so
 `changelog.disable: true` drops the file and ships an empty body — GoReleaser's
 own documentation says so, and glyph's v0.8.2 shipped that way; keep the pipe

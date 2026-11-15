@@ -3,8 +3,7 @@ package workflows
 // The caller side of the reusables: README's "Getting started" step 3 is the
 // one home of each caller's shape (t-prxj), and a caller written from it must
 // start — grant what the reusable declares and pass what it requires — and
-// a release caller passing nothing must get a draft that is the notes alone
-// (t-zgrp). Both failed on a README-only adopter (glyph-test-2, 2026-11-04):
+// a release caller may pass nothing (t-zgrp). Both failed on a README-only adopter (glyph-test-2, 2026-11-04):
 // the callers had no README copy, and `install-notes` was required even for
 // a repository with nothing to install.
 
@@ -25,9 +24,11 @@ const releaseVerdictEnvelope = `{"tag":"v0.1.0","action":"create","level":"minor
 // has nothing to install, and a required input it had to fill with a
 // placeholder was the first thing a README-only adopter tripped on
 // (glyph-test-2, 2026-11-04, under the v6.1.0 reusable). The input is
-// declared optional with an empty default, and the verdict step passes
-// `--footer-file` only for a non-empty value — never an empty file, which
-// would put a `---` line over nothing — and byte for byte when it does.
+// declared optional with an empty default, and the verdict step hands glyph
+// whatever it holds as a file, byte for byte — an empty one included: that an
+// empty footer leaves the draft as the notes alone is glyph's own rule
+// (internal/cli, TestReleaseEmptyFooterAppendsNothing), so the step has no
+// branch on the value.
 func TestReleaseInstallNotesIsOptional(t *testing.T) {
 	raw := repoFile(t, filepath.Join(".github", "workflows", "release.yml"))
 	decl := inputDeclaration(t, code(raw), "install-notes")
@@ -48,7 +49,7 @@ func TestReleaseInstallNotesIsOptional(t *testing.T) {
 		dryRun string
 		want   []string
 	}{
-		{"nothing to install", "", "false", []string{"release", "--json"}},
+		{"nothing to install", "", "false", []string{"release", "--json", "--footer-file", "<file>"}},
 		{"an install block", notes, "false", []string{"release", "--json", "--footer-file", "<file>"}},
 		{"an install block on a dry run", notes, "true", []string{"release", "--dry-run", "--json", "--footer-file", "<file>"}},
 	}
@@ -83,12 +84,6 @@ func TestReleaseInstallNotesIsOptional(t *testing.T) {
 			}
 			if !slices.Equal(got, want) {
 				t.Errorf("glyph release was called as %q, want %q", got, want)
-			}
-			if c.notes == "" {
-				if _, err := os.Stat(footer); err == nil {
-					t.Errorf("an empty install-notes still wrote %s — the step must pass no footer, not an empty one", footer)
-				}
-				return
 			}
 			if b, err := os.ReadFile(footer); err != nil || string(b) != c.notes { //nolint:gosec // the step's own temp file
 				t.Errorf("the footer file holds %q (%v), want the input byte for byte %q", b, err, c.notes)

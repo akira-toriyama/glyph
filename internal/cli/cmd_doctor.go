@@ -91,8 +91,9 @@ func newDoctorCmd() *cobra.Command {
 			"    could-not-run)\n" +
 			"  - no caller of release.yml names `app` or `binary` while glyph.toml declares\n" +
 			"    [[packages]]: each line keeps its own rolling draft and one artifact has no\n" +
-			"    line to attach to, so the reusable refuses the run before its verdict — this\n" +
-			"    names the pair before the push (it answers once glyph.toml loads)\n" +
+			"    line to attach to, so the reusable refuses the run — this names the pair\n" +
+			"    before the push (it answers once glyph.toml loads; an input set from an\n" +
+			"    expression is could-not-run)\n" +
 			"  - no STALE glyph-written hook is installed (one check per kind: commit-msg,\n" +
 			"    pre-push). Hooks are untracked, so\n" +
 			"    nothing refreshes one: whatever glyph was on PATH the day it was installed\n" +

@@ -73,21 +73,36 @@ func TestReleaseRefusesArtifactInputsOnAPackagesRepository(t *testing.T) {
 			"moved one and this guard is asserting nothing", ri, ii, vi)
 	}
 	if ii >= ri || ri >= vi {
-		t.Errorf("the packages refusal is out of place (install=%d, refuse=%d, verdict=%d): it must follow the "+
+		t.Fatalf("the packages refusal is out of place (install=%d, refuse=%d, verdict=%d): it must follow the "+
 			"install (glyph reads the declaration) and precede the verdict (a refusal after the upsert has "+
 			"already rewritten every line's draft)", ii, ri, vi)
 	}
-	step := body[ri:vi]
-	const gate = "if: inputs.app != '' || inputs.binary != ''"
-	if !strings.Contains(step, gate) {
-		t.Errorf("the packages refusal is not gated as %q — gated on the verdict's outputs it never fires "+
-			"before the verdict, gated wider it costs every verdict-only caller a probe", gate)
+	// The step's OWN keys, read off the step: the Xcode and cache steps below
+	// it carry the same condition, so a search of the text between this step
+	// and the verdict finds theirs and holds whatever this one says.
+	const refuseStep = "Refuse an artifact input on a packages repository"
+	shape := readStepShape(t, raw, refuseStep)
+	if shape.keys["run"] != "|" {
+		t.Fatalf("canary: the reader found keys %v on the refusal step, which has a `run: |` — the checks below "+
+			"would hold over a reader that sees nothing", shape.keys)
 	}
-	if strings.Contains(step, "steps.verdict") {
-		t.Errorf("the packages refusal reads steps.verdict, which has not run yet where the refusal stands:\n%s", step)
+	const gate = "inputs.app != '' || inputs.binary != ''"
+	if got := shape.keys["if"]; got != gate {
+		t.Errorf("the packages refusal's condition is %q, want %q — off, or narrowed to one input, the other "+
+			"input's caller is never refused and the verdict rewrites every line's draft under its footer; gated "+
+			"on the verdict's outputs it cannot fire before the verdict; wider, every verdict-only caller pays "+
+			"for a probe", got, gate)
+	}
+	if v, ok := shape.keys["continue-on-error"]; ok {
+		t.Errorf("the packages refusal carries `continue-on-error: %s` — the job goes on past its exit 1 to the "+
+			"verdict, which is the upsert the refusal exists to precede", v)
+	}
+	if v, ok := shape.keys["shell"]; ok {
+		t.Errorf("the packages refusal names `shell: %s` — the cases below reproduce the unspecified shell's "+
+			"`bash -e {0}`; teach them the new invocation", v)
 	}
 
-	script := extractRun(t, raw, "Refuse an artifact input on a packages repository")
+	script := extractRun(t, raw, refuseStep)
 	requireTool(t, "jq")
 	cases := []struct {
 		name     string

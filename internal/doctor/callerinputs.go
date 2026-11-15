@@ -100,17 +100,31 @@ func inputsExpected(glyph string) string {
 }
 
 // jobWithKeys returns the top-level keys of the `with:` mapping belonging to
-// the job whose `uses:` sits on usesLine (1-indexed). The job block's bounds
-// are walked out from the uses line itself — up to the job-name line (the
-// first shallower-indented content line), then forward until the block closes
-// — so a `with:` written above its `uses:` is still seen; YAML orders siblings
-// freely and a miss in either direction would cry wolf over a healthy caller.
-// The forward walk reads only contentLines: an install-notes heredoc's content
-// must not read as keys.
+// the job whose `uses:` sits on usesLine (1-indexed): jobWith's keys, for a
+// check that asks only whether an input is named.
 func jobWithKeys(lines []string, usesLine int) map[string]bool {
 	keys := map[string]bool{}
+	for k := range jobWith(lines, usesLine) {
+		keys[k] = true
+	}
+	return keys
+}
+
+// jobWith returns the `with:` mapping belonging to the job whose `uses:` sits
+// on usesLine (1-indexed): each top-level key and its value as the file
+// spells it — the text after the key's colon, a trailing comment included,
+// with any deeper content line folded onto it behind one space. A block
+// scalar's value is its header alone (`|`): contentLines yields none of its
+// text. The job block's bounds are walked out from the uses line itself — up
+// to the job-name line (the first shallower-indented content line), then
+// forward until the block closes — so a `with:` written above its `uses:` is
+// still seen; YAML orders siblings freely and a miss in either direction
+// would cry wolf over a healthy caller. The forward walk reads only
+// contentLines: an install-notes heredoc's content must not read as keys.
+func jobWith(lines []string, usesLine int) map[string]string {
+	with := map[string]string{}
 	if usesLine < 1 || usesLine > len(lines) {
-		return keys
+		return with
 	}
 	jobIndent := indentOf(lines[usesLine-1])
 	start := usesLine - 1
@@ -126,6 +140,7 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 	}
 	inWith := false
 	withKeyIndent := -1 // indent of the keys directly inside with:, learned from the first one
+	last := ""          // the with: key a deeper line continues
 	for _, line := range contentLines(lines, start) {
 		trimmed := strings.TrimLeft(line, " \t")
 		ind := indentOf(line)
@@ -139,8 +154,8 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 				// Flow form: with: { a: 1, b: 2 } — the keys sit on this line.
 				if rest = strings.TrimSpace(rest); strings.HasPrefix(rest, "{") {
 					for part := range strings.SplitSeq(strings.Trim(rest, "{} "), ",") {
-						if k, _, found := strings.Cut(part, ":"); found {
-							keys[strings.TrimSpace(k)] = true
+						if k, v, found := strings.Cut(part, ":"); found {
+							with[strings.TrimSpace(k)] = strings.TrimSpace(v)
 						}
 					}
 					inWith = false
@@ -155,11 +170,17 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 			withKeyIndent = ind
 		}
 		if ind != withKeyIndent {
-			continue // deeper content: a nested value, never a with: key
+			// Deeper content: a nested value or a plain scalar's next line,
+			// never a with: key.
+			if last != "" {
+				with[last] = strings.TrimSpace(with[last] + " " + strings.TrimSpace(trimmed))
+			}
+			continue
 		}
-		if k, _, found := strings.Cut(trimmed, ":"); found {
-			keys[strings.TrimSpace(k)] = true
+		if k, v, found := strings.Cut(trimmed, ":"); found {
+			last = strings.TrimSpace(k)
+			with[last] = strings.TrimSpace(v)
 		}
 	}
-	return keys
+	return with
 }

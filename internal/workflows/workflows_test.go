@@ -463,9 +463,9 @@ func workflowFiles(t *testing.T) []string {
 
 // TestCallerStubsCarryNoConcreteVersion pins the split that makes the
 // reusables' headers maintainable: a COMMENTED reference to a glyph reusable
-// — lint.yml's caller stub, the one `uses:` line release.yml and pr-verdict.yml
-// name as the caller README holds — shows @vX.Y.Z, an EXECUTABLE `uses:` shows
-// a real tag.
+// — the one `uses:` line each reusable's header names as the caller README
+// holds, pr-verdict.yml's gating example — shows @vX.Y.Z, an EXECUTABLE
+// `uses:` shows a real tag.
 //
 // A concrete version in a comment cannot be kept current by any schedule of
 // edits. A release tag is cut on a tree that was frozen BEFORE it (35–62s
