@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index 9c2a71a..33610a6 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -204,7 +204,7 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
+ 	}
+ 
+ 	switch {
+-	case len(bad) > 0:
++	case len(bad) > 0 && workflowsErr == nil:
+ 		c.Status = StatusFail
+ 		c.Observed = fmt.Sprintf("%d of %d %s reference(s) in %d workflow/action file(s) in this checkout do not pin a release tag",
+ 			len(bad), len(refs), glyphRepo, files)

@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 51d2cc8..408ec7a 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -87,6 +87,6 @@ func previewWalkEscape(baselines, unbaselined []string) string {
+ 	named, covers := "the tag named above", " at the commit that release covers"
+-	if len(baselines) > 1 {
++	if len(baselines) > 1 && false {
+ 		named = "the tags named above"
+ 	}
+-	if len(unbaselined) > 1 {
++	if len(unbaselined) > 1 && false {
+ 		covers = ", each at the commit its release covers"

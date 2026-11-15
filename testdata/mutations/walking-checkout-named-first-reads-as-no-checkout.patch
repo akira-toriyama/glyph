@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 9e841f0..34f2ad3 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -94,5 +94,5 @@ jobs:
+     steps:
+-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
++      - name: check out the tagged tree
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+         with:
+-          fetch-depth: 0
+           # GoReleaser only READs local git; every write (release, cask push)

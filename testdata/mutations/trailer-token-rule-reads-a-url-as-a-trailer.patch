@@ -1,0 +1,16 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 0f37a0b..b960588 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -311,10 +311,7 @@ func splitTrailer(l string) (token, rest string, ok bool) {
+ 	if j >= len(l) || l[j] != ':' {
+ 		return "", "", false
+ 	}
+-	if j == i && strings.HasPrefix(l[j:], "://") {
+-		return "", "", false
+-	}
+-	return l[:i], l[j+1:], true
++	return l[:i], l[j+1:], true // MUTATION: a `token://` line is the trailer `token`, as git 2.54 reads it
+ }
+ 
+ // trailerValue returns the value of the LAST trailer whose token matches,

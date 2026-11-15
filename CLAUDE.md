@@ -90,9 +90,12 @@ exit-0 pass-through by design, so a broken local gate never looks like a verdict
   - Concurrent runs each need their own `TMPDIR` as well as their own `GOLANGCI_LINT_CACHE`:
     golangci-lint's run lock lives in `TMPDIR`, so two runs sharing it fail one with
     `parallel golangci-lint is running`.
-  - Its `bite` step needs the `akira-toriyama/.github` clone beside this repo (or
-    `GLYPH_FLEET_HUB`) and reads **committed** history only — an uncommitted test is
-    invisible to it.
+  - It reads the hub (`akira-toriyama/.github`, the clone beside this repo or
+    `GLYPH_FLEET_HUB`) up front, at the tag the callers pin, for three gates: bite, the lint
+    floor and repo-policy. The tag is fetched from the clone's origin into the run's own
+    temporary repository, so the clone is read and never written; offline, the clone's copy
+    of the tag judges and the final line says so. bite reads **committed** history only — an
+    uncommitted test is invisible to it.
   - Do not "fix" these two gaps: `-count=1` is absent because `go-ci.yml` omits it too (add
     it by hand only when chasing a flake), and `taplo` is unmirrored for the same reason
     actionlint is — the hub's reusable pins the tool version, so a local run would judge with
@@ -169,8 +172,8 @@ exit-0 pass-through by design, so a broken local gate never looks like a verdict
   nothing). Its verdict is "**at least one** bites", so it is weaker than it sounds — and
   weaker than `scripts/mutations.sh`, which requires every named test to fail.
   Rationale: [`docs/go-bite.md`](https://github.com/akira-toriyama/.github/blob/main/docs/go-bite.md).
-- **dist-gate** — a distribution-layer change needs an `internal/workflows` `*_test.go`
-  change in the same PR, or a `Dist-gate-exempt: <reason>` trailer on every non-merge
+- **dist-gate** — a distribution-layer change needs an added or modified `internal/workflows`
+  `*_test.go` in the same PR, or a `Dist-gate-exempt: <reason>` trailer on every non-merge
   commit; a same-action SHA pin swap (dependabot's bump) needs neither and stands the gate
   down. The term, its file set and the incident behind it: glossary §7.
 - **`internal/workflows`** — tests the workflow YAML itself (the install action's single

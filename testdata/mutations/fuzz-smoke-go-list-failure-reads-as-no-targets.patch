@@ -1,0 +1,13 @@
+diff --git a/scripts/fuzz-smoke.sh b/scripts/fuzz-smoke.sh
+index 7d2bedb..4fdaa9e 100644
+--- a/scripts/fuzz-smoke.sh
++++ b/scripts/fuzz-smoke.sh
+@@ -21,7 +21,7 @@
+ set -eu
+ cd "$(dirname "$0")/.."
+ 
+-pkgs=$(go list ./...)
++pkgs=$(go list ./... || true)
+ found=0
+ for pkg in $pkgs; do
+   listing=$(go test -list '^Fuzz' "$pkg")

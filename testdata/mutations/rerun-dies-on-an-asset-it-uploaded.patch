@@ -1,0 +1,8 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index 1da817d..0fe4f37 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -95,3 +95,2 @@ release:
+   use_existing_draft: true
+-  replace_existing_artifacts: true
+   # The cask file rides on the release: the cask job reads it from the

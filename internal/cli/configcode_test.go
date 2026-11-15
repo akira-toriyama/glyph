@@ -217,6 +217,26 @@ func withoutCommitStyle(t *testing.T) string {
 	return without
 }
 
+// TestLintCannotLoadAMiscasedKey: a key in any case but the schema's spelling
+// does not load (config.checkKeyCase), so lint judges nothing and exits 2
+// naming the key as written and the spelling to write — never 3, which the
+// installed hooks block on, and never 0, which `Skip = true` answered at
+// 2f9428a by skipping the commit under a key the author did not write.
+func TestLintCannotLoadAMiscasedKey(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	seedConfig(t, dir, strings.Replace(withoutCommitStyle(t), "[[patterns]]\n", "[[patterns]]\npattern = '^WIP'\nSkip = true\n\n[[patterns]]\n", 1))
+	t.Chdir(dir)
+
+	setStdin(t, "WIP: not yet\n")
+	code, _, stderr := runGlyph(t, "lint", "--stdin")
+	if code != int(core.CodeUsage) {
+		t.Fatalf("exit = %d, want %d\nstderr: %s", code, core.CodeUsage, stderr)
+	}
+	if env := decodeErrorEnvelope(t, stderr); !strings.Contains(env.Message, "miscased key patterns[0].Skip (write skip)") {
+		t.Errorf("envelope message = %q, want it to name patterns[0].Skip and the spelling skip", env.Message)
+	}
+}
+
 // TestLintCannotLoadAConfigStillCarryingCommitStyle: a glyph.toml that still
 // has the removed [commit] style line does not load, so lint judges nothing
 // and exits 2 naming the key — never 3, which the installed hooks block on,

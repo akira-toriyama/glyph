@@ -1,0 +1,17 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 69da191..0ea9ffd 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -81,6 +81,12 @@ type trailer struct {
+ func trailers(message string) []trailer {
+ 	message = skipBlankLines(message)
+ 	lines := strings.Split(message[:logMessageEnd(message)], "\n")
++	for i, l := range lines { // MUTATION: interpret-trailers' patch divider
++		if strings.HasPrefix(l, "---") && (len(l) == 3 || isGitSpace(l[3])) {
++			lines = lines[:i]
++			break
++		}
++	}
+ 
+ 	var out []trailer
+ 	last := -1 // index into out of the trailer a continuation folds onto; -1 under a line that is not one

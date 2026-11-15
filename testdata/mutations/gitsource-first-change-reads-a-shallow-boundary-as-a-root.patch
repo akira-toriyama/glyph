@@ -1,0 +1,9 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 4e9dbb6..0ceeb95 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -690,3 +690,3 @@ func firstChange(ctx context.Context, dir, rev string, pathspec []string) (sha s
+ 	}
+-	if n == 0 {
++	if n == 0 && false {
+ 		boundary, berr := isGraftBoundary(ctx, dir, fields[0])

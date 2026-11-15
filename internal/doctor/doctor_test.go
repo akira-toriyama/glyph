@@ -83,6 +83,14 @@ func TestUnansweredRepoReadIsCouldNotRunNotAFailure(t *testing.T) {
 	if got := find(t, r, idSquashEnabled).Status; got != StatusUnknown {
 		t.Errorf("%s = %s, want unknown", idSquashEnabled, got)
 	}
+	// An outage names no credential to fix: the settings' remedy is the token
+	// check's split. The refused arm needs github's unexported statusError, so it
+	// runs end to end (internal/cli's TestDoctorSplitsTheRepoReadOnWhatTheAPISaid).
+	for _, id := range []string{idSquashEnabled, idMergeCommit, idRebaseMerge, idSquashTitle, idSquashMessage} {
+		if c := find(t, r, id); !strings.Contains(c.Fix, "re-run once the API answers") || strings.Contains(c.Fix, "credential") {
+			t.Errorf("%s fix = %q, want the wait, never the credential", id, c.Fix)
+		}
+	}
 	if got := find(t, r, idWorkflowPinned).Status; got != StatusPass {
 		t.Errorf("%s = %s, want pass — the local check needs no credential", idWorkflowPinned, got)
 	}
@@ -153,7 +161,7 @@ func TestTokenWriteDegradesWithTheUnreadRepo(t *testing.T) {
 // false, and none of these four has shipped one yet — what is pinned here is
 // the load-bearing clause of each message, so a reworded claim becomes a
 // review question instead of a silent drift. The one arm not covered is
-// token-repo-read's 404 finding: its error shape (github's statusError) is
+// token-repo-read's refused finding: its error shape (github's statusError) is
 // unexported by design, so that message is exercised end-to-end from
 // internal/cli instead.
 func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {

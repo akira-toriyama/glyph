@@ -1,0 +1,13 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 3b17eb5..b67df8f 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -169,7 +169,7 @@ func logMessageEnd(msg string) int {
+ 			if runStart == 0 {
+ 				runStart = bol
+ 			}
+-		case strings.HasPrefix(msg[bol:], "Conflicts:\n"):
++		case strings.HasPrefix(strings.ToLower(msg[bol:]), "conflicts:\n"): // MUTATION: a lowercase header opens the list
+ 			inConflicts = true
+ 			if runStart == 0 {
+ 				runStart = bol

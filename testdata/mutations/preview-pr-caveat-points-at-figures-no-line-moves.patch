@@ -1,0 +1,9 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 7a4e6c1..013d2e4 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -375,3 +375,3 @@ func renderPackages(in Input) string {
+ 	b.WriteString(pendingShortBlock(in.PendingShort, true, unreached))
+-	b.WriteString(prShortBlock(in.PRShort, figures, versionless))
++	b.WriteString(prShortBlock(in.PRShort, true, versionless))
+ 	for _, p := range in.Packages {

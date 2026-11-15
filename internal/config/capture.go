@@ -4,19 +4,21 @@ import (
 	"fmt"
 	"regexp"
 	"regexp/syntax"
+	"strings"
 )
 
-// This file is what Load reads off one named group of one pattern, once: the
-// last group of that name, the one Match keeps; its sub-expression compiled
-// whole; and whether a match can pass it by. The loader reads it — the scope
+// This file is what Load reads off one named group of one pattern, once —
+// every group of that name, since Match hands on whichever of them took part
+// (participant): their sub-expressions compiled whole, as one alternation; and
+// whether a match can pass the name by. The loader reads it — the scope
 // spellers every package name is held to (scopeSpellers) — and so does
 // Sayable when a refusal is worded; nothing here words a refusal. It is read
 // only for a file that declares packages (readCaptures), the one kind either
 // reader is asked about.
 
-// capture is one named group of one pattern as Match reads it: the last
-// capture of that name (lastGroup), its sub-expression anchored whole, and
-// whether a match can pass it by.
+// capture is one named group of one pattern as Match reads it: the groups of
+// that name (groupsNamed), their sub-expressions anchored whole as one
+// alternation, and whether a match can pass the name by.
 type capture struct {
 	present   bool
 	skippable bool
@@ -41,17 +43,25 @@ func readCaptures(patterns []Pattern) error {
 	return nil
 }
 
+// captureOf reads every group called name. The name is skippable only when
+// every one of its groups is: a group no ?, *, {0,n} or alternation sits over
+// takes part in every match, so the name is bound whichever alternative the
+// others sit in.
 func captureOf(tree *syntax.Regexp, name string) capture {
-	group := lastGroup(tree, name)
-	if group == nil {
+	groups := groupsNamed(tree, name)
+	if len(groups) == 0 {
 		return capture{}
 	}
-	c := capture{present: true}
-	_, c.skippable = passable(tree, group, false)
+	c := capture{present: true, skippable: true}
+	for _, group := range groups {
+		if _, skippable := passable(tree, group, false); !skippable {
+			c.skippable = false
+		}
+	}
 	// A sub-expression that will not compile on its own spells nothing here:
 	// a refusal then names no escape it cannot vouch for. wordErr keeps why,
 	// for the loader's refusal of such a scope group (scopeSpellers).
-	c.word, c.wordErr = wholeGroup(group)
+	c.word, c.wordErr = wholeGroups(groups)
 	return c
 }
 
@@ -61,9 +71,10 @@ func (c capture) spells(word string) bool {
 
 // passable finds target under re and reports whether a match of re can pass
 // it by: some ancestor is a ?, a *, a {0,n} or an alternation. An alternation
-// counts whole — whether the other branches hold the group too is not asked,
-// because Match reads only the last group of a name, and a branch that
-// captured under an earlier one hands on nothing.
+// counts whole — whether its other branches hold a group of the same name is
+// not asked, so a name every branch captures reads as skippable too. That
+// over-answers in the safe direction only: optional() is never affirmed, only
+// negated (Sayable.ScopeRequired), so a skippable read licenses no sentence.
 func passable(re, target *syntax.Regexp, under bool) (found, skippable bool) {
 	if re == target {
 		return true, under
@@ -79,29 +90,48 @@ func passable(re, target *syntax.Regexp, under bool) (found, skippable bool) {
 	return false, false
 }
 
-// lastGroup is the capture called name with the highest index — the one
-// whose value Match keeps, for the scope and the sigil alike: it fills both
-// in index order — or nil when the pattern names none. withoutScope finds
-// the group it proposes to drop with it too.
-func lastGroup(re *syntax.Regexp, name string) *syntax.Regexp {
-	var last *syntax.Regexp
+// groupsNamed is every capture called name, in index order — the order
+// SubexpNames lists them, so a group's position here is its position among
+// the pattern's groups of that name — or nil when the pattern names none.
+func groupsNamed(re *syntax.Regexp, name string) []*syntax.Regexp {
+	var groups []*syntax.Regexp
 	var walk func(*syntax.Regexp)
 	walk = func(r *syntax.Regexp) {
-		if r.Op == syntax.OpCapture && r.Name == name && (last == nil || r.Cap > last.Cap) {
-			last = r
+		if r.Op == syntax.OpCapture && r.Name == name {
+			groups = append(groups, r)
 		}
 		for _, sub := range r.Sub {
 			walk(sub)
 		}
 	}
 	walk(re)
-	return last
+	return groups
 }
 
-// wholeGroup compiles a capture's own sub-expression anchored whole: every
-// value that group can hand on. String round-trips to an equivalent
-// expression, flags included (regexp/syntax's TestToStringEquivalentParse);
-// it is compiled, never shown — a refusal quotes the source instead.
-func wholeGroup(group *syntax.Regexp) (*regexp.Regexp, error) {
-	return regexp.Compile(`\A(?:` + group.Sub[0].String() + `)\z`)
+// groupByCap is the capture numbered cap under re — the submatch index
+// FindStringSubmatchIndex reports it at, since regexp numbers groups as the
+// parser does — or nil.
+func groupByCap(re *syntax.Regexp, cap int) *syntax.Regexp {
+	if re.Op == syntax.OpCapture && re.Cap == cap {
+		return re
+	}
+	for _, sub := range re.Sub {
+		if g := groupByCap(sub, cap); g != nil {
+			return g
+		}
+	}
+	return nil
+}
+
+// wholeGroups compiles the captures' own sub-expressions anchored whole, as
+// one alternation: every value a group of the name can hand on, whichever of
+// them takes part. String round-trips to an equivalent expression, flags
+// included (regexp/syntax's TestToStringEquivalentParse); it is compiled,
+// never shown — a refusal quotes the source instead.
+func wholeGroups(groups []*syntax.Regexp) (*regexp.Regexp, error) {
+	alternatives := make([]string, 0, len(groups))
+	for _, group := range groups {
+		alternatives = append(alternatives, `(?:`+group.Sub[0].String()+`)`)
+	}
+	return regexp.Compile(`\A(?:` + strings.Join(alternatives, `|`) + `)\z`)
 }

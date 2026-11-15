@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 871d661..82d94a1 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -1114,7 +1114,7 @@ func runRead(ctx context.Context, dir string, stdin io.Reader, args ...string) (
+ // be vouched for, and the line names what to fix.
+ func errorLine(stderr []byte) (string, bool) {
+ 	for line := range strings.SplitSeq(string(stderr), "\n") {
+-		if line = strings.TrimSpace(line); strings.HasPrefix(line, "error:") {
++		if line = strings.TrimSpace(line); line != "" {
+ 			return line, true
+ 		}
+ 	}

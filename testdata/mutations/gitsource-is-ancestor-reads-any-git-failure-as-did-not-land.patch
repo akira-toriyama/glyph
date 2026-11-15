@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 9914fe8..6b7c733 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -650,7 +650,7 @@ func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
+ 			return false, nil
+ 		}
+ 	}
+-	return false, err
++	return false, nil
+ }
+ 
+ // firstParentLog returns the n commits ending at rev along the FIRST-PARENT

@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 17d2c41..acf2b04 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -191,7 +191,7 @@ func stepBlockState(states int, c byte) int {
+ 		switch {
+ 		case digit:
+ 			next |= ordinalDigits
+-		case c == '.', c == ')':
++		case c == '.':
+ 			next |= ordinalMark
+ 		}
+ 	}

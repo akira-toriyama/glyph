@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 871d661..c81b6c2 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -352,7 +352,7 @@ func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
+ 	switch {
+ 	case err != nil:
+ 		return false, err
+-	case held:
++	case held && false:
+ 		return false, core.APIf("git cat-file: %s names an object this repository holds and cannot read", rev)
+ 	}
+ 	return false, nil

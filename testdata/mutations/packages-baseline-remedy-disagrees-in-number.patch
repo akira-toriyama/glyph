@@ -1,0 +1,14 @@
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 9a489c5..89e4003 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -261,3 +261,3 @@ func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line
+ 		case len(baselines) > 1:
+-			remedy = fmt.Sprintf("; to start from a tag instead, cut %s, each at the commit before its line's first change — a baseline says nothing of its line was released before there, and it takes its number: each line's first release then steps from its baseline", strings.Join(baselines, " / "))
++			remedy = fmt.Sprintf("; to start from a tag instead, cut %s at the commit before that line's first change — a baseline says nothing of the line was released before there, and it takes its number: the line's first release then steps from it", strings.Join(baselines, " / "))
+ 		}
+@@ -267,3 +267,3 @@ func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line
+ 		case len(pastBoundary) > 1:
+-			remedy += fmt.Sprintf("; no baseline can be named for the %s line(s): within this shallow clone the oldest commit touching each is the boundary, whose own diff cannot be read, so each line's first change lies at or past it (check out with fetch-depth: 0)", strings.Join(pastBoundary, ", "))
++			remedy += fmt.Sprintf("; no baseline can be named for the %s line(s): within this shallow clone the oldest commit touching it is the boundary, whose own diff cannot be read, so the line's first change lies at or past it (check out with fetch-depth: 0)", strings.Join(pastBoundary, ", "))
+ 		}

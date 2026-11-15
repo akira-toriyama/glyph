@@ -26,17 +26,18 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/notes"
 )
 
-// Git is the checkout the walk reads: the ten questions it asks local git,
+// Git is the checkout the walk reads: the eleven questions it asks local git,
 // each a gitsource.Checkout method bound to one directory. Every verdict
 // command runs inside a checkout of the repository being released (DESIGN
 // §4), and this is that checkout. The one error the walk classifies rather
-// than hands down is DiffTreeFiles' shallow boundary, read through
-// gitsource.IsShallowBoundary — an answer only gitsource's own error type
-// gives, so another implementation cannot signal a boundary; every other
-// error is the API class as the walk received it.
+// than hands down is the shallow boundary DiffTreeFiles and FirstChange
+// answer, read through gitsource.IsShallowBoundary — an answer only
+// gitsource's own error type gives, so another implementation cannot signal
+// a boundary; every other error is the API class as the walk received it.
 type Git interface {
 	Log(ctx context.Context, revRange string) ([]gitsource.RawCommit, error)
 	IsShallow(ctx context.Context) (bool, error)
+	FirstChange(ctx context.Context, rev string, pathspec []string) (sha string, parents int, err error)
 	Tags(ctx context.Context) ([]string, error)
 	MergedTags(ctx context.Context, rev string) ([]string, error)
 	IsTag(ctx context.Context, name string) (bool, error)
@@ -102,8 +103,23 @@ type Result struct {
 // range).
 type Scope struct {
 	Only   []config.Package // nil: every declared line
-	Escape string           // "": the --since-tag sentence
+	Escape Escape           // nil: the --since-tag sentence
 }
+
+// Escape composes a caller's way out of the whole-history refusal past the
+// cap, from what the refusal offered each untagged line: baselines are the
+// baseline tags it told the operator to cut, unbaselined the first-release
+// shapes (<prefix>vX.Y.Z, <prefix>vN.0.0 on a locked line) of the lines no
+// baseline can be named for — a first change that is the root commit, or
+// lies at or past a shallow boundary, or no commit at all. A caller with no
+// --since-tag has one way out per line and must name it in the case it fires
+// in: "cut the tag named above" over an empty baselines dangled (preview,
+// measured 2026-11-08 on a root-declared line past the cap). The sentence
+// is appended after the refusal's own remedy. "" is read as no escape at
+// all and gets the --since-tag sentence, as a nil Escape does
+// (wholeHistory), so a caller without that flag returns a way out in every
+// case it is called with.
+type Escape func(baselines, unbaselined []string) string
 
 // Since is the release walk: the lines tagFlag names and the ONE range over
 // them (resolveLinesScoped), each line's own range (readLineRanges), the walk
@@ -207,6 +223,15 @@ func BumpCommits(ws []Commit) []bump.Commit {
 // shas no branch holds. Blanked HERE, where DESIGN §4's arms are a known
 // fact, because internal/notes renders what it is given and holds no arm
 // knowledge.
+//
+// Login is carried through as the API reported it and from nowhere else: the
+// `author.login` GitHub attached to a listed commit, "" for a commit git
+// alone described (the fallback arm, --range) or one GitHub mapped to no
+// account. Nothing in the commit itself is read for a login — the author
+// name is free text, and so is the author address, a GitHub noreply one
+// included: `<id>+<login>@users.noreply.github.com` is typed by whoever
+// configured git, and GitHub attributes the commit by the id, not the login
+// it carries (DESIGN §3, t-39fy, t-ayhq).
 func NoteCommits(ws []Commit) []notes.Commit {
 	out := make([]notes.Commit, 0, len(ws))
 	for _, w := range ws {
@@ -214,19 +239,7 @@ func NoteCommits(ws []Commit) []notes.Commit {
 		if w.Pull > 0 && !w.Landed {
 			sha = ""
 		}
-		out = append(out, notes.Commit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: identity(w.Raw), Message: w.Raw.Message})
+		out = append(out, notes.Commit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: w.Raw.Login, Message: w.Raw.Message, Recorded: w.Raw.Recorded})
 	}
 	return out
-}
-
-// identity is the GitHub login the notes may credit a commit's author BY:
-// the login GitHub itself mapped the commit to when the API described it,
-// else the login a noreply author address carries, else "" — and "" is an
-// answer, never the author name: a name is free text and @<name> pages
-// whoever happens to own it (t-39fy).
-func identity(r gitsource.RawCommit) string {
-	if r.Login != "" {
-		return r.Login
-	}
-	return github.LoginFromNoreply(r.Email)
 }

@@ -1,0 +1,13 @@
+diff --git a/scripts/mutations.sh b/scripts/mutations.sh
+index 9a867c3..88b28b3 100755
+--- a/scripts/mutations.sh
++++ b/scripts/mutations.sh
+@@ -187,7 +187,7 @@ reap
+ # prints, and no such file when the test exists and passes on the unmutated tree.
+ baseline() { # baseline <key> <pkg> <test>
+   list=$(listfile "$2")
+-  if [ -f "$list.err" ]; then
++  if false; then
+     {
+       echo "  ✗ go test -list cannot read $2 on the unmutated tree, so this row cannot be judged:"
+       sed 's/^/    /' "$list.err"

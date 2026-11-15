@@ -298,9 +298,14 @@ func (c *Client) attempt(req *http.Request, what string, n int) ([]byte, http.He
 		return nil, nil, failed(req.Context(), "reading "+what, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, nil, &statusError{status: resp.StatusCode, retryAfter: resp.Header.Get("Retry-After"),
-			retried: n > 0, err: core.APIf(
-				"github: %s: %d %s", what, resp.StatusCode, distill(body))}
+		message := distill(body)
+		return nil, nil, &statusError{
+			status:      resp.StatusCode,
+			retryAfter:  resp.Header.Get("Retry-After"),
+			rateLimited: rateLimited(resp.Header, message),
+			retried:     n > 0,
+			err:         core.APIf("github: %s: %d %s", what, resp.StatusCode, message),
+		}
 	}
 	return body, resp.Header, nil
 }

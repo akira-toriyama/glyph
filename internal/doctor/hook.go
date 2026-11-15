@@ -108,6 +108,10 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
 // before judging anything — codes the hook waves through as 0 — so a
 // pass-through there is unknown, owned by the config check, never a failure
 // blamed on the glyph on PATH (t-fdd8 (5); DESIGN §7).
+//
+// A glyph absent from PATH is asked before either reading of an exit 0: with no
+// glyph to run nothing was claimed and no config was read, so "the whole chain
+// answered" and "the config's absence answering" would both be false.
 func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
 	gate := int(core.CodeLint)
 	c := Check{
@@ -137,6 +141,13 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
 		c.Observed = fmt.Sprintf("the hook blocked the probe message at exit %d", gate)
 		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +
 			"stops a commit are in working order on this machine"
+	case probe.Exit == 0 && probe.GlyphAbsent:
+		c.Status = StatusFail
+		c.Observed = "glyph is not on PATH, so the hook warned and let a violating message through at exit 0"
+		c.Message = "the hook resolves glyph with `command -v glyph` each time it runs, and with none there it warns and " +
+			"passes every commit — by design, a missing tool never blocks one. Every commit on this machine is going " +
+			"unlinted while CI still enforces the convention"
+		c.Fix = "put the glyph binary on PATH, so that `command -v glyph` resolves it, and re-run"
 	case probe.Exit == 0 && probe.Claimed:
 		c.Status = StatusPass
 		c.Observed = "the hook let the probe message through at exit 0 — and this repository's glyph.toml claims that message, so 0 is the verdict a working chain gives"
@@ -216,7 +227,13 @@ func checkPrePushHook(installed hook.Installed, readErr, dirErr error, probe *Ho
 		c.Observed += fmt.Sprintf(", but whether git records each remote's default branch could not be read: %v", headsErr)
 		c.Message = "the hook blocks a violation only on the default branch it reads from refs/remotes/<remote>/HEAD, so " +
 			"with that unread, whether this hook can block a push at all is unverified, not verified"
-		c.Fix = "re-run from inside the git checkout"
+		// Doctor is inside the checkout already (a hook was read), so the
+		// condition that must change is what git could not read: the ref or
+		// the commit it names. A re-fetch does not replace a held object git
+		// cannot read (the ref is up to date, so nothing is sent; measured on
+		// git 2.54), a copy from another clone does.
+		c.Fix = "re-run once git can read refs/remotes/<remote>/HEAD and the commit it names: `git fsck` names a held " +
+			"object git cannot read, and a copy of it from another clone (or a fresh clone) restores it"
 		return c
 	}
 	var unrecorded []string
@@ -247,7 +264,8 @@ func checkPrePushHook(installed hook.Installed, readErr, dirErr error, probe *Ho
 		gaps = append(gaps, fmt.Sprintf("git records no default branch for %s, so a push there can block nothing", join(unrecorded)))
 		why = append(why, "the hook refuses a violation only on the remote's default branch, and learns which branch "+
 			"that is from refs/remotes/<remote>/HEAD — a local ref, never the network. A clone made before that ref "+
-			"existed, or a remote added without it, has none, and the hook then warns and exits 0 rather than guess `main`")
+			"existed, a remote added without it, or one whose recorded branch the remote has since renamed or deleted (the "+
+			"ref then dangles) has none, and the hook then warns and exits 0 rather than guess `main`")
 		var unplaceable []string
 		for _, remote := range unrecorded {
 			fixes = append(fixes, hook.SetHeadRemedy(remote, !refless[remote]))

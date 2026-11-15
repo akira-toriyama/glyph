@@ -1,20 +1,13 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index 9de8828..d614f8b 100644
+index 871d661..80a464d 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -601,12 +601,12 @@ func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
- 	var stderr bytes.Buffer
- 	cmd.Stderr = &stderr
- 	if err := cmd.Run(); err != nil {
--		if ierr := interrupted(ctx); ierr != nil {
--			return false, ierr
--		}
- 		if _, ok := errors.AsType[*exec.ExitError](err); ok {
- 			return false, nil
- 		}
-+		if ierr := interrupted(ctx); ierr != nil {
-+			return false, ierr
-+		}
- 		return false, core.APIf("git merge-base: %s", distill(stderr.Bytes(), err))
- 	}
- 	return true, nil
+@@ -742,7 +742,7 @@ func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
+ 	case err == nil:
+ 		return true, nil
+ 	case core.IsInterrupted(err):
+-		return false, err
++		return false, nil
+ 	case status == 1:
+ 		if line, unreadable := errorLine(stderr); unreadable {
+ 			return false, core.APIf("git merge-base: %s", line)

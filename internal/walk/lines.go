@@ -9,6 +9,7 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
 	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 )
 
 // Line is one version line the walk answers for. Package is the [[packages]]
@@ -175,9 +176,9 @@ func scopedLines(lines []Line, scope *Scope) []Line {
 	return kept
 }
 
-func scopeEscape(scope *Scope) string {
+func scopeEscape(scope *Scope) Escape {
 	if scope == nil {
-		return ""
+		return nil
 	}
 	return scope.Escape
 }
@@ -203,17 +204,39 @@ func (w Walker) lineFromLatest(ctx context.Context, cfg *config.Config, p config
 // no tag to start from. The diagnosis tells a line with no tag at all from
 // one with none under its below: bound: the remedy is the same tag, the
 // sentence is not, and past the cap it is the refusal body an operator reads
-// beside `git tag -l` (t-gt9n).
-func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line, escape string) (string, error) {
-	var bases, untagged, unbounded, bounded []string
+// beside `git tag -l` (t-gt9n). The remedy — a baseline tag — is named only
+// for a line that can take one (baselineOn), after the walk has said it
+// proceeds without it: a line whose first change is the root commit gets
+// the single line's sentence, since "the commit before" does not exist
+// (t-vc5w, measured 2026-11-04 on glyph-monorepo-test-2, both lines added by
+// the root commit), and a line whose first change lies at or past a shallow
+// clone's boundary is told so, since the commit before a change the clone
+// cannot read is not in it either. Past the cap the caller's escape is built
+// from the same two lists (Escape): every line the refusal fires for has a
+// way out named, in the case it fires in.
+func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line, escape Escape) (string, error) {
+	var bases, baselines, unbaselined, pastBoundary, unbounded, bounded []string
+	untagged := false
 	for _, l := range lines {
 		if l.revRange == "" {
-			untagged = append(untagged, firstTagOn(l.TagLine))
+			untagged = true
 			if l.bound != "" {
 				bounded = append(bounded, fmt.Sprintf("no version tag below %s on the %s line in HEAD's history", l.bound, l.TagLine.Label()))
 			} else {
 				unbounded = append(unbounded, l.TagLine.Label())
 			}
+			tag, boundary, err := w.baselineOn(ctx, cfg, l)
+			if err != nil {
+				return "", err
+			}
+			if tag != "" {
+				baselines = append(baselines, tag)
+				continue
+			}
+			if boundary {
+				pastBoundary = append(pastBoundary, l.TagLine.Label())
+			}
+			unbaselined = append(unbaselined, firstReleaseOn(l.TagLine))
 			continue
 		}
 		base := strings.TrimSuffix(l.revRange, "..HEAD")
@@ -221,13 +244,34 @@ func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line
 			bases = append(bases, base)
 		}
 	}
-	if len(untagged) > 0 {
+	if untagged {
 		var causes []string
 		if len(unbounded) > 0 {
 			causes = append(causes, fmt.Sprintf("no version tag on the %s line(s) in HEAD's history", strings.Join(unbounded, ", ")))
 		}
 		causes = append(causes, bounded...)
-		revRange, _, err := w.wholeHistory(ctx, cfg, fmt.Sprintf("%s — cut %s at the commit before that line's first change to say nothing of it was released before there", strings.Join(causes, "; "), strings.Join(untagged, " / ")), escape)
+		// One sentence for one line and another for several: the singular
+		// said of two lines reads "cut haiku/v0.0.0 / curry/v0.0.0 at the
+		// commit before that line's first change" and "the oldest commit
+		// touching it" (t-c2a9's class).
+		remedy := ""
+		switch {
+		case len(baselines) == 1:
+			remedy = fmt.Sprintf("; to start from a tag instead, cut %s at the commit before that line's first change — a baseline says nothing of the line was released before there, and it takes its number: the line's first release then steps from it", baselines[0])
+		case len(baselines) > 1:
+			remedy = fmt.Sprintf("; to start from a tag instead, cut %s, each at the commit before its line's first change — a baseline says nothing of its line was released before there, and it takes its number: each line's first release then steps from its baseline", strings.Join(baselines, " / "))
+		}
+		switch {
+		case len(pastBoundary) == 1:
+			remedy += fmt.Sprintf("; no baseline can be named for the %s line(s): within this shallow clone the oldest commit touching it is the boundary, whose own diff cannot be read, so the line's first change lies at or past it (check out with fetch-depth: 0)", pastBoundary[0])
+		case len(pastBoundary) > 1:
+			remedy += fmt.Sprintf("; no baseline can be named for the %s line(s): within this shallow clone the oldest commit touching each is the boundary, whose own diff cannot be read, so each line's first change lies at or past it (check out with fetch-depth: 0)", strings.Join(pastBoundary, ", "))
+		}
+		out := ""
+		if escape != nil {
+			out = escape(baselines, unbaselined)
+		}
+		revRange, _, err := w.wholeHistory(ctx, cfg, strings.Join(causes, "; "), remedy, out)
 		return revRange, err
 	}
 	mb, err := w.Git.MergeBase(ctx, bases)
@@ -237,9 +281,69 @@ func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line
 	return mb + "..HEAD", nil
 }
 
+// baselineOn is the baseline tag an untagged line can take (firstTagOn), ""
+// when it can take none: a baseline is cut at the commit BEFORE the line's
+// first change, so a line whose first change is a root commit — or whose
+// subtree no commit of HEAD's history touches — has nowhere to put it. The
+// first change is asked of git over the line's own files: its path, minus
+// the nested packages attribution takes out of it (DESIGN §4.1, rule 1), so
+// a parent's first change is never its child's. boundary says the first
+// change could not be read: within a shallow clone the oldest commit touching
+// the line is the boundary, whose own diff the clone cannot compute
+// (gitsource.IsShallowBoundary; DESIGN §4.1, "Where the files come from"), so
+// the real first change lies at or past it and a baseline "before" it would
+// name a commit the clone does not hold. Not an error: the walk over a
+// shallow checkout proceeds and warns (§4), and so does its remedy.
+func (w Walker) baselineOn(ctx context.Context, cfg *config.Config, l Line) (tag string, boundary bool, err error) {
+	sha, parents, err := w.Git.FirstChange(ctx, "HEAD", linePathspec(cfg, l.Package))
+	if gitsource.IsShallowBoundary(err) {
+		return "", true, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if sha == "" || parents == 0 {
+		return "", false, nil
+	}
+	return firstTagOn(l.TagLine), false, nil
+}
+
+// firstReleaseOn is the shape of the first release an operator can cut on a
+// line by hand, for an escape that has no flag to name a base with: a locked
+// line's is its major's floor whatever the level (firstTagOn), a free line's
+// takes whatever number the operator gives it.
+func firstReleaseOn(l config.Line) string {
+	if l.Locked() {
+		return firstTagOn(l)
+	}
+	return l.Prefix + "vX.Y.Z"
+}
+
+// linePathspec spells a package's own files as a git pathspec: its path from
+// the top level (`:(top)`, so the working directory does not move it) and
+// every package nested under it excluded. The root package is the whole tree
+// minus every other package.
+func linePathspec(cfg *config.Config, p config.Package) []string {
+	own, under := ":(top)", ""
+	if p.Path != "." {
+		own, under = ":(top)"+p.Path, p.Path+"/"
+	}
+	spec := []string{own}
+	for _, q := range cfg.Packages {
+		if q.Path != p.Path && (under == "" || strings.HasPrefix(q.Path, under)) {
+			spec = append(spec, ":(top,exclude)"+q.Path)
+		}
+	}
+	return spec
+}
+
 // firstTagOn is the tag that says "nothing of this line was released before
 // here": the null version on a free line, and on a locked line — which has
-// no version below its major — the major's own floor.
+// no version below its major — the major's own floor. Cut as a baseline it
+// is a release like any other and takes its number: the line's first release
+// steps FROM it (pubsub/v2.1.0 after a pubsub/v2.0.0 baseline and a ^), the
+// price DESIGN §4.1 names for a tag that is an answer rather than a question
+// (t-ngac).
 func firstTagOn(l config.Line) string {
 	return bump.Version{Major: l.Major}.TagOn(l.Prefix)
 }

@@ -45,56 +45,64 @@ changelog:
     exclude:
       - ".*"
 
-# Homebrew cask pushed to the family tap on release. GoReleaser v2 ships prebuilt
-# binaries as CASKS (the old `brews:` formula path is deprecated); the live
-# Casks/glyph.rb in akira-toriyama/homebrew-tap is regenerated each release.
+# Homebrew cask for the family tap. GoReleaser v2 ships prebuilt binaries as
+# CASKS (the old `brews:` formula path is deprecated). GoReleaser WRITES the
+# cask — dist/homebrew/Casks/glyph.rb — and pushes nothing (skip_upload): the
+# file goes onto the release as an asset (release.extra_files below) and
+# goreleaser.yml's cask job takes it from the published release and pushes it
+# to the tap. Pushed from here it would go out inside GoReleaser's run, before
+# the attest step can, naming a draft's assets — 404 to every `brew install`
+# until the publish, and public before anything proved who built it (t-p15y).
 # Install: brew install akira-toriyama/tap/glyph.
 homebrew_casks:
   - repository:
+      # Named so GoReleaser writes the file at all — it skips the pipe over an
+      # unnamed repository. Nothing here is pushed to.
       owner: akira-toriyama
       name: homebrew-tap
-      # Pushed over SSH with the tap's write deploy key (fleet-sync fans the
-      # secret out; t-6bhz) — not the GitHub API, so no account-scoped token.
-      git:
-        url: "git@github.com:akira-toriyama/homebrew-tap.git"
-        private_key: "{{ .Env.HOMEBREW_TAP_DEPLOY_KEY }}"
-    # `auto` = skip the tap push when the tag carries a prerelease part
-    # (v3.0.0-rc.1). A release candidate exists to be installed by the
-    # reusables and executed as a fleet gate before the fleet's pins move; it
-    # is not what `brew install akira-toriyama/tap/glyph` should hand a human,
-    # least of all across a breaking grammar change. Without this the cask is
-    # regenerated on every `v*` tag, so the first rc of v3 would have made the
-    # tap serve v2's replacement to everyone who typed `brew upgrade`.
-    skip_upload: auto
+    skip_upload: true
     directory: Casks
     homepage: https://github.com/akira-toriyama/glyph
     description: "sigil-driven commit-lint, semver, and release notes for squash-merge repos"
-    # The tap lints its own history with glyph, and GoReleaser's default
-    # subject ("Brew cask update for glyph version vX.Y.Z") matches no gemoji
-    # pattern — all 31 glyph cask commits in the tap (v0.1.0 through v4.1.0)
-    # exit 3 under the tap's glyph.toml (measured 2026-09-27). `=`: a cask bump
-    # moves no version of the tap. The same subject the hub's update-tap.yml
-    # writes for every other formula in that tap.
-    commit_msg_template: ":package:(tap)= bump {{ .ProjectName }} to {{ .Tag }}"
     # The binary is unsigned; strip the quarantine xattr on macOS so Gatekeeper
-    # allows launch (same pattern as the family's other casks).
+    # allows launch. Homebrew's declarative steps DSL (`postflight_steps`,
+    # brew 6f0b2e2 2026-05-24): GoReleaser 2.19 deprecated the Ruby `install:`
+    # block and `goreleaser check` exits 2 over it at 2.20.0.
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/glyph"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/glyph"]
           end
 
 release:
-  # Publish at tag time, no draft. A draft's assets are 404 to anonymous
-  # clients while homebrew_casks above has ALREADY pushed the new version to
-  # the tap in this same run — so every draft is a window where
-  # `brew install` is broken, bounded only by how soon a human remembers to
-  # publish. cifail sat unpublished for 17 days that way. pare and rundiff
-  # never had the window; this matches them, and the notes no longer need a
-  # human pass since glyph generates and escapes them and
-  # pr-verdict previews them at PR time.
-  draft: false
+  # A draft, published by goreleaser.yml once the attestation exists.
+  # GoReleaser's own publish runs before any step outside it can, so with
+  # `draft: false` v6.1.0's assets were public 9s before "Attestation created"
+  # (run 40457384503) — and the install action verifies provenance
+  # fail-closed, so an attest step that failed would have left a public
+  # release the whole fleet cannot install. The brew-404 window a draft once
+  # opened (cifail v0.1.1 sat unpublished for 17 days, its tap already naming
+  # it) is closed by order, not by publishing early: the cask job runs after
+  # the publish step, and no human publishes anything.
+  draft: true
+  # A re-run after a failure that left the draft behind must land on THAT
+  # draft, not mint a second one. GoReleaser looks a release up by tag, and
+  # GitHub's tag lookup does not see drafts; use_existing_draft lists the
+  # drafts by name instead. An asset the earlier run uploaded is a 422 on
+  # re-upload unless replaced. Both are safe only while the release is a
+  # draft: over a tag whose release is public, goreleaser.yml skips every
+  # build step, GoReleaser included, and the job succeeds having touched
+  # nothing, so the cask job can finish.
+  use_existing_draft: true
+  replace_existing_artifacts: true
+  # The cask file rides on the release: the cask job reads it from the
+  # published release, so a run that finds the tag already published can
+  # still push the tap without rebuilding anything. The cask pipe writes the
+  # file before the release pipe uploads (internal/pipeline/pipeline.go,
+  # v2.20.0), and the upload replaces an existing asset like any other.
+  extra_files:
+    - glob: dist/homebrew/Casks/glyph.rb
   # `auto` marks a hyphenated tag (v3.0.0-rc.1) as a prerelease, which is the
   # only thing that keeps GitHub's `latest` pointer — what `gh release view
   # --latest`, the releases page and every "what should I pin?" glance read —

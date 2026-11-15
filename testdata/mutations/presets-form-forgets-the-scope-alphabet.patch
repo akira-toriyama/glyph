@@ -1,0 +1,26 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index 539a7eb..2d4d2e4 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -22,7 +22,7 @@ exclude_authors = ['dependabot[bot]', 'renovate[bot]']
+ # the scope's alphabet and the spacing around the sigil included, since that
+ # line is all a refused author is told.
+ template = '''
+-<type>[(scope: a-z 0-9 -)]<semver_sigil>: <subject>
++<type>[(scope)]<semver_sigil>: <subject>
+ 
+ [<body>]
+ '''
+diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
+index 485566e..36b50ab 100644
+--- a/internal/config/presets/gemoji.toml
++++ b/internal/config/presets/gemoji.toml
+@@ -17,7 +17,7 @@ exclude_authors = ['dependabot[bot]', 'renovate[bot]']
+ # the scope's alphabet and the spacing around the sigil included, since that
+ # line is all a refused author is told.
+ template = '''
+-<:code:>[(scope: a-z 0-9 -)]<semver_sigil> <subject>
++<:code:>[(scope)]<semver_sigil> <subject>
+ 
+ [<body>]
+ '''

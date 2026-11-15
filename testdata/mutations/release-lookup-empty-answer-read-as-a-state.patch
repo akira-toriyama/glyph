@@ -1,0 +1,8 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 5edaaa0..21e0c3c 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -204,3 +204,2 @@ jobs:
+             published) echo "::notice::$TAG is already published and attested. Nothing is built, uploaded or published here; the cask job takes glyph.rb from the published release and pushes it to the tap unless the tap already carries it." ;;
+-            *) echo "::error::the lookup of $TAG's release answered $state"; exit 1 ;;
+           esac

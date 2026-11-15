@@ -145,6 +145,49 @@ func configure(t *testing.T, dir, key, value string) {
 	testutil.Git(t, dir, "akira-toriyama", "config", key, value)
 }
 
+// TestInstalledHookJudgesAGitMergeInALinkedWorktree is the same merge, run in
+// a linked worktree: there `.git` is a file and MERGE_MSG lives under the
+// worktree's own git directory (`.git/worktrees/<name>/MERGE_MSG`, which
+// gitsource.GitPath asks git for), so a hook that looked for `.git/MERGE_MSG`
+// would take the merge for a commit, read commit.verbose, cut everything under
+// the typed cut line and stop a merge git records (exit 1 from git, measured
+// 2026-11-04 at 2f9428a with the path hard-coded; mutation row
+// hook-looks-for-merge-msg-under-the-primary-git-dir). Real git runs the real
+// installed hook: the identity only exists through git's own invocation.
+func TestInstalledHookJudgesAGitMergeInALinkedWorktree(t *testing.T) {
+	glyphBin := buildGlyph(t)
+	pathWithGlyph := filepath.Dir(glyphBin) + string(os.PathListSeparator) + os.Getenv("PATH")
+	msg := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(msg, []byte(hookCutLine+"\n:bug:~ fix it\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := testutil.NewRepo(t)
+	t.Chdir(dir)
+	if code, _, stderr := runGlyph(t, "hook", "install"); code != int(core.CodeOK) {
+		t.Fatalf("hook install exit = %d\nstderr: %s", code, stderr)
+	}
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
+	testutil.WriteFile(t, dir, "topic.txt", "x\n")
+	testutil.Git(t, dir, "akira-toriyama", "add", "-A")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-m", ":sparkles:^ land the topic")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
+	testutil.WriteFile(t, dir, "main.txt", "x\n")
+	testutil.Git(t, dir, "akira-toriyama", "add", "-A")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-m", ":sparkles:^ move main")
+	testutil.Git(t, dir, "akira-toriyama", "config", "commit.cleanup", "strip")
+	testutil.Git(t, dir, "akira-toriyama", "config", "commit.verbose", "true")
+
+	wt := filepath.Join(t.TempDir(), "wt")
+	testutil.Git(t, dir, "akira-toriyama", "worktree", "add", "-q", "-b", "wt", wt, "main")
+	out, err := runGit(wt, pathWithGlyph, "merge", "-q", "--no-ff", "-F", msg, "topic")
+	if err != nil {
+		t.Fatalf("the hook stopped a merge git records, in a linked worktree: %v\n%s", err, out)
+	}
+	if got := testutil.Git(t, wt, "akira-toriyama", "log", "-1", "--format=%B"); got != ":bug:~ fix it" {
+		t.Fatalf("git recorded %q, want the subject under the typed cut line", got)
+	}
+}
+
 // TestInstalledHookJudgesAGitMergeByMergesCleanup: `git merge` cleans its
 // message with verbose 0 (builtin/merge.c) whatever commit.verbose says, and
 // hands the commit-msg hook its own MERGE_MSG, which the installed hook

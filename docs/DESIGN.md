@@ -143,10 +143,11 @@ pattern says it means:
     listing the types, v1's table moved into the file. Its footer read is
     the regex over the raw message §3 rejects as a trailer parser: a
     `BREAKING CHANGE:` line inside a body paragraph releases a major, and
-    the spec's own token is no git trailer (the space — `git
-    interpret-trailers --parse` answers nothing for it, git 2.54), so
-    written in the trailer block it voids the block and the release line
-    drops its `$coauthors` credit. It has no `%`, so a 0.x repository could
+    the spec's own token is no git trailer (the space — git's trailer reader
+    takes the line for prose, git 2.54), so written in a trailer block git
+    did not write into it voids the block and the release line drops its
+    `$coauthors` credit; beside a `Signed-off-by:` the block stands by the
+    25% rule (§3) and the footer alone is dropped. It has no `%`, so a 0.x repository could
     never say 1.0 (`feat%:` refused, `feat!:` at v0.4.2 reads v0.5.0), and
     adding one sets a sigil beside the implied levels — two spellings of
     one version. Nor does it read the spec as written, the case for putting
@@ -349,8 +350,10 @@ pattern says it means:
   contributor named `dependabot[bot]<US>x` shifted every field by one, read
   as `dependabot[bot]` and was excluded at exit 0 — measured, and a check of
   the parents field alone still passed the same name with an empty email or
-  a 40-hex one. The fields are framed by NUL, the byte no field can hold and
-  the one the record framing already rested on, and a record whose SHA and
+  a 40-hex one (the record then carried the author's address after the name;
+  it carries none since t-v784, because nothing may read one — §3). The
+  fields are framed by NUL, the byte no field can hold and the one the
+  record framing already rested on, and a record whose SHA and
   parents are not full object names fails the read at 4 rather than reach a
   gate shifted (mutation rows
   `gitsource-log-fields-framed-by-a-byte-a-name-holds.patch`,
@@ -385,12 +388,22 @@ pattern says it means:
 - **A refusal quotes the form** (mutation row
   `lint-violation-forgets-the-form.patch`, t-s1q0): the no-pattern-matches
   violation carries the first line of `commit.template` verbatim — `write it
-  as <:code:>[(scope)]<semver_sigil> <subject> with a semver_sigil of = ~ ^ !
-  or %` — so the refused author is told the shape instead of re-deriving it
-  from the winning regex on every failure (measured: the envelope said only
-  "see glyph.toml", while the window warning then sitting next to it already
-  spelled the line). The template stays unparsed: glyph quotes it, it does not interpret a
-  placeholder, and a file with no `[commit]` block gets the bare pointer.
+  as <:code:>[(scope: a-z 0-9 -)]<semver_sigil> <subject> with a semver_sigil
+  of = ~ ^ ! or %` — so the refused author is told the shape instead of
+  re-deriving it from the winning regex on every failure (measured: the
+  envelope said only "see glyph.toml", while the window warning then sitting
+  next to it already spelled the line). The template stays unparsed: glyph
+  quotes it, it does not interpret a placeholder, and a file with no `[commit]`
+  block gets the bare pointer. The presets' form line names the scope's
+  alphabet in the scope's place (t-rpqp): the alphabet lived in the regex
+  alone, so a `(Foo_Bar)` scope, a space before the sigil and none after it
+  all drew `write it as <:code:>[(scope)]<semver_sigil> <subject>`, a form the
+  refused message already fits to the eye (measured 2026-11-04 at 2f9428a and
+  v6.1.0: one detail for all four inputs). The spacing the line already shows
+  answers the other two, so no part of the refusal is computed from the regex
+  — a longest-matching-prefix diagnosis and a per-part schema key were both
+  more mechanism than the problem (`TestPresetFormNamesTheScopeAlphabet`,
+  mutation row `presets-form-forgets-the-scope-alphabet`).
 - **`[commit]` carries only `template`** (t-85y9; ruled 2026-10-06 in epic
   e-13fj, a major). The `style` label every preset wrote beside it through
   v5.1.0 (`"gemoji"`, `"conventional"`) left the schema and both presets
@@ -506,6 +519,21 @@ pattern says it means:
     `html-block-opener-yields-to-a-crossing-span.patch`,
     `footnote-definition-yields-to-a-crossing-span.patch`,
     `table-delimiter-row-opens-a-table.patch`.
+  - **A character reference a value completes is the value's** (t-39hk,
+    2026-11-09). The entity rule escapes the `&` when any byte of the
+    reference through its `;` is prose, as the scheme rule reads the whole
+    `http://`. Read at the `&` alone it left a template's `&` to the value
+    behind it: under `line = '- &$subject'` a subject `#x40;octocat now`
+    reached the notes as `&#x40;octocat now`, under `line = '- &#$subject'` a
+    subject `64;octocat split` as `&#64;octocat split`, and GitHub linked
+    @octocat under both (measured through `glyph notes --range` and `POST
+    /markdown`). Rejected: the loader refusing a literal that ends in `&`
+    before a placeholder — it misses `&#` before `64;` unless it learns the
+    reference grammar, and it adds a refusal for a construct the escaper's
+    standing rule already covers (a construct straddling prose and the
+    template's markup is escaped at whichever byte the rule fires on). Test
+    `TestAReferenceAValueCompletesIsEscaped`; mutation row
+    `entity-a-value-completes-stays-live.patch`.
   - **`-` behind a line's head and `@` stay unescaped, deliberately**, and the
     prose rules test neither. `-` is a list, setext or thematic-break marker
     only at a block start, which the rule above answers, so escaping it anywhere
@@ -538,10 +566,32 @@ pattern says it means:
     delimiter (escape.go's theorem), so the price is rendering, paid only by a
     repository whose own pattern captures such bytes — accepted.
 - Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
-  `note.line` and a section that does not state exactly one axis are LOAD
-  errors, never repairs (mutation row `config-unknown-schema-accepted.patch`):
-  this file decides CI verdicts, and a silently-misread key is a
-  silently-changed verdict.
+  `note.line`, a `note.line` that opens with no list-item marker or puts `<`
+  at a block start (§3) and a section that does not state exactly one axis
+  are LOAD errors, never repairs (mutation row
+  `config-unknown-schema-accepted.patch`): this file decides CI
+  verdicts, and a silently-misread key is a silently-changed verdict. **A key
+  is the schema's spelling byte for byte** (t-xppw): go-toml binds a key to a
+  field without case once no tag matches it exactly, and its strict mode
+  reports only a key no field claims, so at 2f9428a `Skip = true` skipped the
+  commit, `[[Patterns]] PATTERN` was the grammar, `[Note] Line` rendered the
+  body, `[[Packages]] PATH` declared a line, and `skip = false` followed by
+  `Skip = true` read as skip while the reverse did not (measured 2026-11-04,
+  go-toml v2.4.3) — a key read by a spelling the author never wrote, the exact
+  misread above. The loader walks the generic map the same bytes decode to,
+  where every key keeps its bytes, against the schema structs' tags, and
+  refuses every key whose bytes are not a tag — naming it as written and the
+  spelling to write, a miscased table's keys with it
+  (`TestLoadRefusesAMiscasedKey`, `TestLintCannotLoadAMiscasedKey`; mutation
+  row `config-folds-a-miscased-key-onto-the-schema`). No fold decides whether
+  a key passes; one names the spelling to write, and it is go-toml's own
+  (`strings.ToLower`), not `strings.EqualFold` — the two part at U+0130 `İ`,
+  which go-toml lowers to `i` and EqualFold does not match to it, so a walker
+  that looked fields up through EqualFold and walked past a key it could not
+  bind let `"skİp" = true` bind skip unrefused (measured 2026-11-08; U+212A
+  KELVIN SIGN both reach; mutation row
+  `config-key-walker-skips-a-key-its-own-fold-cannot-bind`). Exit 2 like every
+  load failure, so the commit that fixes the file gets through the hooks.
 
 Config resolution is one file per checkout: the `glyph.toml` at the top level
 of the working tree the command runs in (ratified Q1 — a config change
@@ -594,7 +644,10 @@ the newline (measured 2026-09-29 on glyph#246: af7ee18's local `%B` ends in
 one, its entry in the pull's commit listing does not). `gitsource` strips
 exactly that one newline where it parses a record, so every reader of local
 history — `lint --range`, the pre-push hook, `bump`, `notes`, `release` and
-`preview`'s walk — judges the text the hook judged, and a verbatim message
+`preview`'s walk — judges the text the hook judged (the one reader of the
+other text is the trailer parser, which reads `RawCommit.Recorded`, the
+record with its newline, because git's end-of-message rules are byte rules —
+§3), and a verbatim message
 keeps trailing blank lines of its own
 (`TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange` asserts a
 matching and a non-matching message at both gates; mutation row
@@ -758,6 +811,34 @@ per-commit override under the repository's settings:
 - an exported `GIT_EDITOR=:` (`GIT_EDITOR=: git commit --amend`) is git's
   no-editor marker to the hook while git runs its editor cleanup, so the hook
   judges the template git strips (measured).
+
+And the message's **encoding** (t-gh5t): the hook judges the message file's
+bytes as written, while `--range` reads `git log --encoding=UTF-8`, which hands
+over what git recorded, re-encoded into UTF-8 (§2's `exclude_authors` bullet,
+t-esm5), so a pattern that reads past ASCII moves between them in two shapes,
+both measured 2026-11-08 under git 2.54.0 and 2.56.0 with
+`pattern = '^(?P<semver_sigil>[=~^!%]) [\p{L} ]+$'` and `~ café crème`:
+
+- under the default encoding, a message that is not UTF-8 is rewritten at
+  commit time — git reads the invalid bytes as Latin-1 and records their UTF-8
+  (`\351` becomes `c3 a9`, with "commit message did not conform to UTF-8" on
+  stderr), so the hook judges bytes git never records: Latin-1 bytes are
+  refused at `lint --stdin` (exit 3 — `\351` is no letter to RE2) and the
+  commit `--no-verify` records is accepted by `lint --range` (0). The same
+  message as UTF-8 bytes is 0 and 0: git records a UTF-8 message as written,
+  so the hook and the range can disagree only on a message that is not UTF-8;
+- under `i18n.commitEncoding ISO-8859-1`, git records the bytes as written with
+  an `encoding` header and `git log` re-encodes them from that: Latin-1 bytes
+  are refused at the hook and accepted in the range (3 / 0, the range reading
+  `c3 a9`), and UTF-8 bytes are accepted at the hook and refused in the range,
+  where `é` has become `Ã©` (0 / 3).
+
+Neither shipped preset moves — their alphabets are ASCII classes and `.+`,
+which no re-encoding takes a message in or out of — and glyph does not
+transcode the hook's message: an exact answer is a transcription of git's own
+handling, its Latin-1 fix-up under the default and iconv's whole table under
+any other setting (`golang.org/x/text/encoding`), a dependency and a second
+copy of git's rules bought for patterns no preset ships. Stated, not fixed.
 
 Three ways to close the editor and `--no-verbose` cells were measured and not
 taken. Judging the uncut text whenever the cut leaves nothing closes every cell
@@ -988,23 +1069,89 @@ pattern's named groups, the built-ins (which outrank a group of the same
 name) and any name `[[note.trailers]]` declares — and literal
 text passes through as the author's own Markdown while every substituted value
 renders as prose, the scope included (§2), with the mention fence run
-over the assembled line. The fence has exactly one ratified exemption
+over the assembled line. **The template opens with a list-item marker** (`- `,
+`* ` or `+ `; the loader refuses any other opening at exit 2, t-ngw8): the
+fence is sized against the assembled line (§4 of the glossary, *inline
+context*), which holds only while each rendered line is its own inline
+context — a list item is, and lines no marker separates are one paragraph (or,
+with a `|` in them, a table), where a backtick run on one line pairs with the
+fence on the next. Measured against GitHub's `/markdown` (gfm) 2026-11-04 with
+`line = '$subject$[ ($pr)]'`: the three subjects `:bug:~ x ````, `:bug:~ a ``
+b @octocat` and `:bug:~ y ```` rendered as `<code>:bug:~ a `` b</code><a
+class="user-mention">@octocat</a>`, the handle live, and as
+`<code>@octocat</code>` with `- ` before each; the file loaded at 2f9428a.
+Nothing in the renderer changes: a line-at-a-time fence is correct for a list,
+so the loader holds the template to a list (`TestLoadRefusesANoteLineWithoutAListMarker`,
+mutation row `config-note-line-opens-outside-a-list`). An ordered-list marker
+is not offered — `1. ` on every line renumbers in GitHub, not in the file.
+**No `<` stands where a rendered line can start a block** (t-3bwg,
+2026-11-09; the loader refuses one at exit 2 and names its line and column):
+at the head of a template line or behind the list-item and quote markers it
+opens with, under every rendering a commit can give the line, since the loader
+sees no commit — a placeholder read as any value, an empty one included, an
+optional span as rendered or dropped, an at-sign as absent. There GitHub opens
+an HTML block of any kind — a tag, `<!--`, `<?`, `<!X`, a lone tag on a line
+of its own — and no backslash escape works inside one, so a value the block
+takes in renders raw. Measured
+through `glyph notes --range` and `POST /markdown` (gfm) with the subject
+`:bug:~ callers to &#64;octocat now`: under `- <div>$subject</div>`, and under
+`- $[($pr) ]<div>$subject</div>` for a commit with no pull, the prose escape's
+`\&#64;octocat` rendered a printed backslash and a live @octocat; under
+`- x <span>$subject</span>` it rendered as its text. The home is the loader,
+not the escaper: escaping a value some other way inside an HTML block would
+need a block grammar to know it is inside one, and the template is structure
+the repository writes. The test is the byte `<`, not an HTML block's seven
+start conditions, which puts it on the over-refusing side at no cost to the
+shipped templates: it refuses an inline tag too — `- <span>$subject</span>`,
+and `- $subject <sub>x</sub>`, whose `<sub>` stands behind a placeholder that
+may render empty, both inline at GitHub — and text of the template's own
+before the tag, as in `- x <span>$subject</span>`, is what lets one load
+(`config.checkLineOpensNoHTMLBlock` has the measurements;
+`TestLoadRefusesAnHTMLBlockAtABlockStart`,
+`TestNotesRefusesATemplateThatOpensAnHTMLBlock`; mutation rows
+`config-note-line-opens-an-html-block`,
+`config-note-line-html-block-behind-a-dropped-span`,
+`config-note-line-html-block-behind-a-login-marker`,
+`config-note-line-html-block-behind-a-dropped-at-sign`, and one each for the
+`* ` and `+ ` bullets, a tab as a blank, a `)` ordinal, a multi-digit ordinal
+and a lone CR line ending,
+`config-note-line-html-block-behind-a-star-or-plus-bullet`,
+`config-note-line-html-block-behind-a-tab`,
+`config-note-line-html-block-behind-a-paren-ordinal`,
+`config-note-line-html-block-behind-a-multi-digit-ordinal`,
+`config-note-line-html-block-behind-a-carriage-return`).
+The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
 live mention — crediting the contributor is intended behaviour, and every
 peer tool (git-cliff, GitHub's own generated notes, release-drafter,
 changesets) pages the author the same way. The exemption is gated by
 **identity**, and by shape second (t-39fy, 2026-09-14, replacing the
-shape-only gate): what goes live is the contributor's **login** — the
-`author.login` GitHub itself attaches to a commit the API described (the
-squash arm, `--pr`), else the login a GitHub noreply author address carries
-(`<id>+<login>@users.noreply.github.com`, which every fleet commit carries
-and the fallback arm and `--range` can read from git alone), else nothing —
-and only when that login is one GitHub-handle-shaped token. The name is
+shape-only gate; t-ayhq, 2026-11-04, narrowing identity to one source): what
+goes live is the contributor's **login** — the `author.login` GitHub itself
+attaches to a commit the API described (the squash arm, `--pr`), else
+nothing — and only when that login is one GitHub-handle-shaped token.
+Nothing read out of the commit itself is a login. Not the name: it is
 never promoted to stand in for a missing login, because a name is not a
-login and **no shape tells them apart**: measured 2026-09-13 on golang/tools,
+login and **no shape tells them apart** — measured 2026-09-13 on golang/tools,
 `%an` is `Saleh` for github.com/larrasket, and the shape gate rendered
 `@Saleh` — one handle-shaped token, and a stranger paged the moment the
-release is published. A credit with no login renders the name as plain
+release is published. Not the author address either, GitHub's own noreply
+form included: `<id>+<login>@users.noreply.github.com` is typed by whoever
+configured git, and GitHub attributes the commit by the id, never by the
+login beside it — measured 2026-11-04 on glyph-test-2 with
+`GET /commits/{sha}` as the oracle, a commit from
+`92862731+refute-a3-nonexistent-zz@…` is attributed to the account id
+92862731 names while glyph paged `@refute-a3-nonexistent-zz`, one from
+`9999999999+akira-toriyama@…` to nobody while glyph paged `@akira-toriyama`,
+and `1+octocat@…` would page @octocat for a commit GitHub shows as mojombo.
+The address is self-asserted text, exactly as a co-author address is (below),
+so the one rule covers both and the identity has one source. Where the API
+described nothing — every commit under `--range`, every direct push on the
+fallback arm, the fleet's own included — the credit is the name with no
+at-sign, as any credit with no login is. Rejected: keeping the address as a
+second source when its id resolves to its login (`GET /user/{id}`: one more
+request per commit, and a second identity to keep correct, for a mention on
+direct pushes). A credit with no login renders the name as plain
 prose with the template's at-sign dropped (`Robert Pająk`, not
 `` `@Robert `` `Pająk`, which fencing the would-be mention produced on
 opentelemetry-go): a credit that pages nobody is not written as a mention.
@@ -1029,16 +1176,135 @@ the fleet either sits off GitHub's noreply host (`noreply@anthropic.com`) or
 carries a `[bot]` login the handle gate rejects, so no credit could resolve
 to a live mention even if the exemption were extended.
 
-The parser is held to `git interpret-trailers --parse` by a differential
-asserting a **subset**: glyph may report fewer trailers than git, never more,
-because over-reporting is what names a person on a public page as an author
-of code the commit never claimed. Four shapes answer nothing, each silently
-(measured, git 2.54.0): a trailer in its own paragraph above the footer, a
-line below a `---`, a block holding one prose line, and a block that is the
-message's only paragraph. The third is the sharp one — an unindented wrapped
-line, or the fleet's own `Generated with …` footer placed inside the block,
-voids the whole block and takes the co-author credit with it. (Mutation row
-`notes-coauthor-is-grepped-not-parsed.patch`.) Rejected alternative: carrying
+The parser is held to git's own commit reader — `git log
+--format='%(trailers:only,unfold)'` — by a differential asserting
+**equality** on every shape it crosses: the trailers glyph reads off a landed
+commit are the ones git reads off it, no more (a trailer git does not report
+names a person on a public page as an author of code the commit never
+claimed) and no fewer (a credit git reports and glyph drops is a person
+uncredited). `TestTrailersEqualGit` crosses heads, blocks and tails, every
+byte after `---` and in four other positions, the 25% boundary from both
+sides under every git-generated prefix spelling, and a seeded random mix:
+15,601 shapes by default and 44,101 with 30,000 random ones, 0 over-reports
+and 0 under-reports under git 2.56.0 (2026-11-08; under git 2.54.0 the same
+counts with 854 and 6,041 shapes held back, below); the table of named shapes
+is re-read off git on every run, so a row cannot pin an answer git does not
+give. The rules are git's own, transcribed from `trailer.c`
+(`find_end_of_log_message` with `no_divider`, `find_trailer_block_start`,
+`find_separator`, `trailer_block_get`), `commit.c`
+(`ignored_log_message_bytes`) and `pretty.c` (`skip_blank_lines`), measured
+against git rather than modelled, with git's defaults and none of its
+`trailer.*` config. **The oracle's git is 2.56.0**, the one version the
+parser names (`oracleGitVersion`), because git moved the commit reader's
+answer once in the range read: d122e37976 ("trailers: stop recognizing URLs
+as trailers", v2.56.0) made a colon opening `://` straight after the token no
+separator, so a `token://` line is prose under 2.56.0 and the trailer `https`
+under 2.54.0 and 2.55.0 (their `trailer.c`, `commit.c`, `wt-status.c` and
+`pretty.c` diffed against 2.56.0's: that rule is the only behavioural change;
+older gits were not read). Under older git a Co-authored-by beside a bare URL
+line is credited; glyph follows 2.56.0, the side that credits no more than
+git's current reader and never a person GitHub does not, and the side CI
+judges on (the runners' git is 2.56.0, the machine's 2.54.0 — a parser that
+followed the older rule turned PR #360's required checks red, 995
+over-reports in 12,961 shapes). So the differential reads `git version` and
+compares every shape under any git it runs on except those holding a
+`token://` line, which it compares only under 2.56.0 or later and otherwise
+counts and names in its output (never dropped silently; `TestTrailers`' URL
+rows pin them under older git, standing on the table alone and saying so).
+Across the local fleet clones the two gits' `%(trailers:key=Co-authored-by)`
+answers are identical on all 33,640 commits (measured 2026-11-08), so the
+version decides the gate and the oracle, not a credit the fleet has seen. **The oracle is the commit reader, not `git
+interpret-trailers --parse`.** The two share every rule but
+one: interpret-trailers reads a message being written or a patch mail, where
+a `---` line starts the diff, so it discards everything from the first `---`
+down; `%(trailers)` sets `no_divider` (pretty.c), as every reader inside git
+does, because a landed commit carries no patch. glyph reads landed commits,
+so a `---` line is message text and the block below it is read. t-pspd
+(2026-11-04) was ruled from the wrong oracle — it widened the divider to
+`--- text` — and the widened divider dropped credits that git's reader and
+GitHub's `Commit.authors` both show: glyph e2b2bec (a `--- line` wrapped
+inside a body paragraph), furrow e29a824, ec3342e and 05e9ba7 (the old
+`--- (和訳)` separator) and AzooKeyKanaKanjiConverter 55ffe3c (a CRLF
+dependabot squash whose YAML `---\r` sits above GitHub's `---------`), the
+only five co-author differences across 127,696 real commits in 17
+repositories (measured 2026-11-08; each credited again by
+`TestTrailers` and by the fix's end-to-end run). The message starts where
+the reader starts it — leading blank lines skipped — and ends where the
+reader ends it: above the scissors line
+`# ------------------------ >8 ------------------------` (a line of its own,
+at the message's start or after a newline — the spelling inside a trailer's
+value is text), and above a trailing run of comment lines, empty lines and
+an old-style `Conflicts:` list — the header byte-exact, `conflicts:` is a
+trailer — with its tab-indented paths (`ignored_log_message_bytes`; a
+Conflicts tail glued under a Signed-off-by block had counted as a trailer
+line and lifted a 2-of-9 block over the 25% line, review of t-hd7d). Those
+are byte rules, so **the parser reads the message as git recorded it,
+closing newline included** (`RawCommit.Recorded`, carried beside the
+`Message` every other reader judges — §2.1): `Conflicts:\n` closing the
+object is the ignored list and `Conflicts:` closing the input an empty
+trailer, and the newline-stripped text cannot say which the commit carries.
+Read off the stripped text, a bare final `Conflicts:` line lifted a 2-of-9
+Signed-off-by block over the 25% line (Trent credited, `%(trailers)` credits
+nobody) and closed the message as a one-line block (Peggy dropped,
+`%(trailers)` credits her; measured 2026-11-08, git 2.54.0 and 2.56.0). The
+API arm cannot carry the newline: GitHub's `commit.message` never has it
+(§2.1) and no field says whether the object does. So a commit git recorded
+with a final bare `Conflicts:` line reads as the ignored list wherever glyph
+reads the commit off git — every commit under `--range`, and every commit the
+`--since-tag` walk takes off the released branch rather than out of a pull's
+listing: a direct push and a commit GitHub has not indexed yet (the fallback
+arm) and an `exclude_authors` author's commit — and as the empty trailer
+`Conflicts` wherever it reads the commit off the API: every commit of
+`--pr`, and every commit of a pull the `--since-tag` walk expands (measured
+2026-11-08, git 2.54.0 and 2.56.0). That is the one shape where the arm
+decides, stated here rather than plumbed as a bit the API does not have. Its
+reach: 0 of 33,928 fleet commits carry a `Conflicts:` line at all (measured
+2026-11-08; 14,082 of them, GitHub's squash and merge commits, are recorded
+without a closing newline and 19,846 with one).
+The token is one run of ASCII letters, digits and hyphens, optional blanks,
+then the colon: `Fix#1:` and `Révisé:` are prose, `Why :` is the token `Why`,
+`Why ://x` too (a blank before the colon disarms the URL rule), and
+`https://x: y` or a bare `https://…` line is prose under the URL rule above —
+one in a block git did not write into voids it, credits included, where git
+2.54 and 2.55 read the trailer `https` and credit the block. The loader holds
+a `[[note.trailers]]` token to the same alphabet, from its one home
+(`config.IsTrailerTokenByte`, which the block scan reads too): a token holding
+any other byte — `Fix#1`, `Révisé`, `Why_not`, `Ref.` — names no trailer git
+reads (it loaded and rendered its placeholder empty on every line at exit 0),
+so it is refused at load, exit 2 (t-dzxw, measured 2026-11-09 under git
+2.54.0 and 2.56.0; mutation row
+`trailer-token-loader-admits-a-name-git-never-reads.patch`). A block is
+the trailers when every line of it is a trailer, a continuation or a comment
+— one prose line voids it — **or** when it holds a line git generated
+(`Signed-off-by: `, `(cherry picked from commit `, byte-exact, the trailing
+space included) and its trailer lines are at least a quarter of it, a
+continuation under prose counting as prose, in which case the prose lines
+are dropped and the trailers around them kept (t-hd7d, 2026-11-04: glyph
+voided such a block, so a `git commit -s` author lost every credit beside one
+prose line). Three shapes answer nothing, each silently: a trailer in its own
+paragraph above the footer, a block with no git-generated line holding one
+prose line, and a block that is the message's only paragraph. The second is
+the sharp one — an unindented wrapped line, or the fleet's own `Generated
+with …` footer placed inside the block, voids the whole block and takes the
+co-author credit with it. GitHub's own co-author rule is unpublished and
+wider than git's: on glyph-test-2 it credited every shape git 2.56.0's
+reader credits and four more — below a scissors line, under a Conflicts tail
+that tips the 25% line, a prose-plus-trailer block with no sign-off, and
+beside a bare URL line (11 shapes probed 2026-11-08). glyph
+follows git, so where the two differ glyph credits fewer, never a person
+GitHub does not. (Mutation rows
+`notes-coauthor-is-grepped-not-parsed.patch`,
+`divider-hides-the-block-below-it.patch`,
+`signed-off-block-voided-by-one-prose-line.patch`,
+`message-end-ignores-nothing.patch`,
+`trailer-token-rule-reads-a-url-as-a-trailer.patch`,
+`conflicts-list-opened-by-a-lowercase-header.patch`,
+`scissors-spelling-inside-a-line-cuts-the-message.patch`,
+`trailer-block-read-off-the-trimmed-message.patch`,
+`gitsource-log-trims-the-recorded-message.patch`,
+`continuation-under-prose-is-not-prose.patch`,
+`git-generated-prefix-without-its-space.patch`,
+`leading-blank-lines-stand-as-the-title.patch`.) Rejected alternative: carrying
 the same two values in a `(?s)` `[[patterns]]` group. It truncates a wrapped
 value, lets trailer order decide silently whether the value binds at all,
 credits a trailer-shaped line sitting in a body paragraph, and would have to
@@ -1047,14 +1313,14 @@ shape — a regex over the raw message is not a trailer parser. Rejected
 alternatives: rendering the raw first line (machine notation in prose, and
 Breaking Changes already says what `!` says); dropping the fence entirely
 (subjects carry arbitrary text); asking `GET /commits/{sha}` for every landed
-commit's login (one request per commit on the free arm, for an identity the
-noreply address already carries on every commit GitHub's own UI or a
-privacy-on account writes — a personal address is then credited by name,
-which is honest); fencing the name with its at-sign (`` `@Saleh` `` reads as a
-broken mention and still shows a stranger's handle). (Mutation rows
-`line-returns-its-bytes-unfenced.patch`, `author-credit-goes-live-by-shape`,
-`noreply-address-carries-no-identity`, `unpaged-credit-keeps-its-at-sign`;
-the gate lives in `markdown.Line.Mention`, the identity in `walk.identity`.) A **`$[ … ]` span renders only when EVERY placeholder
+commit's login (one request per commit on the free arm, to turn a name into
+a mention — a direct push credited by name is honest); fencing the name with
+its at-sign (`` `@Saleh` `` reads as a broken mention and still shows a
+stranger's handle). (Mutation rows `line-returns-its-bytes-unfenced.patch`,
+`author-credit-goes-live-by-shape`, `noreply-address-trusted-as-identity`,
+`unpaged-credit-keeps-its-at-sign`; the gate lives in
+`markdown.Line.Mention`, and `walk.NoteCommits` carries the API's
+`author.login` through as the only login.) A **`$[ … ]` span renders only when EVERY placeholder
 inside it resolves non-empty** (mutation row
 `notes-optional-span-always-renders.patch`), taking its own punctuation with
 it when one does not. Without it, punctuation written around a placeholder
@@ -1071,7 +1337,7 @@ over `${ … }` and `[? … ]` after measuring that all three parse as literal
 text under the existing placeholder grammar (so every template already in the
 fleet loads unchanged): only `$[` carries both of the file's own signals — `$`
 marks what glyph interprets, and the bracket already means optional in the
-same file's `[commit]` template block (`[(scope)]`, `[<body>]`). A bare `[`
+same file's `[commit]` template block (`[(scope: a-z 0-9 -)]`, `[<body>]`). A bare `[`
 stays literal, which is what leaves the `- [$scope] $subject` idiom and
 Markdown links untouched, and brackets *inside* a span nest — the closing `]`
 is the first at depth zero, so `$[ [$scope]]` renders `[cli]` or leaves whole,
@@ -1357,7 +1623,71 @@ by shas no branch holds. What actually reaches a body is `note.line`'s decision,
 not glyph's — the fold binds `$pr` and `$hash`, and both shipped presets place
 `$pr` alone inside an optional span, so a line reads `- subject (#123)` and
 drops the parens with the pull (§3). v1's hardcoded `(#123, abc1234)` is
-`$[ ($pr, $hash)]` today. A **shallow** checkout cannot answer the question at all
+`$[ ($pr, $hash)]` today. Both git questions can also fail to answer, and a
+failure never reads as "never landed" where git signals it: a listed sha whose
+object this clone holds and **cannot read** — empty, truncated, not zlib, under
+a file or fan-out directory git cannot open — answers `missing` to `cat-file
+--batch-check` and `128` to `merge-base` exactly as a sha the store does not
+hold (a body that does not parse answers `commit` to the batch and dies at
+`merge-base`'s probe one step later), and read as absent it had no landing
+site, the in-range merge point governed it, and a released commit was counted
+again at exit `0` (measured on the tree before fix round 2 of this change,
+2026-11-08; t-9bqf). What git gives that tells the two apart is on stderr: the
+`error:` severity line it writes for the first and not the second, so that line
+is the signal — read as severity under `LC_ALL=C`, never as text, since
+`warning:` and trace output are stderr too, and found anywhere in stderr, since
+trace lines come first — and the walk fails at `4` carrying it, with nothing
+extra asked of a store that reads (`TestHaveFailsOnAHeldObjectGitCannotRead`,
+`TestSinceTagFailsOnAReleasedCommitGitCannotRead`,
+`TestHeldObjectSignalIsFoundBehindStderrNoise`,
+`TestHeldObjectSignalIsReadUnderThePinnedLocale`, mutation rows
+`gitsource-have-reads-a-held-object-it-cannot-read-as-absent`,
+`gitsource-held-object-signal-is-any-stderr`,
+`gitsource-held-object-signal-is-the-first-line-only`,
+`gitsource-stderr-readers-run-in-the-users-locale`; the mechanism and what it
+was measured against are at `gitsource.errorLine`). The same line is read off
+`merge-base`'s honest no: for a commit gone from the middle of the history, git
+≤ 2.40 exits `1` beside `error: Could not read …` where 2.54 and later exit
+`128`, so an exit `1` that carries an `error:` line is git failing, quoted, not
+a NO (`TestIsAncestorFailsWhereGitCouldNotAnswer`, mutation row
+`gitsource-is-ancestor-reads-an-exit-1-with-an-error-line-as-the-no`). The
+`128` of `cat-file -t rev^{}` is taken apart the same way in
+`gitsource.namesCommit`, paired there with `cat-file -e`: its exit `0` against
+the peel's `128` is an object the store holds and git could not read without
+saying so, and it runs only on that failure path, so a healthy repository pays
+nothing (`TestNamesCommitSeesAnUnopenableObjectGitIsSilentAbout`, mutation row
+`gitsource-names-commit-reads-a-held-object-git-is-silent-about-as-no-commit`).
+
+**Where git writes nothing, glyph cannot see**, and these are stated limits,
+not guarantees. git 2.39 and earlier write no `error:` line for a loose object
+the user cannot open — a mode 000 file or fan-out directory, the shape a fetch
+run as another user under umask 077 leaves — because object-file.c gained its
+`error_errno` on an open failure in 2.40.0 (measured on 2.39.5 against 2.40.1,
+2.54.0 and 2.56.0; Debian 12 ships 2.39.5). Under such a git `cat-file -e`
+still catches the file for `namesCommit`'s callers, the fan-out directory
+reads as nothing in the store, and `have` — which has no second signal, since
+`%(objectsize:disk)` is a stat too and would cost a process per walk step that
+has a missing sha, which is every squash — reads both as absent. An object in
+a pack whose `.idx` or `.pack` cannot be opened reads as absent to every probe
+on every version measured: `cat-file -t` dies `128` silently, the batch answers
+`missing`, `cat-file -e` exits `1`. The claim that holds is the narrow one: a
+held object never reads as absent where git signals it could not read it.
+
+A store git reports as not all there fails the same way: an alternates entry
+— `objects/info/alternates` or `GIT_ALTERNATE_OBJECT_DIRECTORIES` — naming a
+directory that is gone makes git write `error: object directory … does not
+exist` on every object read, at exit `0` with the answer intact (and git 2.56
+writes it on an unknown name as well, so there a dangling `origin/HEAD` over
+such a store reads as this failure rather than as the set-head advice §7
+names). glyph cannot vouch for an absence there, so `have` fails where a
+listed sha came back `missing`, `isAncestor` on its no and `namesCommit` on
+any `error:` line, each quoting git's line so the reader knows what to fix —
+and each answers where nothing was absent
+(`TestHaveUnderGoneAlternatesAnswersWhereNothingIsMissing`, mutation row
+`gitsource-have-fails-a-full-listing-under-gone-alternates`). In the installed
+pre-push hook that `4` is the pass-through the hooks give every non-gate
+failure by contract (only `3` blocks; README's hook section), so CI's lint
+stays the gate. A **shallow** checkout cannot answer the question at all
 (a commit git does not have is indistinguishable from one that never landed), so
 the walk says so once and falls back to expanding whole listings — and, since it
 knows the answer it gave was a guess, records the checkout as one it could not
@@ -1753,7 +2083,7 @@ there. A caller cannot close this itself — GitHub offers no way to restrict
 which ref a `workflow_dispatch` runs from — and it is not hypothetical
 plumbing: repositories hand-copy the release step instead of calling glyph's
 reusable — six on 2026-10-26: `canon`, `dotfiles`, `sill`,
-`swift-toml-edit`, `zmk-beacon`, `zmk-hid-host` — so the binary is the only
+`swift-toml-edit`, `zmk-vfx-beacon`, `zmk-hid-host` — so the binary is the only
 layer that reaches them. The escapes are `--dry-run` and re-running
 from the default branch, and both are named in the refusal. The caller's own
 input is judged before the guard: a malformed `--since-tag` is usage (2) on
@@ -2217,9 +2547,26 @@ declaration, and `glyph init` writes it as a commented paragraph.
   `scope` group's own sub-expression, anchored whole, in the patterns whose
   groups a commit binds — not `skip` (placed nowhere, its message never read)
   and not `unlandable` (reported unmatched, with no groups) — and, in a
-  pattern that names two groups `scope`, only the last: the one `Match`
-  keeps, since a later capture overwrites an earlier one even when its
-  alternative did not take part. One such group accepting the name is
+  pattern that names two groups `scope`, either of them: `Match` hands on the
+  capture of the group that took part in the match (t-wmk2, 2026-11-04;
+  `config.participant`), reading `FindStringSubmatchIndex`, which tells a
+  group whose alternative was not taken (`-1 -1`) from one that captured
+  nothing (`0 0`), so a group under either alternative reaches attribution
+  and the speller is the alternation of every group of the name (under a
+  repeat, where both groups can take part, the higher-indexed one answers
+  whichever turn came last — `participant`'s comment has the measurement).
+  Read with
+  `FindStringSubmatch`, which fills a repeated name in index order, the later
+  group's empty stood in for the earlier one's capture: under
+  `^(?P<semver_sigil>[=~^!%]) :[a-z]+: .+|^:[a-z]+:(?P<semver_sigil>[=~^!%]) .+`,
+  `! :sparkles: first alt` exited 3 as a sigil group that captured nothing,
+  and beside `semver_sigil = '='` `! :boom: break via first alt` folded to
+  none with no warning — a major shipped as no release (measured at 2f9428a;
+  `TestMatchReadsTheGroupThatTookPart`, mutation rows
+  `match-reads-a-repeated-name-in-index-order` and
+  `scope-speller-reads-only-the-last-group`). Refusing a repeated name at
+  load was not taken: it narrows the author's regex for a reading the engine
+  already offers. One such group accepting the name is
   enough: which pattern wins is a property of each commit, the union
   `config.validateLineNames` already takes for `note.line`'s names. The
   refusal names the package, the rule that produced the name, each pattern it
@@ -2265,7 +2612,10 @@ declaration, and `glyph init` writes it as a commented paragraph.
   `packages-name-no-scope-can-spell-accepted`,
   `packages-name-union-becomes-intersection`,
   `packages-name-counts-an-unread-scope`,
-  `packages-name-counts-a-shadowed-scope-group`, `packages-root-name-exempt`,
+  `scope-speller-reads-only-the-first-group`,
+  `scope-speller-reads-only-the-last-group` (the pair that replaced
+  `packages-name-counts-a-shadowed-scope-group` when t-wmk2 overturned the
+  last-group reading — above), `packages-root-name-exempt`,
   `packages-scopeless-grammar-refuses-names`. It names nothing else: the
   draft is named by its tag, the notes by their section titles.
 - **One `glyph.toml`, at the top level, as today.** A per-package file was
@@ -2356,7 +2706,7 @@ asked:
    range's (`bump.RangeRefusal`, the one wording home: a lone grammar row
    keeps the fold's remedy), `preview` in its own words on both shapes.
    Attribution asked first made the grammar's refusal the second red run
-   (measured by review 2026-10-27 on 36b7c53, one direct push of each kind:
+   (measured 2026-10-27 on 36b7c53, one direct push of each kind:
    the walk refused the unclaimed message, `bump --range` and `preview` the
    attribution refusal alone, `lint --range` both rows; on 73c15c6
    `notes --range` the attribution row alone too). The one refusal reads the
@@ -2482,7 +2832,7 @@ which says a package it touched is missing (mutation row
 `withheld-refusal-says-of-the-commit-what-is-known-of-the-files-read`).
 
 An escape that **takes something out** of the message is proven against the
-message, never read off the pattern (found in review, 2026-10-05). There are
+message, never read off the pattern (found 2026-10-05). There are
 two: "drop the scope", which the contradiction offers (below), and "leave the
 sigil out", for a pattern whose sigil group cannot capture `=` but whose fixed
 `semver_sigil` is `=` — `[a-z]+(?P<semver_sigil>[~^!])?: ` reads `fix: …` as a
@@ -2790,7 +3140,7 @@ A commit two pulls list is judged under each sighting's governing identity —
 a squash-merged pull's inner commit under that pull's merge point, a landed
 commit under its landing site whichever pull lists it — and one judged
 sighting refuses it: the refusal names the escape of every judged sighting,
-never one at an identity every line released (measured by review 2026-10-27
+never one at an identity every line released (measured 2026-10-27
 on 36b7c53: a commit the held pull and two pending pulls list is refused
 naming both pending pulls' merge points). The first cut
 judged it at its first sighting only: a stacked pull listing again an
@@ -2832,7 +3182,71 @@ error names: a package with no tag of its own — the common case of a package
 added to an old repository — is baselined by cutting the tag the refusal
 names **at the commit before its first change** (README "Packages":
 `<prefix>v0.0.0` on a free line, `<prefix>vN.0.0` on a locked one), a tag that
-says "nothing of this line was released before here".
+says "nothing of this line was released before here". The warning under the
+cap says first that the walk proceeds without a tag, then the remedy, and
+the remedy **names its price**: a baseline is a release like any other and
+takes its number, so the line's first release steps from it — `pubsub/v2.1.0`
+after a `pubsub/v2.0.0` baseline and a `^`, where the unbaselined line's
+first release is `pubsub/v2.0.0` itself (t-ngac, measured 2026-11-04 on
+2f9428a: `git tag pubsub/v2.0.0 $DECL` as the warning said, then
+`pubsub/v2.1.0`). Kept, and priced, over two alternatives: a baseline-only
+tag shape (`pubsub/v2.0.0-baseline`, or a `below:`-like marker) is machinery
+for a skipped number, and a candidate tag is a question, never an answer
+(above) — it could not be a floor; and a per-line cap exception on an
+untagged line walks what the cap exists to refuse. The remedy is named
+**only for a line that has a commit to cut it at**: the walk asks git for
+the line's first change over its own files (its path with every nested
+package excluded, rule 1's ownership; `walk.baselineOn`,
+`gitsource.Checkout.FirstChange`), and a line whose first change is a root
+commit — glyph-monorepo-test-2's two lines, both added by root `8da42f0` —
+gets the single line's sentence, since "the commit before that line's first
+change" named a commit that does not exist (t-vc5w, measured 2026-11-04;
+`TestSinceTagPackagesRootFirstChangeNamesNoBaseline`,
+`TestSinceTagPackagesUntaggedLineWalksTheWholeHistory`; mutation rows
+`packages-baseline-named-at-a-root-first-change`,
+`packages-baseline-remedy-hides-its-cost`). Saying "at the root commit
+itself" was rejected: a baseline there releases the root commit's own
+changes to the line as the baseline, which is not "nothing of this line was
+released before here". A line whose first change the clone cannot read gets
+neither sentence: within a shallow clone the oldest commit touching a path
+the boundary's tree holds is the boundary itself, whose whole tree git reads
+as its diff ("Where the files come from"), so `FirstChange` answers it as
+`DiffTreeFiles` does — unreadable, `IsShallowBoundary` — and the warning
+says no baseline can be named for the line because its first change lies at
+or past the boundary, where the first cut read the boundary as a parentless
+root and said the single line's sentence (measured 2026-11-08;
+`TestFirstChangeAtAShallowBoundaryIsUnreadable`,
+`TestSinceTagPackagesBaselinePastAShallowBoundaryIsNotNamed`; mutation rows
+`gitsource-first-change-reads-a-shallow-boundary-as-a-root`,
+`packages-baseline-fails-at-a-shallow-boundary`). The line's own files are
+pinned as glyph's construction, not only as git's reading of a pathspec: a
+nested package is not its parent's first change, the path is read from the
+top level whatever the working directory, the root package is the tree minus
+every other package, and a line no commit touches has no baseline — four
+decisions a mutation left green until the review of #361
+(`TestLinePathspec`,
+`TestSinceTagPackagesNestedPackageIsNotItsParentsFirstChange`,
+`TestSinceTagPackagesBaselineReadsThePathFromTheTopLevel`,
+`TestSinceTagPackagesRootPackageExcludesTheOtherLines`,
+`TestSinceTagPackagesLineNoCommitTouchesHasNoBaseline`; mutation rows
+`packages-baseline-counts-a-nested-package-as-its-parents-first-change`,
+`packages-baseline-reads-the-path-from-the-working-directory`,
+`packages-baseline-root-package-owns-every-line`,
+`packages-baseline-named-for-a-line-no-commit-touches`). Past the cap the
+refusal's escape is built from the same answer (`walk.Escape`): `preview`,
+which has no `--since-tag`, says "cut the tag named above" where a baseline
+was named, and for a line no baseline can precede names the line's own first
+release cut by hand — the one floor left for it, a release like any other.
+"Cut the tag named above" alone dangled over a root-declared line, and on a
+pull touching a baselined line beside one, cutting the baseline as told
+cleared nothing: the re-run refused again, for the root line, naming nothing
+(measured 2026-11-08;
+`TestPreviewPackagesCapRefusalNamesAnEscapeForEveryUntaggedLine`, which
+follows the advice and re-runs, and
+`TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy`; mutation rows
+`preview-cap-escape-names-a-tag-nobody-named`,
+`preview-cap-escape-names-an-empty-hand-release`,
+`preview-cap-escape-sends-a-locked-line-to-the-free-line`).
 
 **Only the untagged arm is capped**, and the tagged arm's missing cap is a
 decision (t-n5tw R3); the one other bounded read is the PR side's read-back
@@ -3179,7 +3593,18 @@ commit(s)" in a pull of three and "its 0 commit(s)" in a pull of two, a count
 that reads as a miscount of the pull. The count is the footer's alone
 (`preview.RenderNoLine`, the body moved beside the others so its prose is
 unit-tested with theirs; `TestRenderNoLine`, mutation row
-`preview-moves-nothing-counts-the-pulls-commits`). The pending
+`preview-moves-nothing-counts-the-pulls-commits`). Under touched lines the
+PR-side caveat makes the same floor of "moves nothing" when every headline
+moves nothing, on a full checkout or a shallow one, and qualifies what each
+headline says when one names no version: a line with no release tag that
+moves nothing ("there is no version to move"), or one with none within a
+shallow checkout's reach (below). It said "may be missing from the figures
+above" under those headlines (measured 2026-11-09, a pull commit whose
+listing GitHub answered 422 for;
+`TestRenderPackagesPRShortNamesNoFigureNoHeadlineCarries`,
+`TestPreviewPRCaveatOnAFullCheckoutNamesNoFigure`; mutation rows
+`preview-pr-caveat-points-at-figures-no-line-moves`,
+`preview-pr-caveat-points-at-a-version-an-untagged-line-lacks`). The pending
 side is the one walk, run when any touched line has a release tag (the
 release-floor guard per line), and its RANGE is resolved over the TOUCHED
 lines alone —
@@ -3200,7 +3625,65 @@ alone, and that was wrong in the one case it mattered: the same run answered
 `curry/v0.0.1` in prose and `v0.1.0` in `packages[]`, and `bump` on the same
 checkout answers `curry/v0.1.0` — preview predicts the walk, so the prose is
 the half that has to move. "No tag" and "pending uncomputed" are therefore two
-states, not one flag. The body is the single line's sentences per line: the
+states, not one flag — and the headline reads the first, the footer the
+second. A line with no tag names every version as its **first release**
+(`the first release here would be **travel/v0.1.0**`), walked or not, with
+the tagged arms' level clauses (`… (a **minor** bump is already pending)`);
+its null floor is never spelled as a tag. Routed through the tagged arms
+because its pending side was walked, such a line drew "the next release
+becomes **travel/v0.0.0 → travel/v0.1.0**", a tag nobody cut (t-1n1s,
+measured 2026-11-04 on glyph-monorepo-test-2 `preview --pr 2`, camp tagged
+and travel not; `preview.untaggedHeadline`,
+`TestHeadlineUntaggedLineNamesItsFirstRelease`, mutation row
+`preview-untagged-line-spells-its-null-floor-as-a-tag`). The footer's
+untagged sentence agrees in number — `haiku and curry have no release tag …
+for them` — where one sentence joined with " and " read "haiku and curry has
+… for it" (t-c2a9, same measurement; mutation row
+`preview-footer-disagrees-in-number`). And the floor guard reads whether the
+checkout is **shallow** before it concludes no tag exists: a `--depth 1`
+clone holds the tags its depth reached and no other, so on a shallow
+checkout with no tag within reach the walk is still skipped — the verdict
+stays the PR side's, the exit code 0 — but stderr says the walk's own
+shallow sentence (`walk.ShallowWarning`, one home) and the body carries the
+walk's shallow clause where a walked shallow checkout puts it, its headline
+and footer saying the clone's reach rather than the base branch. Before that
+read the guard said "The base branch holds no v* release tag yet" of a
+repository that has v0.1.0 (t-txed, measured 2026-11-04 at 2f9428a;
+`TestPreviewOnAShallowCheckoutDoesNotAssertNoTag`, mutation row
+`preview-floor-guard-asserts-no-tag-on-a-shallow-checkout`). On a shallow
+checkout an untagged headline names **no version**, walk skipped or run: a
+line with no release tag within the reach may have one past it, and every
+version an untagged headline could name steps from the null floor that tag
+refutes — "the first release here would be **curry/v0.0.1**" where
+`curry/v0.1.0` lay past a `--depth 3` clone's reach that held haiku's tag,
+so the walk ran (measured 2026-11-08; the first cut named the figure "if no
+release tag lies past this shallow checkout's reach", a condition the clone
+cannot check). The sentence keeps the levels — "raises **patch**", "(a
+**minor** bump is already pending)" — and says why the release it lands in
+cannot be named (`preview.shallowHeadline`); the caveat under it qualifies
+"what the headline says" rather than a figure it does not carry, which it
+pointed at under "moves nothing", and so does the PR side's caveat when a
+pull commit's file listing came back short, which said "the figures above"
+there (measured 2026-11-09); and the footer says the clone's reach of a
+walked untagged line too (`TestPreviewOnAShallowCheckoutSpeaksPerLine`,
+`TestPreviewOnAShallowCheckoutNamesNoFigure`,
+`TestPreviewOnAShallowCheckoutPRCaveatNamesNoFigure`,
+`TestRenderShallowFloorGuard`, `TestRenderShallowWalkedLine`,
+`TestRenderPackagesPRShort`; mutation rows
+`preview-shallow-line-names-a-first-release`,
+`preview-walked-shallow-line-is-called-untagged`,
+`preview-shallow-caveat-qualifies-a-figure-nobody-named`,
+`preview-pr-caveat-qualifies-a-figure-nobody-named`). The machine
+verdict is unchanged there: `untagged` reports what the checkout holds, and
+`next` what the PR side stepped from the null floor — the prose claims less
+than it, never something else. A packages line's absence is said of the
+**line**: "this line has no release tag yet", never "the base branch holds
+no release tag yet", which the same comment's footer refuted two paragraphs
+below by naming a sibling's tag on that branch (measured 2026-11-08;
+`TestPreviewPackagesUntaggedLineSpeaksOfTheLine`, mutation row
+`preview-untagged-line-denies-the-base-branch-a-tag`); the bare line keeps
+the base-branch sentence, which is the fact there. The body is the single
+line's sentences per line: the
 marker, one headline per touched line led by the line's name with versions
 spelled as tags (`haiku/v0.1.0 → haiku/v0.2.0`, so two lines can never be
 confused), one commit table per line (a commit moving two lines sits in
@@ -3957,15 +4440,34 @@ distinguishable from `fail` — "we could not check" is not "it is fine", so
 neither exits 0.
 
 The line between the two is drawn on what the API **said**, not on whether the
-call returned an error (`github.IsRepoUnknown`). A 404 from the repository read is
-an answer — there is no such repository *for this credential* — and fails at `3`.
-A 403 rate limit, a 5xx that outlived the retry schedule, a dead socket or a body
-that would not parse is no answer at all: nothing about the repository was
-observed, so it is `unknown` at `4`, the same code every other glyph command gives
-that failure. Collapsing the two the other way made a transient GitHub outage tell
-the fleet's CI wrappers — which branch on `jq -e '.error.code == 3'` to hard-fail
-and treat everything else as retryable infra — that the repository was
-misconfigured, and never retry.
+call returned an error (`github.IsRepoRefused`). A 401, a 403 that is no rate limit
+and a 404 from the repository read are answers about the credential — it is
+rejected, it is refused this repository, or there is no such repository *for this
+credential* — and fail at `3`, with a credential to configure as the fix. A rate
+limit, a 5xx that outlived the retry schedule, a dead socket or a body that would
+not parse is no answer at all: nothing about the repository was observed, so it is
+`unknown` at `4`, the same code every other glyph command gives that failure, and
+the fix is to re-run. Collapsing the two the other way made a transient GitHub
+outage tell the fleet's CI wrappers — which branch on `jq -e '.error.code == 3'`
+to hard-fail and treat everything else as retryable infra — that the repository was
+misconfigured, and never retry. Drawing the line at the 404 alone told them a
+rejected token was retryable infra, and reported it as "GitHub did not answer"
+(measured at 2f9428a). A verdict command still exits `4` on a 401 (`bump --pr`,
+measured 2026-11-04): for it a read failed, while doctor was asked whether this
+credential can read the repository.
+A rate limit is told from a refusal on the answer itself: a primary limit carried
+`X-RateLimit-Remaining: 0` and no `Retry-After`, a permission 403 a nonzero count
+(both measured against api.github.com on 2026-11-04: the anonymous search budget
+run dry, and a repository's Actions permissions read without the grant), and GitHub
+documents a secondary limit as carrying `Retry-After`, the count at 0, or neither
+and only its message, so any of the three keeps it on the no-answer side
+(`TestRepositoryClassifiesAnAnswerApartFromNoAnswer`). The settings checks that
+never ran take their remedy from the same split: they told a 502 to fix the
+credential beside a token check telling it to wait
+(`TestDoctorSplitsTheRepoReadOnWhatTheAPISaid`, mutation rows
+`doctor-reads-a-credential-answer-as-no-answer`,
+`doctor-reads-any-403-as-a-credential-answer` and
+`doctor-settings-tell-an-outage-to-fix-the-credential`).
 
 The severities are the argued part:
 
@@ -4096,6 +4598,13 @@ The severities are the argued part:
   like any unread input; a sparse-checkout entry, tracked but never put on
   disk, is unread too, while a tracked file the working tree deleted is an
   observed absence, as the workflows directory's is under a git-named root.
+  A workflows path the filesystem will not list leaves the action files read
+  all the same: a moving ref in one fails at `3` with the listing failure in
+  its details, since a defect observed outranks a blind spot beside it, and only
+  clean action files leave the check `unknown` (a regular file at the path exited
+  `4` with them unread, measured at 2f9428a;
+  `TestCheckWorkflowPinsReadsTheActionFilesPastAnUnlistableDirectory`, mutation
+  row `doctor-pin-scan-lets-an-unlistable-directory-outrank-a-defect`).
   The price of "any path": an action file kept as a test fixture is judged
   like a published one — which it is, since GitHub runs it for anyone who
   names its path. `TestCheckWorkflowPinsScansCompositeActions`,
@@ -4232,12 +4741,17 @@ The severities are the argued part:
   no hook and calls no API — `internal/cli` asks git, fires the commit-msg probe
   and fetches the repository object, and hands each answer over in
   `doctor.Input` with its error, so a failed read degrades only the checks that
-  read it. One answer carries no error: the probe's claim (`probeClaimed`)
-  reads git's config the way the fired hook does, and a question git does not
-  answer reads as unset. Two failures end the run before doctor judges
-  anything: a repository it cannot name (no `--repo`, `$GITHUB_REPOSITORY` or
-  GitHub `origin`, or a malformed one — usage, 2), and an interrupt in any
-  read.
+  read it. Two answers carry no error, both read only of a fired hook that
+  exited `0`, in this order: whether `glyph` resolves (`glyphResolves` asks the
+  hook's own `command -v glyph` in the hook's shell, and a shell that did not
+  answer reads as absent), then the probe's claim (`probeClaimed` reads git's
+  config the way the fired hook does, and a question git does not answer reads
+  as unset). Because neither hands an error back, `internal/cli` asks the
+  context once after both, and `internal/doctor` reads the absence before the
+  claim (`commit-msg-hook-fires`, below). Two failures end the run before
+  doctor judges anything: a repository it cannot name (no `--repo`,
+  `$GITHUB_REPOSITORY` or GitHub `origin`, or a malformed one — usage, 2), and
+  an interrupt in any read.
 - **The byte-identical hook is also FIRED (`commit-msg-hook-fires`).** Current
   bytes prove the script; they prove nothing about the glyph the script resolves
   on PATH at run time, and the script blocks only on the gate code and waves
@@ -4260,7 +4774,21 @@ The severities are the argued part:
   config's absence answering and `glyph-toml-loads` owns the finding. Failing
   it sent the reader to repair a PATH wrapper nothing had observed broken
   (`TestHookFiresDefersAPassThroughToAnUnloadedConfig`, mutation row
-  `doctor-hook-fires-blames-the-path-for-an-unloaded-config`).
+  `doctor-hook-fires-blames-the-path-for-an-unloaded-config`). A hook a signal
+  killed is the same unknown (`os/exec` reports `-1`; mutation row
+  `doctor-hook-fires-reads-a-killed-probe-as-blocked`). A `glyph` absent from
+  `PATH` is its own diagnosis in this check, and still a failure: the hook's
+  `command -v glyph` finds nothing, so it warns and passes every commit, by the
+  design that never lets a missing tool block one, and the local gate is dead all
+  the same. The generic pass-through told the reader to check what that command
+  resolves to, when it resolves to nothing (measured at 2f9428a), so an exit `0`
+  is followed by the hook's own question, asked in the shell the hook runs under
+  rather than modelled with a `PATH` walk. The absence is read before the two
+  readings above: a config claiming the probe text would call it the whole chain
+  answering, and an unloaded one the config's absence answering, and nothing ran
+  to make either true (`TestHookFiresNamesAGlyphAbsentFromPATH`, mutation rows
+  `doctor-hook-fires-reads-an-absent-glyph-as-a-pass-through` and
+  `doctor-never-asks-whether-glyph-resolves`).
 - **A byte-identical pre-push hook nobody fired ⇒ advice (`pre-push-hook`).**
   Only commit-msg is fired, and its answer covers pre-push because both hooks
   resolve one `PATH` — which holds while a byte-identical commit-msg hook sits
@@ -4284,7 +4812,35 @@ The severities are the argued part:
   is byte-identical, so a checkout with no hook — every CI runner — pays
   nothing; a read that fails is `unknown`, like any unread input
   (`TestPrePushHookSaysWhenNoRemoteHeadIsRecorded`, mutation row
-  `doctor-pre-push-ignores-an-unrecorded-remote-head`). The remedy is
+  `doctor-pre-push-ignores-an-unrecorded-remote-head`). A recorded name whose
+  ref no longer exists records nothing either: a default branch renamed on the
+  remote leaves that ref dangling after `git fetch --prune`, git warns once, and
+  `symbolic-ref` still answers exit `0` with the old name. Believed, the new
+  default branch read as off the default branch, so a violating push landed at
+  exit `0` with no remedy named while this check passed (measured at 2f9428a, git
+  2.54). So `gitsource.DefaultBranch` verifies the name first, and the hook and
+  this check give what they give an unrecorded remote
+  (`TestPrePushReadsADanglingDefaultBranchAsUnrecorded`, mutation row
+  `default-branch-believes-a-dangling-ref`). A recorded name whose commit this
+  clone holds and cannot read — an empty object file, one git cannot open, a
+  body that does not parse — is the read failing, not a name that records
+  nothing: set-head repairs no object store, so it is `unknown` at `4` and the
+  fix names what must change first, the object `git fsck` names (a re-fetch
+  does not replace it: the ref is up to date, so nothing is sent; measured on
+  git 2.54), then the re-run (`TestDefaultBranchFailsOnATargetGitCannotRead`,
+  mutation rows `gitsource-names-commit-reads-a-held-object-it-cannot-read-as-no-commit`,
+  `gitsource-names-commit-reads-a-held-object-git-is-silent-about-as-no-commit`,
+  `doctor-pre-push-unread-head-fix-names-no-condition`). The signal is git's
+  `error:` line paired with `cat-file -e`, and §4 states where neither sees:
+  under git ≤ 2.39 a fan-out directory git cannot open reads as unrecorded
+  here and names set-head. A store whose alternates directory is gone writes
+  the line too, and is this failure for a recorded name whose commit it does
+  not hold — on 2.56 for a dangling one too, where 2.54.0 and 2.39.5 name
+  set-head (`TestDefaultBranchFailsOnADanglingRefOverAGoneAlternatesStore`,
+  mutation row
+  `gitsource-names-commit-reads-an-unknown-name-over-an-incomplete-store-as-no-commit`)
+  — while a name whose commit it holds reads as recorded (measured on 2.39.5,
+  2.54.0 and 2.56.0). The remedy is
   `git remote set-head <remote> -a` only where git can record a head at all:
   a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
   set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote

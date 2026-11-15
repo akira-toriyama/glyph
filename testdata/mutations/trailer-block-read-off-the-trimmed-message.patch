@@ -1,0 +1,22 @@
+diff --git a/internal/notes/notes.go b/internal/notes/notes.go
+index 8acded2..4caa36a 100644
+--- a/internal/notes/notes.go
++++ b/internal/notes/notes.go
+@@ -129,7 +129,7 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c Commit
+ 		config.BuiltinPR:        "",
+ 		config.BuiltinAuthor:    c.Author,
+ 		config.BuiltinHash:      shortSHA(c.SHA),
+-		config.BuiltinCoauthors: strings.Join(coAuthorNames(c.Recorded), ", "),
++		config.BuiltinCoauthors: strings.Join(coAuthorNames(c.Message), ", "), // MUTATION: the trailer block read off the newline-stripped text
+ 	}
+ 	if c.Pull > 0 {
+ 		builtins[config.BuiltinPR] = "#" + strconv.Itoa(c.Pull)
+@@ -140,7 +140,7 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c Commit
+ 	// config.buildTrailers refuses such a name, so the collision never
+ 	// reaches here and the order a template sees is trailer > group.
+ 	for _, t := range declared {
+-		builtins[t.Name] = trailerValue(c.Recorded, t.Token)
++		builtins[t.Name] = trailerValue(c.Message, t.Token) // MUTATION: same
+ 	}
+ 	resolve := func(name string) string {
+ 		if v, ok := builtins[name]; ok {

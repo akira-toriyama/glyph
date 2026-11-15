@@ -165,7 +165,7 @@ func (c *Config) removals(i int, message string) (scope, sigil bool) {
 		return false, false
 	}
 	p := &c.Patterns[i]
-	if dropped, ok := withoutScope(p.pattern, message); ok {
+	if dropped, ok := withoutScope(p.re, message); ok {
 		after, ok := c.claimedBy(i, dropped)
 		scope = ok && after.Groups[ScopeGroup] == "" && after.Sigil == before.Sigil
 	}
@@ -198,16 +198,26 @@ func (c *Config) claimedBy(i int, message string) (Match, bool) {
 //     earlier turn of a repeat, so under `(?:\((?P<scope>…)\)|!)*` the last
 //     turn can be a `!` beside a scope captured two turns back.
 //
+// Of two groups named scope the one proposed is the one that took part in
+// THIS message's match (participant) — the one whose capture Match handed on.
 // regexp reports no span for a non-capturing group, so the pattern is
 // compiled again with one more capture around that ancestor's operand. The
 // copy is asked where a span lies and nothing else; whether the rewritten
 // message is the pattern's is Match's to say (removals).
-func withoutScope(pattern, message string) (string, bool) {
-	tree, err := syntax.Parse(pattern, syntax.Perl)
+func withoutScope(re *regexp.Regexp, message string) (string, bool) {
+	loc := re.FindStringSubmatchIndex(message)
+	if loc == nil {
+		return "", false
+	}
+	took := participant(re, loc, ScopeGroup)
+	if took < 0 {
+		return "", false
+	}
+	tree, err := syntax.Parse(re.String(), syntax.Perl)
 	if err != nil {
 		return "", false
 	}
-	group := lastGroup(tree, ScopeGroup)
+	group := groupByCap(tree, took)
 	if group == nil {
 		return "", false
 	}
@@ -220,15 +230,15 @@ func withoutScope(pattern, message string) (string, bool) {
 		name += "_"
 	}
 	around.Sub[0] = &syntax.Regexp{Op: syntax.OpCapture, Name: name, Cap: tree.MaxCap() + 1, Sub: []*syntax.Regexp{around.Sub[0]}}
-	re, err := regexp.Compile(tree.String())
+	marked, err := regexp.Compile(tree.String())
 	if err != nil {
 		return "", false
 	}
-	loc := re.FindStringSubmatchIndex(message)
+	loc = marked.FindStringSubmatchIndex(message)
 	if loc == nil {
 		return "", false
 	}
-	whole, scope := span(re, loc, name), span(re, loc, ScopeGroup)
+	whole, scope := span(marked, loc, name), span(marked, loc, ScopeGroup)
 	if scope[0] < 0 || scope[0] == scope[1] || whole[0] < 0 || whole[0] > scope[0] || scope[1] > whole[1] {
 		return "", false
 	}
@@ -255,20 +265,15 @@ func withoutSigil(re *regexp.Regexp, message string) (string, bool) {
 	return message[:sigil[0]] + message[sigil[1]:], true
 }
 
-// span is where the last group called name matched in loc — the group Match
-// reads (lastGroup) — or -1, -1 when the pattern names none or it took no
-// part.
+// span is where the group called name that took part in the match loc
+// describes — the group Match reads (participant) — captured, or -1, -1 when
+// the pattern names none or none of them took part.
 func span(re *regexp.Regexp, loc []int, name string) [2]int {
-	last := -1
-	for i, n := range re.SubexpNames() {
-		if n == name {
-			last = i
-		}
-	}
-	if last < 0 {
+	took := participant(re, loc, name)
+	if took < 0 {
 		return [2]int{-1, -1}
 	}
-	return [2]int{loc[2*last], loc[2*last+1]}
+	return [2]int{loc[2*took], loc[2*took+1]}
 }
 
 // optionalAround returns target's innermost ancestor under re that a match

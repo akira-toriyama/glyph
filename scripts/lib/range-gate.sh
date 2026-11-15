@@ -7,27 +7,34 @@
 # Messages carry the sourcing script's name ($0 is not rebound by `.`).
 RANGE_GATE="$(basename "$0" .sh)"
 
-# range_gate_changed <base> prints the paths of the three-dot diff — against
-# the merge-base, the diff a pull request is judged on. A base that does not
-# resolve exits 1: a stale or shallow checkout cannot form that diff, and an
-# empty answer would read as "nothing to prove". --no-renames: a gated file
+# range_gate_changed <base> [<head>] prints the paths of the three-dot diff —
+# against the merge-base, the diff a pull request is judged on. head is HEAD
+# unless the caller names the commit CI checks out (check.sh hands the merge it
+# built). A base or head that does not resolve exits 1: a stale or shallow
+# checkout cannot form that diff, and an empty answer would read as "nothing to
+# prove". --no-renames: a gated file
 # renamed out of its pattern is listed under its old path as a deletion;
 # detected as a rename it is listed under the new path alone, and the gate
 # reads a vanished reusable as nothing to prove.
 range_gate_changed() {
-  if ! git rev-parse --verify --quiet "$1^{commit}" >/dev/null; then
-    echo "$RANGE_GATE: base '$1' does not resolve — fetch it first; a stale or shallow checkout cannot form the diff CI judges" >&2
-    exit 1
-  fi
-  git diff --name-only --no-renames "$1"...HEAD
+  for ref in "$1" "${2:-HEAD}"; do
+    if ! git rev-parse --verify --quiet "$ref^{commit}" >/dev/null; then
+      echo "$RANGE_GATE: '$ref' does not resolve — fetch it first; a stale or shallow checkout cannot form the diff CI judges" >&2
+      exit 1
+    fi
+  done
+  git diff --name-only --no-renames "$1"..."${2:-HEAD}"
 }
 
-# require_trailer_on_every_commit <Key> <base> returns 0 only when base..HEAD
-# holds at least one non-merge commit and every one carries a `<Key>:` trailer
+# require_trailer_on_every_commit <Key> <base> [<head>] returns 0 only when
+# base..head (head is HEAD unless named, as for range_gate_changed) holds at
+# least one non-merge commit and every one carries a `<Key>:` trailer
 # with a real reason. A range-wide claim cannot be made by one commit in the
-# range — go-bite's rule for Bite-exempt. The trailer is parsed by `git
-# interpret-trailers`, so a matching line inside a body paragraph asserts
-# nothing.
+# range — go-bite's rule for Bite-exempt. The trailer is read by git's commit
+# reader, `%(trailers)`, the oracle DESIGN §3 rules for a landed commit's
+# trailers: a matching line inside a body paragraph asserts nothing, and a
+# trailer below a `---` line counts, where `git interpret-trailers` stops
+# reading (TestRangeGatesReadATrailerBelowADivider).
 #
 # A trailer with no reason, or still the `<placeholder>`, exits 1 on the spot.
 # Otherwise the answer is the return code, with RANGE_GATE_MISSING set to the
@@ -38,9 +45,9 @@ require_trailer_on_every_commit() {
   RANGE_GATE_MISSING=''
   RANGE_GATE_REASON=''
   examined=0
-  for commit in $(git rev-list --no-merges "$2"..HEAD); do
+  for commit in $(git rev-list --no-merges "$2".."${3:-HEAD}"); do
     examined=$((examined + 1))
-    line="$(git show -s --format=%B "$commit" | git interpret-trailers --parse | grep "^$1:" | sed -n '1p')"
+    line="$(git show -s --format='%(trailers:only,unfold)' "$commit" | grep "^$1:" | sed -n '1p')"
     if [ -z "$line" ]; then
       RANGE_GATE_MISSING="$commit"
       return 1

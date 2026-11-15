@@ -115,6 +115,8 @@ func newDoctorCmd() *cobra.Command {
 			"An API failure that produced no answer at all — a rate limit, an outage that\n" +
 			"outlived the retries, an unreachable host — is a could-not-run (4) and never a\n" +
 			"violation (3): glyph observed nothing, so it says nothing about the repository.\n" +
+			"A 401, a 403 that is no rate limit and a 404 are answers about the credential,\n" +
+			"and token-repo-read fails on them (3).\n" +
 			"Advice never affects the exit. --json emits {repo,checks,counts,ok} on one line.",
 		Example: "  glyph doctor                          # diagnose this checkout ($GITHUB_REPOSITORY, else origin)\n" +
 			"  glyph doctor --repo akira-toriyama/sill\n" +
@@ -192,12 +194,20 @@ func probeCommitMsgHook(ctx context.Context, installed hook.Installed) *doctor.H
 	probe := exec.CommandContext(ctx, installed.Path, msg.Name()) // #nosec G204 -- firing the byte-verified hook glyph itself wrote
 	err = probe.Run()
 	if err == nil {
-		return &doctor.HookProbe{Exit: 0}
+		return &doctor.HookProbe{Exit: 0, GlyphAbsent: !glyphResolves(ctx)}
 	}
 	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		return &doctor.HookProbe{Exit: exit.ExitCode()}
 	}
 	return &doctor.HookProbe{Err: err}
+}
+
+// glyphResolves asks the question the hook asks, in the shell the hook runs
+// under, rather than modelling `command -v` with a PATH walk. Asked only of an
+// exit 0: a block already proves glyph ran. A cancel here reads as absent and
+// never reaches a report, since doctorRun asks ctx once the probe is done.
+func glyphResolves(ctx context.Context) bool {
+	return exec.CommandContext(ctx, "/bin/sh", "-c", "command -v glyph").Run() == nil
 }
 
 // readRemoteHeads asks, for every configured remote, which default branch this
@@ -322,10 +332,11 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 		root = top
 	}
 	// The probe hands no interrupt back: a hook killed mid-fire is an exit
-	// status, and the claim's config reads (hookCleanupMode) read a git that did
-	// not answer as unset. So the context both ran under is asked once they are
-	// done, classified as every read classifies it: canceled is the abort, a
-	// deadline is not.
+	// status, glyphResolves reads a shell that did not answer as absent, and the
+	// claim's config reads (hookCleanupMode) read a git that did not answer as
+	// unset. So the context they all ran under is asked once they are done,
+	// classified as every read classifies it: canceled is the abort, a deadline
+	// is not.
 	var probeAbort error
 	if probe != nil {
 		probe.Claimed = probeClaimed(ctx, cfg)

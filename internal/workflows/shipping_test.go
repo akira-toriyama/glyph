@@ -17,64 +17,52 @@ import (
 	"testing"
 )
 
-// TestReleasePublishesAtTagTime pins `draft: false` in .goreleaser.yaml
-// (1015774). The same run's homebrew_casks step has ALREADY pushed the new
-// version to the tap, so every draft is a window where `brew install` fetches
-// a 404 asset, bounded only by how soon a human remembers to publish — cifail
-// v0.1.1 sat unpublished for 17 days. Reverting is a one-word change that CI
-// stays green over; the failure surfaces after the next tag, in a consumer.
-func TestReleasePublishesAtTagTime(t *testing.T) {
-	config := code(repoFile(t, ".goreleaser.yaml"))
-	if !regexp.MustCompile(`(?m)^\s*draft:\s*false\s*$`).MatchString(config) {
-		t.Error(".goreleaser.yaml no longer sets `draft: false`; a draft's assets are 404 to " +
-			"anonymous clients while the tap already names the new version — every draft is a " +
-			"broken-brew window bounded only by a human remembering to publish (1015774)")
-	}
-	truthyDraft := regexp.MustCompile(`(?m)^\s*draft:\s*["']?true`)
-	// Positive control: the line 1015774 replaced (6cad6ae).
-	const canary = "  draft: true"
-	if !truthyDraft.MatchString(canary) {
-		t.Fatalf("the pattern no longer matches the draft line it bans (%q) — the absence asserted below is vacuous", canary)
-	}
-	if truthyDraft.MatchString(config) {
-		t.Error(".goreleaser.yaml sets a truthy `draft:`; publish at tag time — see the release block's rationale")
-	}
-}
-
-// TestPrereleaseTagsStayOffLatestAndOffTheTap pins the pair of `auto`s that
-// make a release candidate cheap. A grammar change cannot be proven by a dry
-// run — only by a real release binary that the reusables install and a fleet
-// gate executes — so it ships rc tags first. GoReleaser
-// defaults both keys the other way: without `prerelease: auto` every `v*` tag
-// publishes as a full release and takes GitHub's `latest` pointer, and without
-// `skip_upload: auto` the same tag regenerates Casks/glyph.rb, so an rc of a
-// breaking version reaches anyone who types `brew upgrade`. Both are absences,
+// TestPrereleaseTagsStayOffLatestAndOffTheTap pins what makes a release
+// candidate cheap. A grammar change cannot be proven by a dry run — only by a
+// real release binary that the reusables install and a fleet gate executes —
+// so it ships rc tags first. GoReleaser defaults `prerelease` the other way:
+// without `prerelease: auto` every `v*` tag publishes as a full release and
+// takes GitHub's `latest` pointer. The tap half lives in goreleaser.yml since
+// the push left GoReleaser (t-p15y): the cask job runs only when the tag
+// step's parse says the tag is no release candidate, or an rc of a breaking
+// version reaches anyone who types `brew upgrade`. Both are absences,
 // invisible to CI, and neither shows up until the tag is already pushed and
-// `latest` has already moved for whoever looked in between.
+// `latest` has already moved for whoever looked in between. That the tag
+// step writes `prerelease=` as the tag says is
+// TestReleaseRefusesATagWhoseMajorTheModulePathDoesNotCarry's, which runs it.
 func TestPrereleaseTagsStayOffLatestAndOffTheTap(t *testing.T) {
 	config := code(repoFile(t, ".goreleaser.yaml"))
-
-	for _, g := range []struct{ key, why string }{
-		{"prerelease", "an rc tag publishes as a full release and takes GitHub's `latest` pointer, " +
-			"which is what every \"what should I pin?\" glance reads"},
-		{"skip_upload", "an rc tag regenerates the Homebrew cask, so `brew install " +
-			"akira-toriyama/tap/glyph` hands out a candidate of a breaking version"},
-	} {
-		if !regexp.MustCompile(`(?m)^\s*` + g.key + `:\s*auto\s*$`).MatchString(config) {
-			t.Errorf(".goreleaser.yaml no longer sets `%s: auto`; GoReleaser's default is the "+
-				"other way, so %s", g.key, g.why)
-		}
+	keyIs := func(key, value string) bool {
+		return regexp.MustCompile(`(?m)^\s*` + key + `:\s*` + value + `\s*$`).MatchString(config)
 	}
-
+	if !keyIs("prerelease", "auto") {
+		t.Error(".goreleaser.yaml no longer sets `prerelease: auto`; GoReleaser's default is the other way, so " +
+			"an rc tag publishes as a full release and takes GitHub's `latest` pointer, which is what every " +
+			"\"what should I pin?\" glance reads")
+	}
 	// Positive control: the guard above asserts a presence, but the regex it
 	// asserts with is the part that can rot. Prove the same pattern still finds
-	// a key this file demonstrably carries — `draft: false` — spelled the way
-	// the guards spell it, so a regex that has stopped matching anything at all
-	// fails here instead of passing two absences off as satisfied.
-	if !regexp.MustCompile(`(?m)^\s*draft:\s*false\s*$`).MatchString(config) {
-		t.Error("the key regex matches nothing in .goreleaser.yaml, not even `draft: false`; " +
-			"the two `auto` guards above are asserting against a pattern that can no longer " +
-			"match this file's syntax, so they would pass on a stripped config")
+	// a key this file demonstrably carries — `draft: true` — spelled the way
+	// the guard spells it, so a regex that has stopped matching anything at all
+	// fails here instead of passing an absence off as satisfied.
+	if !keyIs("draft", "true") {
+		t.Error("the key regex matches nothing in .goreleaser.yaml, not even `draft: true`; the " +
+			"`auto` guard above is asserting against a pattern that can no longer match this " +
+			"file's syntax, so it would pass on a stripped config")
+	}
+
+	raw := goreleaserWorkflow(t)
+	body := code(raw)
+	if !regexp.MustCompile(`(?m)^    ` + regexp.QuoteMeta(caskJobCondition) + `\s*$`).MatchString(jobBlock(t, body, "cask")) {
+		t.Errorf("the cask job does not carry `%s`; a release candidate's cask reaches the tap, and the first rc "+
+			"of a breaking major is what `brew upgrade` hands everyone", caskJobCondition)
+	}
+	if !strings.Contains(jobBlock(t, body, "release"), "\n      "+prereleaseJobOutput+"\n") {
+		t.Errorf("the release job does not publish `%s`; the cask job's condition reads an output nothing "+
+			"sets, which GitHub resolves to \"\" — so every tag, rc included, passes `!= 'true'`", prereleaseJobOutput)
+	}
+	if got := readStepShape(t, raw, moduleMajorStep).keys["id"]; got != "tag" {
+		t.Errorf("the tag step has id %q, want tag — the release job's prerelease output reads steps.tag", got)
 	}
 }
 
@@ -111,8 +99,8 @@ func TestInstallActionRetriesSpanARealOutage(t *testing.T) {
 
 // TestNotesSoftExitShipsAPlaceholder pins the release-notes action's arm that
 // absorbs `glyph notes`' soft no-release exit 1 (7d8d733): under `set -e` a
-// bare invocation kills the whole job when the range below the tag holds
-// nothing release-worthy — no binaries, no cask, no attestation, behind a tag
+// bare invocation kills the whole job when no commit below the tag lands in a
+// release-notes section — no binaries, no cask, no attestation, behind a tag
 // that already exists. The contract is honoured instead: 1 ships a
 // placeholder body, and a real failure keeps its code. Which exits ship and
 // which fail is TestNotesStepShipsEveryVerdictOnTheRange's, which runs the
@@ -121,11 +109,11 @@ func TestNotesSoftExitShipsAPlaceholder(t *testing.T) {
 	body := code(repoFile(t, filepath.FromSlash(releaseNotesAction)))
 
 	for _, want := range []string{
-		"|| status=$?",                 // capture without dying under set -e
-		`if [ "$status" -eq 1 ]`,       // the soft no-release arm...
-		"No release-worthy changes in", // ...ships a body that says so
-		`elif [ "$status" -ne 0 ]`,     // real failures keep failing
-		`exit "$status"`,               // with their own code, not a laundered 1
+		"|| status=$?",           // capture without dying under set -e
+		`if [ "$status" -eq 1 ]`, // the soft no-release arm...
+		"no commit below it lands in a release-notes section", // ...ships a body that says so
+		`elif [ "$status" -ne 0 ]`,                            // real failures keep failing
+		`exit "$status"`,                                      // with their own code, not a laundered 1
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the release-notes action lost %q; `glyph notes` exits 1 on an infra-only "+
@@ -250,8 +238,9 @@ func notesScript(t *testing.T) (script string, shell []string) {
 // install action put the real one — over each exit `glyph notes` can hand it.
 // At tag time the range is immutable, so a verdict on it is permanent: a
 // re-run answers the same, and a failed job leaves a tag with no release
-// assets. The step therefore ships on 1 (its placeholder byte for byte,
-// unchanged by t-bcdz) and on 3, which is how the wedge escape's own tag
+// assets. The step therefore ships on 1 (its placeholder byte for byte, in
+// notes' own condition: no commit lands in a section, t-h90a) and on 3, which
+// is how the wedge escape's own tag
 // answers: the escape is a tag cut where glyph's refusal sends it (DESIGN §4)
 // — at or past the refused commit, or a squash-merged pull's merge point —
 // and below: walks from the predecessor, so that walk reaches the commit
@@ -275,9 +264,9 @@ func TestNotesStepShipsEveryVerdictOnTheRange(t *testing.T) {
 		annotation string // one whole line of the step's stdout
 	}{
 		{"a rendered body ships as rendered", 0, 0, rendered, ""},
-		{"nothing release-worthy ships the placeholder that says so", 1, 0,
-			"No release-worthy changes in " + tag + ".\n",
-			"::warning::no release-worthy commits below " + tag + " — publishing with a placeholder body"},
+		{"no notes to write ships the placeholder that says so", 1, 0,
+			"No release notes for " + tag + ": no commit below it lands in a release-notes section.\n",
+			"::warning::no commit below " + tag + " lands in a release-notes section — publishing with a placeholder body"},
 		{"the wedge escape's own range ships the placeholder that says why", 3, 0,
 			"No release notes for " + tag + ": the walk below it reaches a commit glyph refuses, and this tag was cut " +
 				"where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear " +
@@ -332,7 +321,7 @@ func TestNotesStepShipsEveryVerdictOnTheRange(t *testing.T) {
 // invocation, in glyph's own vocabulary — and never the soft exit 1 a failed
 // redirect would otherwise hand the arm that reads glyph's status (measured
 // in review: an `output:` under a directory that does not exist printed the
-// nothing-release-worthy warning with glyph never run).
+// exit-1 arm's warning with glyph never run).
 func TestNotesStepResolvesItsInputs(t *testing.T) {
 	script, shell := notesScript(t)
 	const tag = "v9.8.7"

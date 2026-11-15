@@ -1,0 +1,9 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index 1da817d..b548dec 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -101,4 +101,2 @@ release:
+   # v2.20.0), and the upload replaces an existing asset like any other.
+-  extra_files:
+-    - glob: dist/homebrew/Casks/glyph.rb
+   # `auto` marks a hyphenated tag (v3.0.0-rc.1) as a prerelease, which is the

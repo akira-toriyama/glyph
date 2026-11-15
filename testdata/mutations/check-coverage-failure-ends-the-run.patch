@@ -1,0 +1,13 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+index 377cdbc..23a6fc5 100755
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -274,7 +274,7 @@ case "$cover_total" in
+     echo "$cover_total"
+     COVERAGE="coverage reported: $(printf '%s\n' "$cover_total" | awk '{ print $NF }')"
+     ;;
+-  *) COVERAGE="coverage NOT reported: go tool cover could not read the race run's profile" ;;
++  *) exit 1 ;;
+ esac
+ 
+ echo "→ fuzz smoke (bounded)"

@@ -10,8 +10,8 @@
 # makes a rendering BUG look intentional.
 # The diff sits right there in the pull request, but nothing forces the author
 # to have READ it as the spec change it is. The trailer is that force: range-
-# wide, parsed by `git interpret-trailers` exactly as go-bite's `Bite-exempt:`
-# is, so a line inside a body paragraph asserts nothing.
+# wide, and read by git's commit reader, so a line inside a body paragraph
+# asserts nothing.
 #
 # Unlike dist-gate.sh (whose trailer rule this shares through
 # scripts/lib/range-gate.sh), the trailer here is not a waiver of some stronger
@@ -20,14 +20,20 @@
 # in the history of every commit that rewrote the spec.
 #
 # What counts as a golden is GOLDEN_PATTERN below: the -update-rewritable
-# goldens (testdata/*.golden.*). Deliberately absent: the fuzz corpus, which is
+# goldens (testdata/*.golden.*), under a testdata/ at any depth, the repo root's
+# included. Deliberately absent: the fuzz corpus, which is
 # regression INPUTS rather than a format spec — a trailer demanded there would
 # read as "a hand edit of a crash input is acceptable with a reason", and the
 # only legitimate writes are the engine's own.
 #
-# Usage: sh scripts/golden-gate.sh <base>   (CI passes the PR base sha;
-# check.sh passes origin/main). The diff is three-dot, i.e. against the
-# merge-base — the same diff CI judges.
+# Usage: sh scripts/golden-gate.sh <base> [<head>]   (CI passes the PR base
+# sha with HEAD at the merge commit it checked out; check.sh passes origin/main
+# and the merge commit it built the way CI does). The diff is three-dot,
+# base...head, i.e. against the merge-base — the same diff CI judges, as long as
+# head is the merge: from a branch head the diff runs from the fork point, and on
+# a branch stacked on a pull request main has since squashed it carries the
+# parent's golden, so this gate demanded a trailer CI never asked for (measured
+# 2026-11-08: exit 1 from the head, exit 0 from the merge).
 #
 # internal/workflows/goldengate_test.go holds this pattern's canary, proves it
 # still matches the real goldens and nothing else, and asserts byte-for-byte
@@ -36,13 +42,14 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-GOLDEN_PATTERN='^.*/testdata/.*\.golden\..*$'
+GOLDEN_PATTERN='(^|/)testdata/.*\.golden\..*$'
 
-base="${1:?usage: sh scripts/golden-gate.sh <base-ref>}"
+base="${1:?usage: sh scripts/golden-gate.sh <base-ref> [<head-ref>]}"
+head="${2:-HEAD}"
 
 # shellcheck source=scripts/lib/range-gate.sh
 . ./scripts/lib/range-gate.sh
-changed="$(range_gate_changed "$base")"
+changed="$(range_gate_changed "$base" "$head")"
 
 goldens="$(printf '%s\n' "$changed" | grep -E "$GOLDEN_PATTERN" || true)"
 if [ -z "$goldens" ]; then
@@ -50,13 +57,13 @@ if [ -z "$goldens" ]; then
   exit 0
 fi
 
-if require_trailer_on_every_commit Golden-change "$base"; then
+if require_trailer_on_every_commit Golden-change "$base" "$head"; then
   echo "golden-gate: every commit in the range states its Golden-change reason for:"
   printf '%s\n' "$goldens" | sed 's/^/  /'
   exit 0
 fi
 
 printf '%s\n' "$goldens" | sed 's/^/  /' >&2
-printf '::error::golden-gate: this change rewrites the golden files above and %s carries no Golden-change trailer. A golden is the format spec — `-update` regenerates it from whatever the code now produces, so the diff IS the spec change: read it as one, then put `Golden-change: <reason>` on every commit in the range (a real trailer; `git interpret-trailers` must parse it).\n' \
+printf '::error::golden-gate: this change rewrites the golden files above and %s carries no Golden-change trailer. A golden is the format spec — `-update` regenerates it from whatever the code now produces, so the diff IS the spec change: read it as one, then put `Golden-change: <reason>` on every commit in the range (a real trailer; `git log --format=%%(trailers)` must print it).\n' \
   "$([ -n "$RANGE_GATE_MISSING" ] && git rev-parse --short "$RANGE_GATE_MISSING" || echo 'an empty commit range')" >&2
 exit 1

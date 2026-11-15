@@ -1,0 +1,17 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index bd26ddc..c5c368f 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -244,11 +244,7 @@ func isGitMergeMessage(ctx context.Context, message io.Reader) bool {
+ 	if err != nil || !got.Mode().IsRegular() {
+ 		return false
+ 	}
+-	path, err := gitsource.GitPath(ctx, ".", "MERGE_MSG")
+-	if err != nil {
+-		return false
+-	}
+-	want, err := os.Stat(path)
++	want, err := os.Stat(".git/MERGE_MSG")
+ 	return err == nil && os.SameFile(got, want)
+ }
+ 

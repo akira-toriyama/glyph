@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"errors"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -161,6 +164,53 @@ func TestPrePushDefaultBranchUnresolvedWarnsOnly(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "git remote set-head 'origin' -a") {
 		t.Fatalf("the warning must name the command that restores the ref:\n%s", stderr)
+	}
+}
+
+// TestPrePushReadsADanglingDefaultBranchAsUnrecorded is the whole chain on a real
+// rename: git itself runs the installed hook on a real `git push`. A default
+// branch renamed on the remote leaves origin/HEAD naming a ref `fetch --prune`
+// deleted. Believed, that name makes the new default branch read as off the default
+// branch, so the warning names no remedy for a violating push that lands. It is the
+// unrecorded case: the push still lands, and the hook names the command that
+// restores the block. set-head is the positive control, the same violation refused
+// once it has run.
+func TestPrePushReadsADanglingDefaultBranchAsUnrecorded(t *testing.T) {
+	glyphBin := buildGlyph(t)
+	work, remote := testClone(t)
+	testutil.DangleOriginHead(t, remote, work)
+	testutil.Git(t, work, "akira-toriyama", "checkout", "-q", "-b", "trunk", "origin/trunk")
+	t.Chdir(work)
+	if code, _, stderr := runGlyph(t, "hook", "install"); code != 0 {
+		t.Fatalf("hook install exited %d\nstderr: %s", code, stderr)
+	}
+	path := filepath.Dir(glyphBin) + string(os.PathListSeparator) + os.Getenv("PATH")
+
+	testutil.Commit(t, work, "akira-toriyama", "wip broken message")
+	out, err := runGit(work, path, "push", "origin", "trunk")
+	if err != nil {
+		t.Fatalf("a dangling origin/HEAD records no default branch, so nothing may block; the push failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "does not record origin's default branch") || !strings.Contains(out, "git remote set-head 'origin' -a") {
+		t.Fatalf("the hook must name the command that restores the block:\n%s", out)
+	}
+	landed := rev(t, work, "HEAD")
+	if got := rev(t, remote, "trunk"); got != landed {
+		t.Fatalf("the remote's trunk = %s, want the pushed %s", got, landed)
+	}
+
+	testutil.Git(t, work, "akira-toriyama", "remote", "set-head", "origin", "-a")
+	testutil.Commit(t, work, "akira-toriyama", "wip broken again")
+	out, err = runGit(work, path, "push", "origin", "trunk")
+	ee, ok := errors.AsType[*exec.ExitError](err)
+	if !ok || ee.ExitCode() != 1 {
+		t.Fatalf("after set-head the hook must refuse the push, which git reports as exit 1; got %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "matches none") {
+		t.Fatalf("the refusal must carry the finding:\n%s", out)
+	}
+	if got := rev(t, remote, "trunk"); got != landed {
+		t.Fatalf("the remote's trunk moved to %s under a refused push", got)
 	}
 }
 

@@ -1,0 +1,13 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index a1cc480..45c5f8f 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -82,7 +82,7 @@ release:
+   # opened (cifail v0.1.1 sat unpublished for 17 days, its tap already naming
+   # it) is closed by order, not by publishing early: the cask job runs after
+   # the publish step, and no human publishes anything.
+-  draft: true
++  draft: false
+   # A re-run after a failure that left the draft behind must land on THAT
+   # draft, not mint a second one. GoReleaser looks a release up by tag, and
+   # GitHub's tag lookup does not see drafts; use_existing_draft lists the

@@ -1,0 +1,13 @@
+diff --git a/scripts/dist-gate.sh b/scripts/dist-gate.sh
+index 6dce59a..6a44bf0 100644
+--- a/scripts/dist-gate.sh
++++ b/scripts/dist-gate.sh
+@@ -91,7 +91,7 @@ pin_swaps() {
+   set -- $dist
+   set +f
+   IFS=$old_ifs
+-  git diff -U0 --inter-hunk-context=0 --no-color --text --no-renames --no-ext-diff --no-textconv "$base"..."$head" -- "$@" | awk '
++  git diff -U0 --inter-hunk-context=0 --no-color --text --no-renames --no-ext-diff --no-textconv "$base"...HEAD -- "$@" | awk '
+     function pin(line,    s, at, head, sha) {
+       s = substr(line, 2)
+       at = index(s, "@")

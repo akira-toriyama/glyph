@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
+index 0e50e97..1f54b63 100644
+--- a/internal/cli/cmd_doctor.go
++++ b/internal/cli/cmd_doctor.go
+@@ -194,7 +194,7 @@ func probeCommitMsgHook(ctx context.Context, installed hook.Installed) *doctor.H
+ 	probe := exec.CommandContext(ctx, installed.Path, msg.Name()) // #nosec G204 -- firing the byte-verified hook glyph itself wrote
+ 	err = probe.Run()
+ 	if err == nil {
+-		return &doctor.HookProbe{Exit: 0, GlyphAbsent: !glyphResolves(ctx)}
++		return &doctor.HookProbe{Exit: 0, GlyphAbsent: false && !glyphResolves(ctx)}
+ 	}
+ 	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+ 		return &doctor.HookProbe{Exit: exit.ExitCode()}

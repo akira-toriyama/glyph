@@ -7,16 +7,19 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // TestNotesMarkdown: the full Markdown body under the gemoji preset — the
 // section order the config declares, a major landing in Breaking Changes, a
 // none commit landing nowhere (no none-section is configured), and the
-// note.line template rendered with the mention fence over the author. Each
-// line carries the whole commit subject — gitmoji, scope and sigil included —
-// which is the preset's ratified subject group (DESIGN §3), not a rendering
-// that forgot to apply the template.
+// note.line template rendered with the author credited by name: under
+// --range the API attaches no login, so the template's at-sign goes with the
+// mention it cannot make (t-ayhq). Each line carries the whole commit subject
+// — gitmoji, scope and sigil included — which is the preset's ratified
+// subject group (DESIGN §3), not a rendering that forgot to apply the
+// template.
 //
 // Every commit here reached main without a merged pull — which is EVERY
 // commit under --range, since the range walk resolves no pulls at all — so
@@ -37,11 +40,11 @@ func TestNotesMarkdown(t *testing.T) {
 		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	want := "## Breaking Changes\n\n" +
-		"- :recycle:! rework the store @akira-toriyama\n\n" +
+		"- :recycle:! rework the store akira-toriyama\n\n" +
 		"## Features\n\n" +
-		"- :sparkles:(ui)^ add a command palette @akira-toriyama\n\n" +
+		"- :sparkles:(ui)^ add a command palette akira-toriyama\n\n" +
 		"## Fixes\n\n" +
-		"- :bug:~ fix a crash @akira-toriyama\n"
+		"- :bug:~ fix a crash akira-toriyama\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}
@@ -140,6 +143,38 @@ func TestNotesHTMLBlockBehindATemplateLineEndingIsDisarmed(t *testing.T) {
 	}
 }
 
+// TestNotesRefusesATemplateThatOpensAnHTMLBlock: a note.line that puts "<" at a
+// block start is a config the loader refuses, so notes answers 2 — no verdict was
+// reached — and names the key, the template and where the "<" stands. Before the
+// refusal this template loaded and rendered `\&#64;octocat` inside `<div>` as a
+// live @octocat (t-3bwg, TestLoadRefusesAnHTMLBlockAtABlockStart).
+func TestNotesRefusesATemplateThatOpensAnHTMLBlock(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	preset, ok := config.Preset("gemoji")
+	if !ok {
+		t.Fatalf("gemoji preset missing")
+	}
+	const shipped = "line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'"
+	if !strings.Contains(string(preset), shipped) {
+		t.Fatalf("the gemoji preset no longer carries %q; move this test's edit with it", shipped)
+	}
+	seedConfig(t, dir, strings.Replace(string(preset), shipped, "line = '- <div>$subject</div>'", 1))
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ callers to &#64;octocat now")
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != int(core.CodeUsage) {
+		t.Fatalf("notes exited %d, want %d\nstdout: %s\nstderr: %s", code, core.CodeUsage, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("a refused config printed a body:\n%s", stdout)
+	}
+	env := decodeErrorEnvelope(t, stderr)
+	if want := `note.line: "- <div>$subject</div>" puts "<" at a block start, line 1 column 3: `; env.Code != int(core.CodeUsage) || !strings.Contains(env.Message, want) {
+		t.Errorf("envelope = %+v, want code %d and a message holding %q", env, core.CodeUsage, want)
+	}
+}
+
 // TestNotesEmptyIsNoRelease: a docs-only range is the soft no-release exit —
 // nothing on stdout, exit 1, the reason in the stderr envelope.
 func TestNotesEmptyIsNoRelease(t *testing.T) {
@@ -157,6 +192,52 @@ func TestNotesEmptyIsNoRelease(t *testing.T) {
 	if !strings.Contains(stderr, "no release notes") {
 		t.Fatalf("stderr should say why there are no notes:\n%s", stderr)
 	}
+}
+
+// TestNotesNoReleaseIsTheSectionsCondition: notes' exit 1 means notes has
+// nothing to write — no commit lands in a [[note.sections]] entry — and that
+// is not bump's none: the sections decide what the notes hold (t-h90a). A
+// dependabot[bot] commit the preset's Dependencies section holds renders at 0
+// where bump answers none at 1, and a fix under a file with no patch section
+// leaves notes at 1 where bump moves the version at 0 (measured 2026-11-09).
+// bump runs beside notes on each fixture: one that stopped dividing the two
+// fails as a fixture, not as a verdict.
+func TestNotesNoReleaseIsTheSectionsCondition(t *testing.T) {
+	t.Run("a bot commit an author section holds", func(t *testing.T) {
+		dir, base := testutil.NewTaggedRepo(t)
+		testutil.Commit(t, dir, "dependabot[bot]", ":arrow_up:(deps)= bump x")
+		t.Chdir(dir)
+		if code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 1 {
+			t.Fatalf("bump --range exited %d, want 1 — the fixture no longer folds to none\nstderr: %s", code, stderr)
+		}
+		code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+		if code != 0 || !strings.HasPrefix(stdout, "## Dependencies\n") {
+			t.Fatalf("notes --range exited %d with %q, want 0 and the Dependencies section — bump's none is not notes' condition\nstderr: %s", code, stdout, stderr)
+		}
+	})
+	t.Run("a fix no section takes", func(t *testing.T) {
+		dir, _ := testutil.NewTaggedRepo(t)
+		preset, ok := config.Preset("gemoji")
+		if !ok {
+			t.Fatal("gemoji preset missing")
+		}
+		file := strings.Replace(string(preset), "[[note.sections]]\nsemver = \"patch\"\ntitle = \"Fixes\"\n", "", 1)
+		if file == string(preset) {
+			t.Fatal("the gemoji preset's patch section is not where this test removes it from")
+		}
+		testutil.WriteFile(t, dir, "glyph.toml", file)
+		testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-am", ":wrench:= declare no patch section")
+		base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+		t.Chdir(dir)
+		if code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 0 {
+			t.Fatalf("bump --range exited %d, want 0 — the fixture no longer moves the version\nstderr: %s", code, stderr)
+		}
+		code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+		if code != 1 || stdout != "" || !strings.Contains(stderr, "none lands in a section") {
+			t.Fatalf("notes --range exited %d with %q, want 1, no body and the section reason — a fix no section takes leaves nothing to write\nstderr: %s", code, stdout, stderr)
+		}
+	})
 }
 
 // TestNotesEmptyJSON: --json still emits the machine verdict (sections
@@ -418,19 +499,24 @@ func TestNotesOutsideRepoIsAPI(t *testing.T) {
 	}
 }
 
-// TestNotesCreditsByIdentityNotShape (t-39fy): the author credit is a live
-// mention of the LOGIN GitHub established, never of git's free-text name.
-// Under --range the only identity git holds is a noreply address, and the
-// fixture's commits carry one (as the fleet's do), so those credits stay
-// live; a commit from a personal address is credited by name, plain, the
-// at-sign gone with the mention it cannot make — "Saleh" is handle-shaped and
-// is github.com/larrasket, so rendered by shape it paged a stranger (mutation
-// rows noreply-address-carries-no-identity, author-credit-goes-live-by-shape).
+// TestNotesCreditsByIdentityNotShape (t-39fy, t-ayhq): the author credit is a
+// live mention of the LOGIN GitHub attached to the commit, never of anything
+// the commit itself carries. Under --range the API describes nothing, so no
+// line pages anyone: the fleet-shaped noreply address (GitEnv's) renders its
+// author by name, plain, exactly as a personal address does — the login the
+// address spells is typed by whoever configured git, and GitHub attributes
+// the commit by the id beside it (glyph-test-2, 2026-11-04: an address
+// spelling a nonexistent login was attributed to the account the id named).
+// "Saleh" is handle-shaped and is github.com/larrasket, so rendered by shape
+// it paged a stranger; the at-sign goes with the mention a name cannot make
+// (mutation rows noreply-address-trusted-as-identity,
+// author-credit-goes-live-by-shape).
 func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testutil.CommitFrom(t, dir, "Saleh", "root@lr0.org", ":bug:~ fix the parser")
 	testutil.CommitFrom(t, dir, "Robert Pająk", "robert@example.com", ":bug:~ fix the exporter")
+	testutil.CommitFrom(t, dir, "akira-toriyama", "92862731+refute-a3-nonexistent-zz@users.noreply.github.com", ":bug:~ fix the address")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
@@ -438,9 +524,42 @@ func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	want := "## Fixes\n\n" +
-		"- :bug:~ fix a crash @akira-toriyama\n" +
+		"- :bug:~ fix a crash akira-toriyama\n" +
 		"- :bug:~ fix the parser Saleh\n" +
-		"- :bug:~ fix the exporter Robert Pająk\n"
+		"- :bug:~ fix the exporter Robert Pająk\n" +
+		"- :bug:~ fix the address akira-toriyama\n"
+	if stdout != want {
+		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
+	}
+}
+
+// TestNotesRangeReadsAFinalConflictsLineAsGitDoes: the --range reader hands
+// the trailer parser the message as git recorded it, closing newline
+// included, so a bare `Conflicts:` line closing a commit is git's ignored
+// list here as it is for `%(trailers)` — not a trailer line that lifts a
+// 2-of-9 Signed-off-by block over the 25% line (Trent credited, git credits
+// nobody) or a one-line block that hides the paragraph above it (Peggy
+// dropped, git credits her). `git commit -m` records every message with that
+// newline, which is why the fixture needs no verbatim commit. git's own
+// answer is read beside glyph's, so the row cannot pin what git does not
+// give (measured 2026-11-08, git 2.54.0 and 2.56.0; mutation row
+// trailer-block-read-off-the-trimmed-message).
+func TestNotesRangeReadsAFinalConflictsLineAsGitDoes(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a bare Conflicts line under a 2-of-9 sign-off block\n\nbody\n\nSigned-off-by: S <s@x.y>\np1\np2\np3\np4\np5\np6\np7\nCo-authored-by: Trent <t@x.y>\nConflicts:")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a bare Conflicts paragraph closing the message\n\nbody\n\nCo-authored-by: Peggy <p@x.y>\n\nConflicts:")
+	if got := testutil.Git(t, dir, "akira-toriyama", "log", "--reverse", "--format=%(trailers:key=Co-authored-by,valueonly,unfold)", base+"..HEAD"); strings.TrimSpace(got) != "Peggy <p@x.y>" {
+		t.Fatalf("git's commit reader credits %q on the fixture, and the test expects Peggy alone — the fixture is wrong, not git", got)
+	}
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != 0 {
+		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	want := "## Fixes\n\n" +
+		"- :bug:~ a bare Conflicts line under a 2-of-9 sign-off block akira-toriyama\n" +
+		"- :bug:~ a bare Conflicts paragraph closing the message akira-toriyama with Peggy\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}
@@ -449,15 +568,19 @@ func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 // TestNotesSinceTagCreditsTheListedLogin: on the walk the API describes a
 // squash-merged pull's inner commits, and its author.login — not the name —
 // is what the credit pages; a commit GitHub mapped to no account (author:
-// null) is credited by name.
+// null) is credited by name, and so is a direct push on the fallback arm,
+// whose noreply address the API never described (t-ayhq).
 func TestNotesSinceTagCreditsTheListedLogin(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Fix two things", 7)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix it by direct push")
+	direct := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	usePR(t, walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "2026-09-13T00:00:00Z", sha) + `]`,
 		pullCommitsPath(7): `[` +
 			apiCommitBy("s1", "larrasket", "Saleh", ":bug:~ fix the parser") + `,` +
 			apiCommitBy("s2", "", "Saleh", ":bug:~ fix it from an unmapped address") + `]`,
+		commitPullsPath(direct): `[]`,
 	}))
 	t.Chdir(dir)
 
@@ -468,7 +591,8 @@ func TestNotesSinceTagCreditsTheListedLogin(t *testing.T) {
 	want := "## Fixes\n\n" +
 		"- :bug:~ fix the parser (#7) @larrasket\n" +
 		"- :bug:~ fix it from an unmapped address (#7) Saleh\n" +
-		"\n" + compareLine("v0.1.0", sha)
+		"- :bug:~ fix it by direct push akira-toriyama\n" +
+		"\n" + compareLine("v0.1.0", direct)
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}

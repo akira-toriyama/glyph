@@ -1,0 +1,13 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -16,9 +16,6 @@
+ #                                                <the merge commit CI tests>`
+ #   golden-gate     build.yml `golden-gate`      `scripts/golden-gate.sh origin/main
+ #                                                <the merge commit CI tests>`
+-#   repo-policy     repo-policy.yml `repo-policy` the hub's repo-policy-check.sh at
+-#                                                the tag the caller pins, over
+-#                                                this tree
+ #   module-hygiene  build.yml `ci` → go-ci.yml   `go mod tidy -diff`, verify
+ #   build           build.yml `ci` → go-ci.yml   `go build ./...`
+ #   vet             build.yml `ci` → go-ci.yml   `go vet ./...`

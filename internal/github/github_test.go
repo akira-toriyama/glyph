@@ -129,7 +129,10 @@ func TestPullCommitsSinglePage(t *testing.T) {
 	// The login is GitHub's own mapping and is carried apart from the name:
 	// the two differ (golang/tools, measured 2026-09-13), and the notes
 	// credit the login (t-39fy).
-	want0 := Commit{SHA: "aaa", Author: "Saleh", Email: "root@lr0.org", Login: "larrasket", Parents: []string{"p1"}, Message: ":sparkles: add a thing"}
+	// Recorded is the API's text too: GitHub hands commit.message over without
+	// the closing newline git recorded, and no field says whether the object
+	// has one (DESIGN §3, the one API-arm shape).
+	want0 := Commit{SHA: "aaa", Author: "Saleh", Login: "larrasket", Parents: []string{"p1"}, Message: ":sparkles: add a thing", Recorded: ":sparkles: add a thing"}
 	if !reflect.DeepEqual(commits[0], want0) {
 		t.Fatalf("commit 0 = %+v, want %+v", commits[0], want0)
 	}
@@ -137,7 +140,7 @@ func TestPullCommitsSinglePage(t *testing.T) {
 	// matches downstream, and the two-parent shape is what the walk reads as
 	// a merge (two or more Parents).
 	// author: null — GitHub mapped no account — is an empty login, not an error.
-	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Email: "fleet-sync[bot]@users.noreply.github.com", Parents: []string{"p1", "p2"}, Message: ":robot: chore(fleet): sync"}
+	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Parents: []string{"p1", "p2"}, Message: ":robot: chore(fleet): sync", Recorded: ":robot: chore(fleet): sync"}
 	if !reflect.DeepEqual(commits[1], want1) {
 		t.Fatalf("commit 1 = %+v, want %+v", commits[1], want1)
 	}
@@ -385,10 +388,10 @@ func TestPullCommits422IsNotCommitUnknown(t *testing.T) {
 
 // TestOnlyDocumentedMethodsCarryAStatusOut is flatten's contract probed
 // method by method: every exported method is called against a server
-// answering 422 — the status IsCommitUnknown reads — and 404 — the one
-// IsRepoUnknown reads — and only the three whose contract documents a status
+// answering 422 — the status IsCommitUnknown reads — and 404 — one of those
+// IsRepoRefused reads — and only the three whose contract documents a status
 // hand the carrier out: CommitPulls and CommitFiles to IsCommitUnknown on a
-// 422, Repository to IsRepoUnknown on a 404. PullRequest and GenerateNotes
+// 422, Repository to IsRepoRefused on a 404. PullRequest and GenerateNotes
 // handed it out until t-esm5 (a 422 from either read as IsCommitUnknown). The
 // table must name every exported method, so a new endpoint cannot join
 // without saying which side it is on.
@@ -417,7 +420,7 @@ func TestOnlyDocumentedMethodsCarryAStatusOut(t *testing.T) {
 	}{
 		"CommitFiles": {http.StatusUnprocessableEntity, IsCommitUnknown},
 		"CommitPulls": {http.StatusUnprocessableEntity, IsCommitUnknown},
-		"Repository":  {http.StatusNotFound, IsRepoUnknown},
+		"Repository":  {http.StatusNotFound, IsRepoRefused},
 	}
 
 	client := reflect.TypeFor[*Client]()
@@ -453,7 +456,7 @@ func TestOnlyDocumentedMethodsCarryAStatusOut(t *testing.T) {
 						t.Fatalf("%s's predicate over a %d = %t, want %t", name, status, got, want)
 					}
 				}
-				if !sanctioned && (IsCommitUnknown(err) || IsRepoUnknown(err)) {
+				if !sanctioned && (IsCommitUnknown(err) || IsRepoRefused(err)) {
 					t.Fatalf("a %d from %s is readable by a predicate its contract never names", status, name)
 				}
 			})
