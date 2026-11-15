@@ -305,35 +305,39 @@ func tagLines(out []byte) []string {
 	return tags
 }
 
-// Named is what one revision names in a checkout, as rev-parse resolves it.
-// Commit is the sha of the commit the revision peels to, "" when it peels to
-// none; Kind is then the type of the object it does name ("blob", "tree"),
-// and "" when it names nothing at all — a name nothing carries, an unborn
-// HEAD, a full sha the object store does not hold, a value that is not one
-// revision.
+// Named is what one revision names in a checkout: Kind is the type of the
+// object it peels to — "commit", or "tree" or "blob" for a tag on one — and
+// "" when it names nothing at all: a name nothing carries, an unborn HEAD, a
+// full sha the object store does not hold, a value that is not one revision.
 type Named struct {
-	Commit string
-	Kind   string
+	Kind string
 }
 
 // IsCommit reports whether the revision peeled to a commit.
-func (n Named) IsCommit() bool { return n.Commit != "" }
+func (n Named) IsCommit() bool { return n.Kind == "commit" }
 
 // objectID is rev-parse's spelling of one object: a SHA-1 or a SHA-256 hex
 // id. Anything else it prints under --verify — `^<sha>` for a negated
 // revision — is not one object.
 var objectID = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 
-// resolveCommit resolves rev as git does and THEN peels the result to a
-// commit, in two steps: rev-parse's `<rev>^{commit}` is one spelling, and
-// the `:/<text>` search swallows the suffix into its text (`:/fix^{commit}`
-// names nothing while `:/fix` names the commit — measured, git 2.54), so the
-// peel is asked of the resolved sha, never of the value. A tag on a tree or
-// a blob resolves and does not peel; its object's type is read so the caller
-// can name what was found. Every NO is git's exit 1 under --verify --quiet
-// and is an answer, not a failure; anything else (not a repository) is the
-// git/IO error it always was. The interrupt is asked first, as everywhere in
-// this package (see isAncestor for why the order is the whole point).
+// resolveCommit resolves rev as git does and THEN asks namesCommit about the
+// object it resolved to, in two steps: a peel suffix is one spelling with the
+// value, and the `:/<text>` search swallows it into its text (`:/fix^{commit}`
+// names nothing while `:/fix` names the commit — measured, git 2.54 and
+// 2.56), so the peel is asked of the resolved sha, never of the value. A
+// value rev-parse resolves to nothing, or to more than one object, names
+// nothing: an answer. Whether the resolved object is a commit this
+// repository can read is namesCommit's question and only namesCommit's — a
+// held object git cannot read is its failure here too, never "names no
+// commit": `rev-parse --verify --quiet <sha>^{commit}` exits 1, the NO's
+// status, for an empty object file on git 2.54 and for a commit whose body
+// does not parse on 2.39.5, 2.54 and 2.56 (measured), and read as a NO each
+// sent the caller to `git tag` for a tag `git tag` lists
+// (TestResolveCommitFailsOnAHeldObjectGitCannotRead). After its NO the
+// object is readable or absent, so the peel's type is the kind a refusal
+// names, and the peel's failure the sha the store does not hold. The
+// interrupt is asked first at each step.
 func resolveCommit(ctx context.Context, dir, rev string) (Named, error) {
 	out, found, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev)
 	if err != nil || !found {
@@ -343,24 +347,21 @@ func resolveCommit(ctx context.Context, dir, rev string) (Named, error) {
 	if !objectID.MatchString(sha) {
 		return Named{}, nil
 	}
-	out, isCommit, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", sha+"^{commit}")
-	if err != nil {
+	isCommit, err := namesCommit(ctx, dir, sha)
+	switch {
+	case err != nil:
+		return Named{}, err
+	case isCommit:
+		return Named{Kind: "commit"}, nil
+	}
+	kind, err := run(ctx, dir, "cat-file", "-t", sha+"^{}")
+	switch {
+	case err == nil:
+		return Named{Kind: strings.TrimSpace(string(kind))}, nil
+	case core.IsInterrupted(err):
 		return Named{}, err
 	}
-	if isCommit {
-		return Named{Commit: strings.TrimSpace(string(out))}, nil
-	}
-	// ^{} peels a tag to the object it points at; a sha the store does not
-	// hold peels to nothing, and is nothing.
-	out, exists, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", sha+"^{}")
-	if err != nil || !exists {
-		return Named{}, err
-	}
-	kind, err := run(ctx, dir, "cat-file", "-t", strings.TrimSpace(string(out)))
-	if err != nil {
-		return Named{}, err
-	}
-	return Named{Kind: strings.TrimSpace(string(kind))}, nil
+	return Named{}, nil
 }
 
 // namesCommit reports whether rev names a commit this repository can read. A

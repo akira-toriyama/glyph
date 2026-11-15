@@ -41,8 +41,11 @@ func unreadableConfig(t *testing.T, dir string) {
 // the --repo beside it, before glyph.toml is loaded, as lint's arms always
 // did. Measured at 2f9428a over a mode-000 glyph.toml: every bump / notes /
 // preview case below answered the config's 4 ("permission denied") while
-// `lint --range=` answered 2; the --repo cases still answered 4 at 0c177a3,
-// where `lint --pr 1 --repo bad` and `release --repo bad` answered 2.
+// `lint --range=` answered 2, as did `lint --pr 1 --repo bad` and `release
+// --repo bad` beside the --repo cases' 4 (mutation rows
+// source-shape-judged-after-the-config, repo-shape-judged-after-the-config).
+// The set-operator rows hold that shape at this entrance too
+// (walk.CheckRangeOperators).
 func TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig(t *testing.T) {
 	usePR(t, walkServer(t, nil))
 	dir, _ := testutil.NewTaggedRepo(t)
@@ -64,6 +67,8 @@ func TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig(t *testing.T) {
 		{[]string{"notes", "--since-tag="}, "--since-tag= names an empty tag"},
 		{[]string{"preview", "--pr", "0"}, "--pr 0 is not a pull-request number"},
 		{[]string{"lint", "--range="}, "--range needs a git revision range"},
+		{[]string{"bump", "--range", "^v0.1.0..HEAD"}, "carries a set operator"},
+		{[]string{"notes", "--range", "v0.1.0..HEAD^!"}, "carries a set operator"},
 		{[]string{"bump", "--pr", "1", "--repo", "bad"}, `--repo \"bad\" is not owner/name`},
 		{[]string{"bump", "--pr", "1", "--repo", "a b/c"}, `--repo \"a b/c\" is not owner/name`},
 		{[]string{"bump", "--since-tag", "--repo", "bad"}, `--repo \"bad\" is not owner/name`},
@@ -128,9 +133,10 @@ func TestCurrentIsJudgedBeforeTheWalk(t *testing.T) {
 // The value is resolved as git resolves it and THEN peeled, so a tag on a
 // tree is refused by what it names — a sentence `git tag`, which lists it,
 // does not refute — and a negated revision, which rev-parse accepts and
-// `git log` dies on, is refused at the shape check (measured at 0c177a3:
-// `--since-tag=^v0.1.0` passed the existence question and died at 4). The
-// API is never reached: the stand-in fails the test on any request.
+// `git log` dies on, is refused at the shape check (measured 2026-11-08:
+// `--since-tag=^v0.1.0` passed the existence question and died at 4;
+// mutation row since-tag-exclusion-reaches-git). The API is never reached:
+// the stand-in fails the test on any request.
 func TestSinceTagNamingNoCommitIsUsage(t *testing.T) {
 	usePR(t, walkServer(t, nil))
 	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
@@ -175,7 +181,8 @@ func TestSinceTagNamingNoCommitIsUsage(t *testing.T) {
 	// (TestCompareLinkNeedsATagBase holds the compare-link half), and a
 	// leading space on a real tag is trimmed and accepted. `:/begin` names
 	// the root commit by its message, which the one-step `<value>^{commit}`
-	// spelling refused as naming no commit (measured at 0c177a3).
+	// spelling refused as naming no commit (measured 2026-11-08; mutation
+	// row since-tag-resolved-with-the-peel-attached).
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "v0.1.0")
 	testutil.Git(t, dir, "akira-toriyama", "branch", "old-main", base)
 	for _, from := range []string{"old-main", base, " v0.1.0", ":/begin"} {
@@ -232,12 +239,18 @@ func TestSinceTagPackagesNamingNoCommitIsUsage(t *testing.T) {
 // TestRangeEndpointNamingNoCommitIsUsage: the --range twins of t-tat8 and
 // t-3dfg, on lint, bump and notes. An endpoint that names no commit this
 // checkout holds is the caller's input, refused at 2 where `git log` died at
-// 4 ("bad revision 'nosuch..HEAD'" — measured at 0c177a3), naming the
-// endpoint and the remedy --since-tag's refusal names; the value is trimmed
-// once, so ` -x` is the option shape `-x` is (`--range ' -x'` answered 4 at
-// 0c177a3) and ` v0.1.0..HEAD` is the range. git's set operators — a
-// leading ^, the ^!, ^@ and ^- suffixes — are part of the range, not of the
-// name, so the one-commit idiom `HEAD^!` keeps linting.
+// 4 ("bad revision 'nosuch..HEAD'" — measured 2026-11-08, mutation row
+// range-endpoint-naming-no-commit-is-gits-failure), naming the endpoint and
+// the remedy --since-tag's refusal names; the value is trimmed once, so ` -x`
+// is the option shape `-x` is (`--range ' -x'` answered 4; mutation row
+// check-range-judges-the-untrimmed-value) and ` v0.1.0..HEAD` is the range.
+// git's set operators — a leading ^, the ^!, ^@ and ^- suffixes — are part
+// of a single-revision range, not of the name, so the one-commit idiom
+// `HEAD^!` keeps linting; on a side of `..` or `...` git reads none of them
+// (`^v0.1.0..HEAD` died in `git log` at 4 — every combination measured on
+// git 2.39.5, 2.54 and 2.56, 2026-11-15), so the shape check refuses them as
+// CheckTag refuses a leading ^. An omitted side is HEAD, as git reads it:
+// `origin/main..` is ordinary shorthand, not an endpoint named "".
 func TestRangeEndpointNamingNoCommitIsUsage(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t) // tags v0.1.0 on the root
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
@@ -257,6 +270,13 @@ func TestRangeEndpointNamingNoCommitIsUsage(t *testing.T) {
 		{[]string{"bump", "--range", " -x"}, "looks like an option, not a revision range"},
 		{[]string{"lint", "--range", "\t-x"}, "looks like an option, not a revision range"},
 		{[]string{"notes", "--range", " -x..HEAD"}, "looks like an option, not a revision range"},
+		{[]string{"lint", "--range", "^v0.1.0..HEAD"}, `carries a set operator on a side of its range ("^v0.1.0")`},
+		{[]string{"lint", "--range", "v0.1.0..^HEAD"}, `carries a set operator on a side of its range ("^HEAD")`},
+		{[]string{"bump", "--range", "v0.1.0..HEAD^!"}, `carries a set operator on a side of its range ("HEAD^!")`},
+		{[]string{"notes", "--range", "HEAD^@..HEAD"}, `carries a set operator on a side of its range ("HEAD^@")`},
+		{[]string{"lint", "--range", "HEAD^-..HEAD"}, `carries a set operator on a side of its range ("HEAD^-")`},
+		{[]string{"lint", "--range", "v0.1.0..HEAD^-1"}, `carries a set operator on a side of its range ("HEAD^-1")`},
+		{[]string{"lint", "--range", " v0.1.0...HEAD^!"}, `carries a set operator on a side of its range ("HEAD^!")`},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			code, stdout, stderr := runGlyph(t, tc.args...)
@@ -277,8 +297,10 @@ func TestRangeEndpointNamingNoCommitIsUsage(t *testing.T) {
 	}
 
 	// The positive controls: every range git reads, read — trimmed, both
-	// range spellings, the set operators, and a bare revision.
-	for _, rng := range []string{" v0.1.0..HEAD", "v0.1.0..HEAD\t", base + "...HEAD", "HEAD^!", "^v0.1.0 ", "HEAD^-1", "HEAD"} {
+	// range spellings, an omitted side on either, the set operators on a
+	// single revision, a parent suffix that is no operator, and a bare
+	// revision.
+	for _, rng := range []string{" v0.1.0..HEAD", "v0.1.0..HEAD\t", base + "...HEAD", "v0.1.0..", "..HEAD", "v0.1.0...", "...HEAD", "HEAD^!", "^v0.1.0 ", "HEAD^-1", "HEAD^-", "HEAD^@", "v0.1.0..HEAD^", "HEAD"} {
 		if code, _, stderr := runGlyph(t, "lint", "--range", rng); code != 0 {
 			t.Errorf("lint --range %q exited %d, want 0 — every endpoint names a commit\nstderr: %s", rng, code, stderr)
 		}
@@ -288,10 +310,85 @@ func TestRangeEndpointNamingNoCommitIsUsage(t *testing.T) {
 	}
 }
 
+// TestTypedRevisionGitCannotReadIsNotUsage: the boundary of the two tests
+// above. A typed --since-tag or --range endpoint whose commit this checkout
+// HOLDS and git cannot read is git failing (4, with git's own line from `git
+// cat-file`), never "names no commit" at 2: that sentence sends the caller
+// to `git tag`, which lists the tag, and the code tells a CI wrapper to fix
+// arguments that are right. The existence question is gitsource's
+// namesCommit, the reading every other commit question in the walk shares;
+// asked of `rev-parse --verify --quiet <sha>^{commit}` an empty object file
+// answered the NO's exit 1 on git 2.54 (128 on 2.39.5 and 2.56) and a commit
+// whose body does not parse answers it on all three (measured 2026-11-15),
+// so `bump --since-tag=v0.1.0` and `notes --range v0.1.0..HEAD` exited 2
+// over a broken object. The API is never reached: the stand-in fails the
+// test on any request.
+func TestTypedRevisionGitCannotReadIsNotUsage(t *testing.T) {
+	for name, tc := range map[string]struct {
+		corrupt func(t *testing.T, dir, sha string) (target string)
+		wantMsg string
+	}{
+		"an empty object file": {func(t *testing.T, dir, sha string) string {
+			path := filepath.Join(dir, ".git", "objects", sha[:2], sha[2:])
+			if err := os.Chmod(path, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return sha
+		}, "is empty"},
+		"a commit git cannot parse": {func(t *testing.T, dir, _ string) string {
+			body := filepath.Join(t.TempDir(), "body")
+			if err := os.WriteFile(body, []byte("not a commit\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return testutil.Git(t, dir, "akira-toriyama", "hash-object", "-t", "commit", "--literally", "-w", body)
+		}, "bogus commit object"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			usePR(t, walkServer(t, nil))
+			dir, base := testutil.NewTaggedRepo(t) // tags v0.1.0 on the root
+			testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+			t.Chdir(dir)
+			if code, stdout, stderr := runGlyph(t, "bump", "--range", "v0.1.0..HEAD"); code != 0 || stdout != "v0.1.1\n" {
+				t.Fatalf("bump over the readable tag exited %d with %q, want 0 and v0.1.1 (the control)\nstderr: %s", code, stdout, stderr)
+			}
+
+			// `git tag -f` parses the object it is pointed at and refuses
+			// the unparseable commit, so that target is written into the
+			// loose ref by hand.
+			if target := tc.corrupt(t, dir, base); target != base {
+				if err := os.WriteFile(filepath.Join(dir, ".git", "refs", "tags", "v0.1.0"), []byte(target+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, args := range [][]string{
+				{"bump", "--since-tag=v0.1.0"},
+				{"notes", "--since-tag=v0.1.0"},
+				{"release", "--since-tag=v0.1.0", "--dry-run"},
+				{"lint", "--range", "v0.1.0..HEAD"},
+				{"bump", "--range", "v0.1.0..HEAD"},
+				{"notes", "--range", "v0.1.0"},
+			} {
+				code, stdout, stderr := runGlyph(t, args...)
+				if code != 4 || stdout != "" {
+					t.Errorf("%v over %s exited %d with %q on stdout, want 4 and nothing — the tag names a commit git could not read\nstderr: %s", args, name, code, stdout, stderr)
+					continue
+				}
+				env := decodeErrorEnvelope(t, stderr)
+				if !strings.Contains(env.Message, "git cat-file") || !strings.Contains(env.Message, tc.wantMsg) || strings.Contains(env.Message, "names no commit") {
+					t.Errorf("%v over %s must carry git's own diagnosis from the existence question (`git cat-file`, %q): %q", args, name, tc.wantMsg, env.Message)
+				}
+			}
+		})
+	}
+}
+
 // TestCurrentIsJudgedTrimmed: --current is trimmed as --since-tag and --range
 // are — ` v1.4.0` is the version the caller typed, and was refused as "not a
-// plain semver" (measured at 0c177a3) where ` v0.1.0` as a --since-tag was
-// accepted.
+// plain semver" (measured 2026-11-08; mutation row current-judged-untrimmed)
+// where ` v0.1.0` as a --since-tag was accepted.
 func TestCurrentIsJudgedTrimmed(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
@@ -439,9 +536,11 @@ func TestOutsideARepositoryIsUsage(t *testing.T) {
 // caller's input (2); a read the filesystem refused observed nothing and is
 // 4, the code the same event carries for glyph.toml, a hook and init's
 // write. Measured at 86eab14: a mode-000 footer answered 2 where a mode-000
-// glyph.toml answered 4; at 0c177a3 a path through a regular file and an
-// over-long name answered 4, the code that tells a CI wrapper to retry a
-// typo. The path is named once — the *fs.PathError already carries it.
+// glyph.toml answered 4; a path through a regular file and an over-long
+// name answered 4, the code that tells a CI wrapper to retry a typo, before
+// a path's own fault was told from a refused stat (measured 2026-11-08;
+// mutation row footer-file-path-to-nothing-is-the-no-answer-code). The path
+// is named once — the *fs.PathError already carries it.
 func TestReleaseFooterFileIsClassifiedByWhatWasObserved(t *testing.T) {
 	usePR(t, walkServer(t, nil))
 	dir, _ := testutil.NewTaggedRepo(t)

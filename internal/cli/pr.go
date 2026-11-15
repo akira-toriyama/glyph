@@ -78,7 +78,8 @@ func splitRepoSpec(spec string) (owner, repo string, err error) {
 // glyph.toml is loaded, as the source's shape is judged (source.check,
 // previewRun): resolveRepo asks the same question, but it runs after the
 // config on bump, notes and preview, so `--repo bad` beside an unreadable
-// config answered the config's 4 (t-h9m7's class, measured at 0c177a3) where
+// config answered the config's 4 (t-h9m7's class, measured 2026-11-08;
+// mutation row repo-shape-judged-after-the-config) where
 // `lint --pr` and `release` — which resolve the repository first — answered
 // 2. An absent flag is resolved later, from the environment or the origin
 // remote; its emptiness is checkGivenEmpty's question.

@@ -69,7 +69,9 @@ func sourceOf(cmd *cobra.Command, f sourceFlags) source {
 // judged after the load, a bad flag beside an unreadable config answered the
 // config's 4 (t-h9m7, measured at 2f9428a with a mode-000 glyph.toml: `bump
 // --range=`, `--pr 0`, `--since-tag=` all 4 where lint's `--range=` was 2;
-// `--repo bad` still 4 at 0c177a3). readSource takes the source as accepted.
+// `--repo bad` was 4 the same way until checkRepoFlag was asked here,
+// measured 2026-11-08, mutation row repo-shape-judged-after-the-config).
+// readSource takes the source as accepted.
 func (s source) check() error {
 	var err error
 	switch s.kind {

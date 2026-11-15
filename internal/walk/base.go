@@ -93,30 +93,61 @@ func refuseNoCommit(flag, value string, named gitsource.Named) error {
 	return core.Usagef("%s %q names no commit this checkout holds — `git tag` lists the tags and `git branch -a` the branches here; %s", flag, value, FetchDepthRemedy)
 }
 
-// rangeOperator is the git set-operator syntax a --range endpoint may carry
-// beside its name — a leading ^ (exclude), and the ^!, ^@, ^-<n> suffixes
-// (gitrevisions(7)) — which rev-parse --verify refuses as more than one
-// revision, while `git log` reads them.
+// rangeOperator is the git set-operator syntax a single-revision --range may
+// carry beside its name — a leading ^ (exclude), and the ^!, ^@, ^-<n>
+// suffixes (gitrevisions(7)) — which rev-parse --verify refuses as more than
+// one revision, while `git log` reads them.
 var rangeOperator = regexp.MustCompile(`\^(!|@|-[0-9]*)$`)
+
+// rangeSides splits a --range at its first `...` or `..` into the two sides
+// as typed; ok is false for a single revision.
+func rangeSides(revRange string) (left, right string, ok bool) {
+	if left, right, ok = strings.Cut(revRange, "..."); ok {
+		return left, right, true
+	}
+	return strings.Cut(revRange, "..")
+}
+
+// CheckRangeOperators refuses a two-sided --range whose side carries a set
+// operator — caller input, so usage (2), as CheckTag refuses a leading ^:
+// git reads the operators on a single revision only, and `^v0.1.0..HEAD`,
+// `v0.1.0..HEAD^!` and their kin died in `git log` at 4, "bad revision"
+// (every combination of the operators over both sides of `..` and `...`,
+// measured on git 2.39.5, 2.54 and 2.56;
+// TestRangeEndpointNamingNoCommitIsUsage). Pure, and judged trimmed: cli
+// asks it with the rest of --range's shape (checkRangeFlag), before
+// glyph.toml is loaded.
+func CheckRangeOperators(revRange string) error {
+	revRange = strings.TrimSpace(revRange)
+	left, right, ok := rangeSides(revRange)
+	if !ok {
+		return nil
+	}
+	for _, side := range []string{left, right} {
+		if strings.HasPrefix(side, "^") || rangeOperator.MatchString(side) {
+			return core.Usagef("--range %q carries a set operator on a side of its range (%q) — git reads ^, ^!, ^@ and ^-<n> on a single revision only; name both sides plainly, or give the one revision with its operator alone", revRange, side)
+		}
+	}
+	return nil
+}
 
 // rangeEndpoints are the revisions a --range names, as the caller typed them:
 // both sides of its first `...` or `..` (an omitted side is HEAD, as git
-// reads it), or the whole value as one revision, the set operators aside. A
-// value holding anything else — two names with a space between — is one
-// endpoint that names nothing, which is what `git log` would have said of it.
+// reads it), or the whole value as one revision, the set operators aside —
+// they are stripped on that form only, the one git reads them on
+// (CheckRangeOperators refuses them on a side). A value holding anything
+// else — two names with a space between — is one endpoint that names
+// nothing, which is what `git log` would have said of it.
 func rangeEndpoints(revRange string) []string {
-	ends := []string{revRange}
-	if left, right, ok := strings.Cut(revRange, "..."); ok {
-		ends = []string{left, right}
-	} else if left, right, ok := strings.Cut(revRange, ".."); ok {
-		ends = []string{left, right}
+	left, right, ok := rangeSides(revRange)
+	if !ok {
+		return []string{rangeOperator.ReplaceAllString(strings.TrimPrefix(revRange, "^"), "")}
 	}
+	ends := []string{left, right}
 	for i, end := range ends {
-		end = rangeOperator.ReplaceAllString(strings.TrimPrefix(end, "^"), "")
 		if end == "" {
-			end = "HEAD"
+			ends[i] = "HEAD"
 		}
-		ends[i] = end
 	}
 	return ends
 }

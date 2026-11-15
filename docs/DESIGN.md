@@ -639,7 +639,7 @@ stays 4 with git's message on every verdict command and on `hook install`
 --range a..b`, `release --dry-run --repo o/r` and `hook install` outside a
 repository all answered git's 4, `init` 0; `TestOutsideARepositoryIsUsage`,
 mutation rows `outside-a-repository-is-gits-failure` and
-`git-will-not-read-is-the-callers-place`).
+`unreadable-repository-is-the-callers-place`).
 
 ### 2.1 The text the rules judge — git's cleanup
 
@@ -2081,13 +2081,23 @@ a CI wrapper a retry can help, for a flag no retry fixes (t-tat8, measured at
 `TestSinceTagNamingNoCommitIsUsage`, mutation rows
 `since-tag-naming-no-commit-is-gits-failure` and
 `packages-since-tag-naming-no-commit-is-gits-failure`). The value is resolved
-as git resolves it and THEN peeled to a commit, two `rev-parse --verify`
-calls: the one-step `<value>^{commit}` spelling refused `:/fix`, whose search
-swallows the suffix, as naming no commit, while `git log` had always started
-from it (measured 2026-11-08 at 0c177a3, git 2.54;
+as git resolves it (`rev-parse --verify`) and THEN the resolved object is
+asked about: the one-step `<value>^{commit}` spelling refused `:/fix`, whose
+search swallows the suffix, as naming no commit, while `git log` had always
+started from it (measured 2026-11-08, git 2.54;
 `TestResolveCommitResolvesThenPeels`, mutation row
-`since-tag-resolved-with-the-peel-attached`). A tag on a tree or a blob
-resolves and does not peel, and is refused by what it names — `git tag` lists
+`since-tag-resolved-with-the-peel-attached`). Whether the resolved object is
+a commit is `gitsource.namesCommit`'s question, the reading "Both git
+questions can also fail to answer" above describes, so a commit the checkout
+holds and git cannot read is git's failure at 4 with git's line, under the
+limits stated there, and never "names no commit": `rev-parse --verify --quiet
+<sha>^{commit}` exits 1, the NO's status, for an empty object file on git
+2.54 and for a commit whose body does not parse on 2.39.5, 2.54 and 2.56, and
+read as a NO each sent the caller to `git tag` for a tag `git tag` lists
+(measured 2026-11-15; `TestResolveCommitFailsOnAHeldObjectGitCannotRead`,
+`TestTypedRevisionGitCannotReadIsNotUsage`, mutation row
+`typed-revision-git-cannot-read-names-no-commit`). A tag on a tree or a blob
+resolves to no commit, and is refused by what it names — `git tag` lists
 it, so "`git tag` lists the tags here" would be a sentence `git tag` refutes
 — and a negated revision (`^v0.1.0`), which `rev-parse --verify` accepts and
 `git log` dies on, is refused with the range shape at the entrance
@@ -2101,7 +2111,14 @@ as `--since-tag`'s and `--current`'s are, so `' -x'` is the option shape
 `-x` is and `' v0.1.0..HEAD'` the range (`TestRangeEndpointNamingNoCommitIsUsage`,
 `TestCurrentIsJudgedTrimmed`; mutation rows
 `range-endpoint-naming-no-commit-is-gits-failure`,
-`check-range-judges-the-untrimmed-value`, `current-judged-untrimmed`). On a
+`range-omitted-side-names-nothing`,
+`check-range-judges-the-untrimmed-value`, `current-judged-untrimmed`). git
+reads the set operators on a single revision only, so on a side of `..` or
+`...` one is refused with the range's shape at the entrance
+(`walk.CheckRangeOperators`, before `glyph.toml` is loaded), as `CheckTag`
+refuses the leading `^`: `^v0.1.0..HEAD` and `v0.1.0..HEAD^!` died in `git
+log` at 4 (every combination over both sides measured on git 2.39.5, 2.54 and
+2.56, 2026-11-15; mutation row `range-side-operator-reaches-git`). On a
 packages walk the line question comes first: a version-shaped tag on a line
 no `[[packages]]` entry declares is refused as that line whether or not the
 tag exists. Each
@@ -3845,24 +3862,30 @@ the hook installer's read, write, directory creation and chmod, doctor's reads
 of a hook, the workflows directory and the workflow and action files, and
 `release --footer-file`: each `*fs.PathError` goes out as it is, with what did
 not happen beside it, and the hooks directory is named as well only when its
-creation failed on an ancestor. `--footer-file` is a path the caller typed to
-be READ, and is classified by `config.StatReadable`, `StatFile`'s twin over the
-same stat: a regular file, a named pipe or a character device is read — `<(…)`
-and a piped `/dev/stdin` name a pipe, and a pipe with no writer is the caller's
-own doing, not a state a repository reaches — while a directory, a socket, a
-broken link, and a path to nothing (missing, through a regular file, too long
-to exist, a loop: `config.PathsOwnFault`) are what was observed, the caller's
-input at 2; a stat or a read the filesystem refused is 4 (t-f5x9; measured at
-86eab14, a mode-000 footer answered 2; at 0c177a3, `ok.md/` and a 300-byte name
-answered 4 and `<(…)` was refused at 2 as a named pipe;
-`TestReleaseFooterFileIsClassifiedByWhatWasObserved`,
-`TestReleaseFooterFileReadsAPipe`, mutation rows
-`footer-file-read-refusal-is-usage`, `footer-file-path-to-nothing-is-the-no-answer-code`,
-`footer-file-pipe-refused`) (`TestInitNamesAnUnwritablePathOnce`,
+creation failed on an ancestor (`TestInitNamesAnUnwritablePathOnce`,
 `TestInstallNamesARefusedPathOnce`, mutation rows
 `init-write-names-the-path-twice` and `hook-install-names-the-path-twice`; no
 test stages a refused chmod — on Linux, where the ledger runs, it takes a file
-another user owns, which a test cannot make without root). Every reader of the
+another user owns, which a test cannot make without root). `--footer-file` is
+a path the caller typed to be READ, and is classified by
+`config.StatReadable`, `StatFile`'s twin over the same stat: a regular file, a
+named pipe or a character device is read — `<(…)` and a piped `/dev/stdin`
+name a pipe, `/dev/null` a character device, and a pipe with no writer is the
+caller's own doing, not a state a repository reaches — while a directory, a
+socket, a broken link, and a path to nothing (missing, through a regular file,
+too long to exist, a loop: `config.PathsOwnFault`) are what was observed, the
+caller's input at 2; a stat or a read the filesystem refused is 4 (t-f5x9;
+measured at 86eab14, a mode-000 footer answered 2; measured 2026-11-08,
+`ok.md/` and a 300-byte name answered 4 before a path's own fault was told
+from a refused stat, and `<(…)` was refused at 2 as a named pipe while
+`StatFile` was asked — mutation rows
+`footer-file-path-to-nothing-is-the-no-answer-code` and
+`footer-file-pipe-refused` hold the two;
+`TestReleaseFooterFileIsClassifiedByWhatWasObserved`,
+`TestReleaseFooterFileReadsAPipe`,
+`TestReleaseFooterFileReadsACharacterDevice`, mutation rows
+`footer-file-read-refusal-is-usage` and
+`footer-file-character-device-refused`). Every reader of the
 hooks directory — the installer planning its write, `lint --stdin`'s
 stale-hook check — would block on a named pipe at a hook's path, and nothing
 guards it: a hooks directory holding a pipe is sabotage, not a state a

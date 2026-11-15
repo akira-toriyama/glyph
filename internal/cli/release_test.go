@@ -702,9 +702,10 @@ func TestReleaseFooterFile(t *testing.T) {
 // to be READ, so a named pipe with a writer behind it — what `<(…)` and a
 // piped /dev/stdin name — is read as a regular file is (config.StatReadable).
 // Both idioms worked before the stat was asked and were refused at 2 as "a
-// named pipe, not a regular file" at 0c177a3, where glyph.toml's classifier
-// was reused unchanged; a pipe named glyph.toml is sabotage, a pipe named as
-// a footer is a shell feature.
+// named pipe, not a regular file" while glyph.toml's classifier was asked
+// unchanged (measured 2026-11-08; mutation row footer-file-pipe-refused); a
+// pipe named glyph.toml is sabotage, a pipe named as a footer is a shell
+// feature.
 func TestReleaseFooterFileReadsAPipe(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("no mkfifo on Windows")
@@ -734,6 +735,27 @@ func TestReleaseFooterFileReadsAPipe(t *testing.T) {
 	i := strings.Index(stdout, "\n---\n")
 	if i < 0 || !strings.Contains(stdout[i:], "`brew install x`") {
 		t.Errorf("the pipe's content is not appended after the separator:\n%s", stdout)
+	}
+}
+
+// TestReleaseFooterFileReadsACharacterDevice: the other kind
+// config.StatReadable reads beside the pipe. /dev/null is one; it is read —
+// empty, so no separator follows the notes — where a classifier reading
+// pipes alone refuses it at 2 as "a device, not a regular file" (mutation
+// row footer-file-character-device-refused).
+func TestReleaseFooterFileReadsACharacterDevice(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("NUL is not a path os.Stat reports as a character device the same way")
+	}
+	walk := oneFixWalk(t)
+	usePR(t, dryServer(t, walk))
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--footer-file", os.DevNull)
+	if code != 0 {
+		t.Fatalf("release --footer-file %s exited %d, want 0 — a character device is read\nstderr: %s", os.DevNull, code, stderr)
+	}
+	if !strings.Contains(stdout, "fix a crash") || strings.Contains(stdout, "\n---\n") {
+		t.Errorf("an empty footer appends nothing: the notes, and no separator:\n%s", stdout)
 	}
 }
 

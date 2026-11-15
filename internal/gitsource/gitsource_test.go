@@ -2148,13 +2148,13 @@ func TestResolveCommitResolvesThenPeels(t *testing.T) {
 	testutil.Git(t, dir, "akira-toriyama", "tag", "on-a-blob", blob)
 
 	for rev, want := range map[string]Named{
-		"v0.1.0":                      {Commit: sha},
-		"curry/v0.1.0":                {Commit: sha},
-		"old-main":                    {Commit: sha},
-		sha:                           {Commit: sha},
-		sha[:7]:                       {Commit: sha},
-		"HEAD~0":                      {Commit: sha},
-		":/begin":                     {Commit: sha},
+		"v0.1.0":                      {Kind: "commit"},
+		"curry/v0.1.0":                {Kind: "commit"},
+		"old-main":                    {Kind: "commit"},
+		sha:                           {Kind: "commit"},
+		sha[:7]:                       {Kind: "commit"},
+		"HEAD~0":                      {Kind: "commit"},
+		":/begin":                     {Kind: "commit"},
 		"on-a-tree":                   {Kind: "tree"},
 		"annotated-on-a-tree":         {Kind: "tree"},
 		"on-a-blob":                   {Kind: "blob"},
@@ -2176,5 +2176,78 @@ func TestResolveCommitResolvesThenPeels(t *testing.T) {
 	_, err := resolveCommit(context.Background(), t.TempDir(), "v0.1.0")
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("resolveCommit outside a repository = %v, want CodeAPI", err)
+	}
+}
+
+// TestResolveCommitFailsOnAHeldObjectGitCannotRead: a typed revision whose
+// object this repository holds and git cannot read names a commit git failed
+// to read, never "no commit": resolveCommit asks namesCommit, the one reading
+// of that difference. Asked of `rev-parse --verify --quiet <sha>^{commit}`,
+// the unreadable shapes answer exit 1 — the NO's status — or 128 by the git
+// version: the empty object file is 1 on 2.54 and 128 on 2.39.5 and 2.56, the
+// commit whose body does not parse is 1 on all three (measured 2026-11-15),
+// and read as a NO each told the caller that a tag `git tag` lists names no
+// commit, at the code that says to fix the arguments. Each row starts from a
+// tag that reads (the control); a full sha the store does not hold stays an
+// answer beside the broken object.
+func TestResolveCommitFailsOnAHeldObjectGitCannotRead(t *testing.T) {
+	for name, tc := range map[string]struct {
+		corrupt     func(t *testing.T, dir, sha string) (target string)
+		wantMsg     func(t *testing.T) string
+		needsSignal bool
+	}{
+		"an empty object file": {func(t *testing.T, dir, sha string) string {
+			emptyObject(t, dir, sha)
+			return sha
+		}, literally("is empty"), false},
+		"an object file git cannot open": {func(t *testing.T, dir, sha string) string {
+			unreadableObject(t, dir, sha)
+			return sha
+		}, unopenableFileMsg, false},
+		"an object under a fan-out directory git cannot open": {func(t *testing.T, dir, sha string) string {
+			unreadableFanout(t, dir, sha)
+			return sha
+		}, literally("Permission denied"), true},
+		"a commit git cannot parse": {func(t *testing.T, dir, _ string) string {
+			return unparseableCommit(t, dir)
+		}, literally("bogus commit object"), false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if tc.needsSignal {
+				requireUnopenableSignal(t)
+			}
+			wantMsg := tc.wantMsg(t)
+			dir := testutil.NewRepo(t)
+			head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+			if got, err := resolveCommit(context.Background(), dir, "v0.1.0"); err != nil || !got.IsCommit() {
+				t.Fatalf("resolveCommit over a readable tag = %+v, %v; want a commit (the control)", got, err)
+			}
+
+			// `git tag` parses the object it is pointed at and refuses the
+			// unparseable commit, so a target other than head is written into
+			// the loose ref by hand, as
+			// TestDefaultBranchFailsOnATargetGitCannotRead writes its own.
+			if target := tc.corrupt(t, dir, head); target != head {
+				if err := os.WriteFile(filepath.Join(dir, ".git", "refs", "tags", "v0.1.0"), []byte(target+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := resolveCommit(context.Background(), dir, "v0.1.0")
+			ce := core.AsError(err)
+			if ce == nil || ce.Code != core.CodeAPI {
+				t.Fatalf("resolveCommit over %s = %+v, %v; want CodeAPI — read as naming nothing, the caller is sent to `git tag` for a tag it lists", name, got, err)
+			}
+			if !strings.Contains(err.Error(), wantMsg) {
+				t.Errorf("the error must carry git's own diagnosis: got %q, want it to mention %q", err, wantMsg)
+			}
+		})
+	}
+
+	dir := testutil.NewRepo(t)
+	emptyObject(t, dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+	absent := "0123456789abcdef0123456789abcdef01234567"
+	if got, err := resolveCommit(context.Background(), dir, absent); err != nil || got != (Named{}) {
+		t.Errorf("resolveCommit for a sha the store does not hold, beside an object git cannot read = %+v, %v; want nothing, nil", got, err)
 	}
 }
