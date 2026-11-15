@@ -1,13 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 9b47478..7db4a53 100644
+index e58ad77..5ddad92 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -315,7 +315,7 @@ func (w *walk) resolve(ctx context.Context, raw gitsource.RawCommit, inRange map
+@@ -336,7 +336,7 @@ func (w *walk) resolve(ctx context.Context, raw gitsource.RawCommit, inRange map
  	if err != nil {
  		return nil, nil, false, err
  	}
--	if w.excludes(raw) && !slices.ContainsFunc(listing, func(r gitsource.RawCommit) bool { return !w.excludes(r) }) {
-+	if false && w.excludes(raw) && !slices.ContainsFunc(listing, func(r gitsource.RawCommit) bool { return !w.excludes(r) }) {
- 		return nil, covering, false, nil
- 	}
- 	return &merged{number: number, listing: listing, capped: capped}, covering, false, nil
+-	expands := !w.excludes(raw) || capped || slices.ContainsFunc(listing, func(r gitsource.RawCommit) bool { return !w.excludes(r) })
++	expands := true || !w.excludes(raw) || capped || slices.ContainsFunc(listing, func(r gitsource.RawCommit) bool { return !w.excludes(r) })
+ 	return &merged{number: number, listing: listing, capped: capped, expands: expands}, covering, false, nil
+ }
+ 

@@ -62,10 +62,11 @@ type walk struct {
 	// landings is where each listed sha landed, as far as this walk has read:
 	// the commit it landed as and the pull that landed it, the first to do so
 	// (land) — a footprint's answer for a pull this walk expanded, and for a
-	// pull behind the base the footprint's answer against that pull's merge
-	// point, else the merge point itself (readBackPull). seen cannot answer for
-	// these: a pre-rebase sha is folded under its landing site, and a pull
-	// behind the base is never folded at all (placeStacked). The pull is kept
+	// pull it does not fold, one behind the base or an excluded author's own,
+	// the footprint's answer against that pull's merge point, else the merge
+	// point itself (landListing). seen cannot answer for these: a pre-rebase
+	// sha is folded under its landing site, and a pull the walk does not fold
+	// is represented by no listed sha (placeStacked). The pull is kept
 	// because a pull is never "another pull" to itself: --pr of a merged pull
 	// reads its own merge point back (landedElsewhere).
 	landings map[string]landing
@@ -213,7 +214,8 @@ func (w Walker) OpenPull(ctx context.Context, cfg *config.Config, owner, repo st
 // visit folds one commit of the range in by what resolves it: a merge point
 // expands the pull it resolves to, a covered commit stands aside for its
 // pull's merge point, and everything else falls back to its own message — an
-// excluded author's commit to no message at all. The error is the API's or
+// excluded author's commit to no message at all, its own pull's listing
+// landed and not folded. The error is the API's or
 // git's as received; walkSince decides what it means for the verdict.
 func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
 	// A merge point is a POINTER to a pull request, not a message being
@@ -248,7 +250,7 @@ func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
 		// GitHub does not know the SHA yet (422) — the walk outran the API
 		// right after a push. DESIGN §4's API lag: fall back, never fail.
 		w.unknown++
-	case m != nil:
+	case m != nil && m.expands:
 		if err := w.expand(ctx, m, raw.SHA); err != nil {
 			return err
 		}
@@ -267,6 +269,13 @@ func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
 		// --first-parent). Counting this one too would double it; if the
 		// canonical commit never resolves, reconcile names the pull.
 		return nil
+	case m != nil:
+		// The pull is the excluded author's own: nothing of it folds, and its
+		// listing still says what this merge point landed, which a pull
+		// stacked on it lists again (landListing).
+		if err := w.landListing(ctx, m, raw.SHA); err != nil {
+			return err
+		}
 	}
 	w.fallback(raw, lag)
 	return nil
@@ -280,10 +289,13 @@ func (w *walk) excludes(raw gitsource.RawCommit) bool {
 
 // merged is a merge point resolved: the pull it merged and that pull's
 // listing as GitHub returns it, capped when the listing sits at GitHub's cap.
+// expands is whether the walk folds the pull in at this merge point; a pull
+// that does not expand still landed what it lists (landListing).
 type merged struct {
 	number  int
 	listing []gitsource.RawCommit
 	capped  bool
+	expands bool
 }
 
 // resolve reads raw as a merge point: the pull that merged it and that pull's
@@ -293,13 +305,22 @@ type merged struct {
 // own read a merged pull as another pull to its own commits
 // (TestPullSideReadsAnExcludedAuthorsMergePointAsItsOwn).
 //
-// An excluded author's commit is asked about like any other, and resolves
-// only to a pull whose listing holds a commit by someone else: a human's fix
+// An excluded author's commit is asked about like any other, and its pull
+// expands only when the listing holds a commit by someone else: a human's fix
 // pushed onto a bot's branch lands under the bot's name, as does any pull an
 // automation merges with the button, and unresolved it left the version in
 // silence or stood the pull's commits aside for good (t-saky). A listing of
-// excluded authors alone resolves to nothing, so the routine bot pull stays
-// one commit placed by what it landed, never an expansion.
+// excluded authors alone does not expand, so the routine bot pull stays one
+// commit placed by what it landed. A listing at GitHub's cap cannot say that
+// nobody else committed past the cap, so it expands and takes the truncation
+// every capped listing takes: unexpanded, a bot-pressed merge commit over such
+// a pull lost it on every run under a remedy naming the API's lag
+// (TestSinceTagExcludedAuthorsCappedListingIsTruncatedNotLost).
+//
+// The pull is returned whether or not it expands, because both callers land
+// its listing: a pull read as no pull at all left its commits to be recorded
+// under the pull stacked on it, and read by number it lost them as another
+// pull's work (TestPullSideReadsAnExcludedAuthorsOwnPullAsItsOwn).
 //
 // lag is GitHub's 422 for the sha, which each caller answers its own way.
 // covering is mergedPullFor's, whatever raw resolved to.
@@ -315,10 +336,8 @@ func (w *walk) resolve(ctx context.Context, raw gitsource.RawCommit, inRange map
 	if err != nil {
 		return nil, nil, false, err
 	}
-	if w.excludes(raw) && !slices.ContainsFunc(listing, func(r gitsource.RawCommit) bool { return !w.excludes(r) }) {
-		return nil, covering, false, nil
-	}
-	return &merged{number: number, listing: listing, capped: capped}, covering, false, nil
+	expands := !w.excludes(raw) || capped || slices.ContainsFunc(listing, func(r gitsource.RawCommit) bool { return !w.excludes(r) })
+	return &merged{number: number, listing: listing, capped: capped, expands: expands}, covering, false, nil
 }
 
 // expand folds one RESOLVED merged pull into the walk, canonical being the
@@ -780,9 +799,11 @@ func (w *walk) land(sha, on string, pull int) {
 // commit ANOTHER pull landed it as, "" when no pull has or this pull itself
 // did. A pull is never another pull to itself — read by number once merged,
 // its own merge point sits in its window and the read-back resolves it back
-// to the pull being read; and a pull stacked on it and merged after it lists
-// the same shas, which the oldest-first read-back has already recorded under
-// this pull (TestPullSideReadsAMergedPullAsItsOwn).
+// to the pull being read, whoever authored that merge point and whether or
+// not a walk would expand the pull; and a pull stacked on it and merged after
+// it lists the same shas, which the oldest-first read-back has already
+// recorded under this pull (TestPullSideReadsAMergedPullAsItsOwn,
+// TestPullSideReadsAnExcludedAuthorsOwnPullAsItsOwn).
 func (w *walk) landedElsewhere(sha string, number int) string {
 	if l, ok := w.landings[sha]; ok && l.pull != number {
 		return l.on
@@ -852,10 +873,8 @@ func (w *walk) readBack(ctx context.Context, number int, listing []gitsource.Raw
 	return nil
 }
 
-// readBackPull records what the pull raw is the merge point of landed: each
-// listed sha as the commit the footprint places it at against that merge
-// point — its own sha, or a rebase's replay — and, for what the footprint
-// leaves, the merge point itself, a squash's one commit on the branch. A sha
+// readBackPull records what the pull raw is the merge point of landed
+// (landListing), whether or not a walk over raw would expand it. A sha
 // GitHub does not know names no pull, and is no shortfall: what it could have
 // released is at worst counted again, the answer a listing with no landing
 // site always gets. A listing GitHub capped is read as far as the cap, and
@@ -871,19 +890,27 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error 
 	if err != nil || m == nil {
 		return err
 	}
-	number, released := m.number, m.listing
 	if m.capped {
-		w.Report.Warnf("pull request #%d, read back for what it landed on the released branch, returned %d commits — GitHub truncates this listing at %d, so a commit past the cap cannot be matched and a later pull listing it may count it again", number, len(released), github.PullCommitsCap)
+		w.Report.Warnf("pull request #%d, read back for what it landed on the released branch, returned %d commits — GitHub truncates this listing at %d, so a commit past the cap cannot be matched and a later pull listing it may count it again", m.number, len(m.listing), github.PullCommitsCap)
 	}
-	landed, err := w.mainFootprint(ctx, raw.SHA, released, raw.SHA)
+	return w.landListing(ctx, m, raw.SHA)
+}
+
+// landListing records what a pull the walk does not fold landed at
+// mergePoint — one behind the base, or an excluded author's own in the range:
+// each listed sha as the commit the footprint places it at against that merge
+// point, and the merge point itself for what the footprint leaves, a squash's
+// one commit on the branch.
+func (w *walk) landListing(ctx context.Context, m *merged, mergePoint string) error {
+	landed, err := w.mainFootprint(ctx, mergePoint, m.listing, mergePoint)
 	if err != nil {
 		return err
 	}
-	for i, r := range released {
+	for i, r := range m.listing {
 		if landed[i] == "" {
-			landed[i] = raw.SHA
+			landed[i] = mergePoint
 		}
-		w.land(r.SHA, landed[i], number)
+		w.land(r.SHA, landed[i], m.number)
 	}
 	return nil
 }

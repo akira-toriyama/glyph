@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -136,13 +137,13 @@ func TestSinceTagExcludedAuthorsMergeCommitResolvesItsPull(t *testing.T) {
 // TestSinceTagExcludedAuthorsOwnPullIsNotExpanded prices the rule and pins its
 // other half. A bot's commit costs the lookup every commit costs; one that
 // resolves costs its pull's listing too, and a listing of excluded authors
-// alone resolves to nothing: the squash stays one commit under its own sha,
+// alone is not expanded: the squash stays one commit under its own sha,
 // out of the fold and in the notes as it always was. A bot's direct push —
 // the fleet's daily sync — resolves to no pull at one request.
 func TestSinceTagExcludedAuthorsOwnPullIsNotExpanded(t *testing.T) {
 	// A bot's pull a bot merged with the button: its branch commit names the
 	// pull as merged at the merge commit, and standing aside for a merge
-	// point that resolves to nothing would lose it as a pull nothing
+	// point the walk does not expand would lose it as a pull nothing
 	// expanded — release at exit 4 on every run. An excluded author's commit
 	// stands aside for nothing.
 	t.Run("merged with the button", func(t *testing.T) {
@@ -283,6 +284,191 @@ func TestPullSideReadsAnExcludedAuthorsMergePointAsItsOwn(t *testing.T) {
 		code, shas, stderr := verdictSHAs(t, "bump", "--pr", "10")
 		if code != 1 || len(shas) != 0 || !strings.Contains(stderr, "already landed on the released branch") {
 			t.Errorf("bump --pr 10 --json = exit %d commits %v, want 1 — #10 adds a = alone, the fix is #9's\nstderr: %s", code, shas, stderr)
+		}
+	})
+}
+
+const botD1 = "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1"
+
+// botOwnPullUnderAStack lands #9, dependabot's own pull — its listing holds
+// the bot's commit alone, the routine shape — by squash under the bot's name,
+// and then #10, stacked on it and merged after it, which lists the bot's
+// commit beside its own fix. v1.0.0 is cut at #9's merge point when
+// tagBetween.
+func botOwnPullUnderAStack(t *testing.T, tagBetween bool) (s9 string) {
+	t.Helper()
+	dir, root := testutil.NewTaggedRepo(t)
+	testutil.Commit(t, dir, "dependabot[bot]", "Bump foo from 1 to 2 (#9)")
+	s9 = headSHA(t, dir)
+	if tagBetween {
+		testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	}
+	s10 := squashCommit(t, dir, "Follow up", 10)
+	bump := apiCommitByOn(botD1, "dependabot[bot]", "Bump foo from 1 to 2", root)
+	usePR(t, dryServer(t, map[string]string{
+		commitPullsPath(s9):  apiMerged(9, s9),
+		pullCommitsPath(9):   apiListing(bump),
+		commitPullsPath(s10): apiMerged(10, s10),
+		pullCommitsPath(10):  apiListing(bump, apiCommitOn(stackedB1, ":bug:~ fix the foo bump", botD1)),
+	}))
+	t.Chdir(dir)
+	return s9
+}
+
+// TestPullSideReadsAnExcludedAuthorsOwnPullAsItsOwn: the pull the walk never
+// expands — a bot's own, every listed commit an excluded author's — still
+// landed what it lists. Read by number once a pull stacked on it has merged,
+// #9 keeps its bump: the read-back lands #9's listing at #9's merge point
+// before it reaches #10's. Read as no pull at all, the bump was recorded
+// under #10 and `notes --pr 9` answered "no release notes" at exit 1 under a
+// notice that the commit landed through another pull request.
+func TestPullSideReadsAnExcludedAuthorsOwnPullAsItsOwn(t *testing.T) {
+	for _, cmd := range []string{"notes", "bump", "preview"} {
+		t.Run(cmd+" --pr 9", func(t *testing.T) {
+			botOwnPullUnderAStack(t, false)
+			code, stdout, stderr := runGlyph(t, cmd, "--pr", "9")
+			if strings.Contains(stderr, "another pull request") {
+				t.Errorf("#9 is not another pull to its own commit:\n%s", stderr)
+			}
+			if cmd == "notes" && (code != 0 || !strings.Contains(stdout, "Bump foo from 1 to 2 (#9)")) {
+				t.Errorf("notes --pr 9 = exit %d, want 0 and the bump under #9:\n%s\nstderr: %s", code, stdout, stderr)
+			}
+		})
+	}
+	t.Run("the stacked pull", func(t *testing.T) {
+		s9 := botOwnPullUnderAStack(t, false)
+		code, stdout, stderr := runGlyph(t, "notes", "--pr", "10")
+		if code != 0 || !strings.Contains(stdout, "fix the foo bump") || strings.Contains(stdout, "Bump foo") {
+			t.Errorf("notes --pr 10 = exit %d, want 0 and #10's fix alone:\n%s\nstderr: %s", code, stdout, stderr)
+		}
+		if want := "commit " + botD1[:7] + " in pull request #10 already landed on the released branch as " + s9[:7] + " through another pull request"; !strings.Contains(stderr, want) {
+			t.Errorf("the drop must name #9's merge point:\n  %s\nstderr: %s", want, stderr)
+		}
+	})
+}
+
+// TestSinceTagStackedOverAnExcludedAuthorsOwnPullShowsItsCommitOnce: the
+// release walk's face of the same landing. With a tag at #9's merge point the
+// read-back behind the base lands the bump there and #10 drops it as shipped;
+// with no tag between them the walk meets #9's merge point itself, does not
+// expand it, and lands its listing all the same, so #10's sighting of the bump
+// is the second and the notes show it once, under #9.
+func TestSinceTagStackedOverAnExcludedAuthorsOwnPullShowsItsCommitOnce(t *testing.T) {
+	t.Run("a tag between", func(t *testing.T) {
+		s9 := botOwnPullUnderAStack(t, true)
+		code, stdout, stderr := runGlyph(t, "notes", "--since-tag")
+		if code != 0 || !strings.Contains(stdout, "fix the foo bump (#10)") || strings.Contains(stdout, "Bump foo") {
+			t.Fatalf("notes --since-tag = exit %d, want 0 and #10's fix alone — the bump shipped under v1.0.0:\n%s\nstderr: %s", code, stdout, stderr)
+		}
+		if want := "commit " + botD1[:7] + " in pull request #10 landed on the released branch as " + s9[:7] + ", which is outside v1.0.0..HEAD"; !strings.Contains(stderr, want) {
+			t.Errorf("the drop must be said:\n  %s\nstderr: %s", want, stderr)
+		}
+	})
+	t.Run("no tag between", func(t *testing.T) {
+		botOwnPullUnderAStack(t, false)
+		code, stdout, stderr := runGlyph(t, "notes", "--since-tag")
+		if code != 0 || strings.Count(stdout, "Bump foo") != 1 || !strings.Contains(stdout, "Bump foo from 1 to 2 (#9)") || !strings.Contains(stdout, "fix the foo bump (#10)") {
+			t.Fatalf("notes --since-tag = exit %d, want 0, the bump once under #9 and the fix under #10:\n%s\nstderr: %s", code, stdout, stderr)
+		}
+		code, stdout, stderr = runGlyph(t, "release", "--dry-run")
+		if code != 0 || !strings.HasPrefix(stdout, "v0.1.1\n\n") || strings.Count(stdout, "Bump foo") != 1 {
+			t.Errorf("release --dry-run = exit %d, want 0, v0.1.1 and the bump once:\n%s\nstderr: %s", code, stdout, stderr)
+		}
+	})
+}
+
+// TestSinceTagExcludedAuthorsCappedListingIsTruncatedNotLost: a bot's pull
+// GitHub lists at its cap of 250, every listed commit an excluded author's,
+// cannot say that nobody else committed past the cap. It expands and is the
+// truncated listing any capped pull is, under the clause release refuses a
+// truncated listing with. Unexpanded, a merge commit a bot pressed over a
+// human's commit lost the pull on every run — the human's commit stood aside
+// for a merge point that resolved to nothing, under a warning that blamed the
+// API's lag and asked for a re-run no re-run clears (t-b7t2) — and the squash
+// shape answered "no release" at exit 1 with no word of the cap.
+func TestSinceTagExcludedAuthorsCappedListingIsTruncatedNotLost(t *testing.T) {
+	entries := make([]string, 0, 250)
+	for k := range 250 {
+		entries = append(entries, apiCommit(fmt.Sprintf("%040x", 0xdd0000+k), "dependabot[bot]", fmt.Sprintf("Bump foo %d", k)))
+	}
+	capped := apiListing(entries...)
+	const truncated = "merged pull request #5 returned the maximum 250 commits, so GitHub truncated its listing and the rest could not be read"
+	t.Run("a merge commit the bot pressed", func(t *testing.T) {
+		dir, _ := testutil.NewTaggedRepo(t)
+		mp := mergeInto(t, dir, "akira-toriyama", "dependabot[bot]", prTopic(5), prMergeSubject(5), ":bug:~ fix the build")
+		usePR(t, dryServer(t, map[string]string{
+			commitPullsPath(mp.Branch[0]): apiMerged(5, mp.Merge),
+			commitPullsPath(mp.Merge):     apiMerged(5, mp.Merge),
+			pullCommitsPath(5):            capped,
+		}))
+		t.Chdir(dir)
+		code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+		if code != 4 || stdout != "" || !strings.Contains(stderr, truncated) {
+			t.Fatalf("release --dry-run = exit %d stdout %q, want 4 naming the truncation:\n  %s\nstderr: %s", code, stdout, truncated, stderr)
+		}
+		if strings.Contains(stderr, "nothing in the range resolved to it") || strings.Contains(stderr, "stood aside for a merge point nothing resolved") {
+			t.Errorf("the pull resolved; it is truncated, not lost:\n%s", stderr)
+		}
+	})
+	t.Run("a squash under the bot's name", func(t *testing.T) {
+		dir, _ := testutil.NewTaggedRepo(t)
+		testutil.Commit(t, dir, "dependabot[bot]", "Bump foo (#5)")
+		s5 := headSHA(t, dir)
+		usePR(t, dryServer(t, map[string]string{
+			commitPullsPath(s5): apiMerged(5, s5),
+			pullCommitsPath(5):  capped,
+		}))
+		t.Chdir(dir)
+		code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+		if code != 4 || stdout != "" || !strings.Contains(stderr, truncated) {
+			t.Fatalf("release --dry-run = exit %d stdout %q, want 4 naming the truncation, as a human's squash of the same listing answers:\n  %s\nstderr: %s", code, stdout, truncated, stderr)
+		}
+	})
+}
+
+// TestReleaseExcludedAuthorsCommitsAllUnknownIsRefused: an excluded author's
+// commit is asked about like any other, so it is one of the commits GitHub
+// can fail to know. A range holding such commits alone, every one answered
+// 422, is the all-unknown walk any range is: release refuses at 4 and bump
+// reports — the squash may carry someone else's fix, and the walk read none
+// of it. Beside a commit GitHub knows, the same squash is one lagging commit:
+// warned about and joined, the release going ahead.
+func TestReleaseExcludedAuthorsCommitsAllUnknownIsRefused(t *testing.T) {
+	fixture := func(t *testing.T, known bool) (s5 string) {
+		t.Helper()
+		dir, _ := testutil.NewTaggedRepo(t)
+		routes := map[string]string{}
+		if known {
+			s4 := squashCommit(t, dir, "Fix a thing", 4)
+			routes[commitPullsPath(s4)] = apiMerged(4, s4)
+			routes[pullCommitsPath(4)] = apiListing(apiCommit("h4", "akira-toriyama", ":bug:~ fix a thing"))
+		}
+		testutil.Commit(t, dir, "dependabot[bot]", "Bump foo (#5)")
+		s5 = headSHA(t, dir)
+		routes[commitPullsPath(s5)] = apiUnknownSHA
+		usePR(t, dryServer(t, routes))
+		t.Chdir(dir)
+		return s5
+	}
+	t.Run("alone", func(t *testing.T) {
+		fixture(t, false)
+		code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+		if want := "every commit in it was unknown to akira-toriyama/glyph"; code != 4 || stdout != "" || !strings.Contains(stderr, want) {
+			t.Fatalf("release --dry-run = exit %d stdout %q, want 4 and %q\nstderr: %s", code, stdout, want, stderr)
+		}
+		code, stdout, stderr = runGlyph(t, "bump", "--since-tag")
+		if code != 1 || stdout != "" || !strings.Contains(stderr, "all 1 commit(s) in v0.1.0..HEAD were unknown") {
+			t.Errorf("bump --since-tag = exit %d stdout %q, want 1 under the all-unknown warning\nstderr: %s", code, stdout, stderr)
+		}
+	})
+	t.Run("beside a commit GitHub knows", func(t *testing.T) {
+		s5 := fixture(t, true)
+		code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+		if code != 0 || !strings.HasPrefix(stdout, "v0.1.1\n\n") {
+			t.Fatalf("release --dry-run = exit %d stdout:\n%s\nwant 0 and v0.1.1\nstderr: %s", code, stdout, stderr)
+		}
+		if want := "commit " + s5[:7] + ", an exclude_authors author's, is not known to GitHub yet (API lag)"; !strings.Contains(stderr, want) {
+			t.Errorf("the lagging commit must be said:\n  %s\nstderr: %s", want, stderr)
 		}
 	})
 }

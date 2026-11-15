@@ -31,13 +31,18 @@ const (
 // which is where the walk reads a listing's fork from. apiCommit's parent "p"
 // names nothing a checkout holds, so its listings read nothing back.
 func apiCommitOn(sha, message string, parents ...string) string {
+	return apiCommitByOn(sha, "akira-toriyama", message, parents...)
+}
+
+// apiCommitByOn is apiCommitOn under another author's name and login.
+func apiCommitByOn(sha, author, message string, parents ...string) string {
 	m, _ := json.Marshal(message)
 	named := make([]string, len(parents))
 	for i, p := range parents {
 		named[i] = fmt.Sprintf(`{"sha":%q}`, p)
 	}
-	return fmt.Sprintf(`{"sha":%q,"commit":{"message":%s,"author":{"name":"akira-toriyama"}},"author":{"login":"akira-toriyama"},"parents":[%s]}`,
-		sha, m, strings.Join(named, ","))
+	return fmt.Sprintf(`{"sha":%q,"commit":{"message":%s,"author":{"name":%q}},"author":{"login":%q},"parents":[%s]}`,
+		sha, m, author, author, strings.Join(named, ","))
 }
 
 func apiListing(entries ...string) string { return `[` + strings.Join(entries, ",") + `]` }

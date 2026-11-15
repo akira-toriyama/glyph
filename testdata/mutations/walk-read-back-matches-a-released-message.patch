@@ -1,8 +1,8 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 3495905..823f56f 100644
+index e58ad77..e6a7978 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -650,7 +650,7 @@ func (w *walk) placeStacked(ctx context.Context, number int, canonical string, l
+@@ -738,7 +738,7 @@ func (w *walk) placeStacked(ctx context.Context, number int, canonical string, l
  	}
  	placed := false
  	for i, r := range listing {
@@ -11,12 +11,12 @@ index 3495905..823f56f 100644
  			landed[i], placed = on, true
  		}
  	}
-@@ -820,7 +820,7 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+@@ -910,7 +910,7 @@ func (w *walk) landListing(ctx context.Context, m *merged, mergePoint string) er
  		if landed[i] == "" {
- 			landed[i] = raw.SHA
+ 			landed[i] = mergePoint
  		}
--		w.land(r.SHA, landed[i], number)
-+		w.land(strings.TrimSpace(r.Message), landed[i], number)
+-		w.land(r.SHA, landed[i], m.number)
++		w.land(strings.TrimSpace(r.Message), landed[i], m.number)
  	}
  	return nil
  }

@@ -1,0 +1,15 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index e58ad77..acfec04 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -249,7 +249,9 @@ func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
+ 	case lag:
+ 		// GitHub does not know the SHA yet (422) — the walk outran the API
+ 		// right after a push. DESIGN §4's API lag: fall back, never fail.
+-		w.unknown++
++		if !excluded {
++			w.unknown++
++		}
+ 	case m != nil && m.expands:
+ 		if err := w.expand(ctx, m, raw.SHA); err != nil {
+ 			return err

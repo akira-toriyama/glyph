@@ -1603,7 +1603,17 @@ no message of theirs is judged and none moves a version. A listing of excluded
 authors alone, or no pull at all, leaves the commit what it was: one commit under
 its own sha, out of the fold, the notes' to show, standing aside for nothing. The
 routine bot pull is therefore never an expansion
-(`TestSinceTagExcludedAuthorsOwnPullIsNotExpanded`). glyph#351 itself is not
+(`TestSinceTagExcludedAuthorsOwnPullIsNotExpanded`). Unexpanded is not unread: the
+pull still landed what it lists, and the walk records that at its merge point as
+the read-back does for a pull behind the base, so a pull stacked on a bot's own
+pull does not show the bot's commit a second time
+(`TestSinceTagStackedOverAnExcludedAuthorsOwnPullShowsItsCommitOnce`). One
+listing cannot say that nobody else committed to it — one at GitHub's cap of 250,
+where a human's commit may sit past the cap — so it expands, and is the truncated
+listing any capped pull is: `release` refuses at 4 under the truncation's own
+clause, where unexpanded a bot-pressed merge commit over it was a lost pull no
+re-run cleared and the squash a silent none
+(`TestSinceTagExcludedAuthorsCappedListingIsTruncatedNotLost`). glyph#351 itself is not
 one: `hub-fleet-repin[bot]` is no `exclude_authors` entry, so #351 expands — its
 `=` re-pin joins the walk and the notes cite dependabot's own commit subject under
 #351 where they cited the squash's title, the verdict unmoved (glyph main at
@@ -1623,12 +1633,23 @@ the PR side's window count an excluded author's commit with the rest. Under the
 API's lag a bot's commit joins the walk with a warning that a pull it may have
 merged went unresolved, and a bot's merge commit is the unresolved merge point
 any merge commit is (`TestSinceTagExcludedAuthorsCommitUnknownToGitHubIsSaid`).
+Asked about like any other, it is also unknown like any other: a range holding
+excluded authors' commits alone, every one answered 422, is the all-unknown walk
+(below, "fails loud") — `release` refuses at 4 where it answered "no release" at
+1 while such a commit was never asked about, since the squash may carry someone
+else's fix and the walk read none of it; beside one commit GitHub knows it is a
+single lagging commit and the release goes ahead under the warning
+(`TestReleaseExcludedAuthorsCommitsAllUnknownIsRefused`).
 One reader, `walk.resolve`, answers for the walk's expansion and for the
 read-back below, so a commit one of them takes for a merge point the other does
 too. (Mutation rows `walk-skips-an-excluded-authors-merge-point`,
 `walk-expands-an-excluded-authors-own-pull`,
 `walk-stands-an-excluded-authors-commit-aside`,
-`walk-excluded-authors-lagging-commit-goes-unsaid`.)
+`walk-excluded-authors-lagging-commit-goes-unsaid`,
+`walk-leaves-an-excluded-authors-own-listing-unlanded`,
+`walk-read-back-lands-nothing-for-an-unexpanded-pull`,
+`walk-declines-an-excluded-authors-capped-listing`,
+`walk-excluded-authors-unknown-commit-is-not-counted-unknown`.)
 
 **A pull's listing is governed by the walk's range, not by the pull.** The
 listing is the pull's *entire* history and knows nothing of the range, so
@@ -1944,7 +1965,10 @@ each sha, because a pull is never *another* pull to itself: read by number once
 merged, its own merge point sits in the window and resolves back to it, and a pull
 stacked on it and merged after it lists the same shas, recorded first under the
 pull that landed them by the oldest-first read-back — whoever authored that pull's
-merge point (`TestPullSideReadsAnExcludedAuthorsMergePointAsItsOwn`). Without that, `--pr` of any
+merge point, and whether or not a walk would expand the pull
+(`TestPullSideReadsAnExcludedAuthorsMergePointAsItsOwn`,
+`TestPullSideReadsAnExcludedAuthorsOwnPullAsItsOwn`: a bot's own pull, which no
+walk expands, keeps its bump under `notes --pr`). Without that, `--pr` of any
 merged pull dropped its own commits as landed through another pull — `bump` and
 `notes` answered none, and the frozen packages live fire, which previews the merged
 #10 and #11 of `glyph-monorepo-test` at 380db9d, read #10 as "moves nothing"
@@ -2015,9 +2039,10 @@ merge commit an **automation** pressed was a second cause, met on *every*
 release, while the author gated the lookup; it resolves now like any merge point
 ("The author excludes a message, never a merge point"), `release --dry-run`
 answering 0 where it answered 4 (`TestSinceTagExcludedAuthorsMergeCommitResolvesItsPull`),
-so the refusal names no remedy but the re-run (t-b7t2). One corner is reasoned,
-not measured: a bot's pull GitHub lists at its cap of 250, with someone else's
-commit only past the cap, resolves to nothing.
+so the refusal names no remedy but the re-run (t-b7t2). A bot's pull GitHub
+lists at its cap of 250 would have been a third, under a re-run that cannot
+clear it; it expands instead and is refused as the truncated listing it is
+(`TestSinceTagExcludedAuthorsCappedListingIsTruncatedNotLost`).
 
 *Covered* is deliberately gated on the canonical commit being **in the walked
 range** — a pull merged into another base branch is associated with commits
