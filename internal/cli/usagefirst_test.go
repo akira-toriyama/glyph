@@ -312,8 +312,8 @@ func TestRangeEndpointNamingNoCommitIsUsage(t *testing.T) {
 
 // TestTypedRevisionGitCannotReadIsNotUsage: the boundary of the two tests
 // above. A typed --since-tag or --range endpoint whose commit this checkout
-// HOLDS and git cannot read is git failing (4, with git's own line from `git
-// cat-file`), never "names no commit" at 2: that sentence sends the caller
+// HOLDS and git cannot read is git failing (4, with git's own line from the
+// reader that met it), not "names no commit" at 2: that sentence sends the caller
 // to `git tag`, which lists the tag, and the code tells a CI wrapper to fix
 // arguments that are right. The existence question is gitsource's
 // namesCommit, the reading every other commit question in the walk shares;
@@ -321,8 +321,12 @@ func TestRangeEndpointNamingNoCommitIsUsage(t *testing.T) {
 // answered the NO's exit 1 on git 2.54 (128 on 2.39.5 and 2.56) and a commit
 // whose body does not parse answers it on all three (measured 2026-11-15),
 // so `bump --since-tag=v0.1.0` and `notes --range v0.1.0..HEAD` exited 2
-// over a broken object. The API is never reached: the stand-in fails the
-// test on any request.
+// over a broken object. A spelling whose resolution already reads the
+// object — `v0.1.0^0`, `v0.1.0~0`, and `HEAD~2` past a parent whose body
+// does not parse — gets the same exit 1 from `rev-parse --verify --quiet`
+// itself, under git's error: line (2.54 and 2.56, measured), and is the same
+// failure one step earlier, with the line from `git rev-parse`. The API is
+// never reached: the stand-in fails the test on any request.
 func TestTypedRevisionGitCannotReadIsNotUsage(t *testing.T) {
 	for name, tc := range map[string]struct {
 		corrupt func(t *testing.T, dir, sha string) (target string)
@@ -363,25 +367,71 @@ func TestTypedRevisionGitCannotReadIsNotUsage(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for _, args := range [][]string{
-				{"bump", "--since-tag=v0.1.0"},
-				{"notes", "--since-tag=v0.1.0"},
-				{"release", "--since-tag=v0.1.0", "--dry-run"},
-				{"lint", "--range", "v0.1.0..HEAD"},
-				{"bump", "--range", "v0.1.0..HEAD"},
-				{"notes", "--range", "v0.1.0"},
+			for _, inv := range []struct {
+				reader string
+				args   []string
+			}{
+				{"git cat-file", []string{"bump", "--since-tag=v0.1.0"}},
+				{"git cat-file", []string{"notes", "--since-tag=v0.1.0"}},
+				{"git cat-file", []string{"release", "--since-tag=v0.1.0", "--dry-run"}},
+				{"git cat-file", []string{"lint", "--range", "v0.1.0..HEAD"}},
+				{"git cat-file", []string{"bump", "--range", "v0.1.0..HEAD"}},
+				{"git cat-file", []string{"notes", "--range", "v0.1.0"}},
+				{"git rev-parse", []string{"bump", "--since-tag=v0.1.0~0"}},
+				{"git rev-parse", []string{"release", "--since-tag=v0.1.0^0", "--dry-run"}},
+				{"git rev-parse", []string{"lint", "--range", "v0.1.0^0..HEAD"}},
+				{"git rev-parse", []string{"notes", "--range", "v0.1.0~0..HEAD"}},
 			} {
-				code, stdout, stderr := runGlyph(t, args...)
-				if code != 4 || stdout != "" {
-					t.Errorf("%v over %s exited %d with %q on stdout, want 4 and nothing — the tag names a commit git could not read\nstderr: %s", args, name, code, stdout, stderr)
-					continue
-				}
-				env := decodeErrorEnvelope(t, stderr)
-				if !strings.Contains(env.Message, "git cat-file") || !strings.Contains(env.Message, tc.wantMsg) || strings.Contains(env.Message, "names no commit") {
-					t.Errorf("%v over %s must carry git's own diagnosis from the existence question (`git cat-file`, %q): %q", args, name, tc.wantMsg, env.Message)
-				}
+				unreadableAt(t, inv.reader, tc.wantMsg, name, inv.args...)
 			}
 		})
+	}
+
+	t.Run("a parent git cannot parse, walked through", func(t *testing.T) {
+		usePR(t, walkServer(t, nil))
+		dir, _ := testutil.NewTaggedRepo(t)
+		testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+		t.Chdir(dir)
+		if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~2..HEAD"); code != 2 || !strings.Contains(decodeErrorEnvelope(t, stderr).Message, "names no commit") {
+			t.Fatalf("lint --range HEAD~2..HEAD past the root exited %d, want 2 naming no commit (the control)\nstderr: %s", code, stderr)
+		}
+
+		body := filepath.Join(t.TempDir(), "body")
+		if err := os.WriteFile(body, []byte("not a commit\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		bad := testutil.Git(t, dir, "akira-toriyama", "hash-object", "-t", "commit", "--literally", "-w", body)
+		tree := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD^{tree}")
+		child := "tree " + tree + "\nparent " + bad + "\nauthor t <t@example.com> 1700000000 +0000\ncommitter t <t@example.com> 1700000000 +0000\n\n:bug:~ fix another crash\n"
+		if err := os.WriteFile(body, []byte(child), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		testutil.Git(t, dir, "akira-toriyama", "update-ref", "HEAD", testutil.Git(t, dir, "akira-toriyama", "hash-object", "-t", "commit", "--literally", "-w", body))
+		for _, args := range [][]string{
+			{"lint", "--range", "HEAD~2..HEAD"},
+			{"bump", "--range", "HEAD^^..HEAD"},
+			{"notes", "--range", "HEAD~2"},
+			{"bump", "--since-tag=HEAD~2"},
+			{"release", "--since-tag=HEAD~2", "--dry-run"},
+		} {
+			unreadableAt(t, "git rev-parse", "bogus commit object", "a parent git cannot parse", args...)
+		}
+	})
+}
+
+// unreadableAt runs glyph and requires git's failure at 4: nothing on stdout,
+// the envelope carrying the reader that failed and git's own line, and never
+// the usage sentence.
+func unreadableAt(t *testing.T, reader, wantMsg, over string, args ...string) {
+	t.Helper()
+	code, stdout, stderr := runGlyph(t, args...)
+	if code != 4 || stdout != "" {
+		t.Errorf("%v over %s exited %d with %q on stdout, want 4 and nothing — the value names a commit git could not read\nstderr: %s", args, over, code, stdout, stderr)
+		return
+	}
+	env := decodeErrorEnvelope(t, stderr)
+	if !strings.Contains(env.Message, reader) || !strings.Contains(env.Message, wantMsg) || strings.Contains(env.Message, "names no commit") {
+		t.Errorf("%v over %s must carry git's own diagnosis from the existence question (`%s`, %q): %q", args, over, reader, wantMsg, env.Message)
 	}
 }
 

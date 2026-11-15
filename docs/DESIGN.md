@@ -2090,13 +2090,30 @@ started from it (measured 2026-11-08, git 2.54;
 a commit is `gitsource.namesCommit`'s question, the reading "Both git
 questions can also fail to answer" above describes, so a commit the checkout
 holds and git cannot read is git's failure at 4 with git's line, under the
-limits stated there, and never "names no commit": `rev-parse --verify --quiet
-<sha>^{commit}` exits 1, the NO's status, for an empty object file on git
-2.54 and for a commit whose body does not parse on 2.39.5, 2.54 and 2.56, and
-read as a NO each sent the caller to `git tag` for a tag `git tag` lists
-(measured 2026-11-15; `TestResolveCommitFailsOnAHeldObjectGitCannotRead`,
+limits stated there: `rev-parse --verify --quiet <sha>^{commit}` exits 1, the
+NO's status, for an empty object file on git 2.54 and for a commit whose body
+does not parse on 2.39.5, 2.54 and 2.56, and read as a NO each sent the
+caller to `git tag` for a tag `git tag` lists (measured 2026-11-15;
+`TestResolveCommitFailsOnAHeldObjectGitCannotRead`,
 `TestTypedRevisionGitCannotReadIsNotUsage`, mutation row
-`typed-revision-git-cannot-read-names-no-commit`). A tag on a tree or a blob
+`typed-revision-git-cannot-read-names-no-commit`). The resolution is read the
+same way, as `merge-base`'s no is above: an exit 1 that carries an `error:`
+line is git failing, quoted, and only an exit 1 without one is "names no
+commit". `v0.1.0^0` and `v0.1.0~0` over a tagged commit that is empty or
+cannot be opened, `HEAD~2` past a parent whose body does not parse and an
+abbreviated sha under a fan-out directory git cannot open exit 1 with the
+line on git 2.54 and 2.56, and over a store whose alternates directory is
+gone so does `HEAD~99` on 2.39.5, 2.54 and 2.56 and any name git does not
+know on 2.56 (measured 2026-11-15; the same two tests, mutation row
+`revision-resolved-through-an-unreadable-object-names-no-commit`). Two
+consequences are stated, not guarded. Under git 2.39 and earlier the fan-out
+directory behind `v0.1.0^0` exits 1 with no line and reads as naming no
+commit, the limit above. And the line is read as severity, never as message,
+so the one `error:` line `rev-parse --verify --quiet` writes at exit 1 over a
+store it reads in full is 4 as well: a peel typed onto an object of another
+type (`<tag-on-a-tree>^{commit}`, `^0`), where git's line names both types
+and the bare tag is the spelling refused by what it names
+(`TestResolveCommitResolvesThenPeels`). A tag on a tree or a blob
 resolves to no commit, and is refused by what it names — `git tag` lists
 it, so "`git tag` lists the tags here" would be a sentence `git tag` refutes
 — and a negated revision (`^v0.1.0`), which `rev-parse --verify` accepts and

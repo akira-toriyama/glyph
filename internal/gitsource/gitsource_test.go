@@ -930,6 +930,20 @@ func unparseableCommit(t *testing.T, dir string) string {
 	return testutil.Git(t, dir, "akira-toriyama", "hash-object", "-t", "commit", "--literally", "-w", body)
 }
 
+// childOf commits HEAD's tree on top of parent — a sha `git commit-tree`
+// would refuse to read as a commit — and moves the checked-out branch there.
+func childOf(t *testing.T, dir, parent string) {
+	t.Helper()
+	tree := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD^{tree}")
+	body := filepath.Join(t.TempDir(), "body")
+	commit := "tree " + tree + "\nparent " + parent + "\nauthor t <t@example.com> 1700000000 +0000\ncommitter t <t@example.com> 1700000000 +0000\n\n:bug:~ fix another crash\n"
+	if err := os.WriteFile(body, []byte(commit), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sha := testutil.Git(t, dir, "akira-toriyama", "hash-object", "-t", "commit", "--literally", "-w", body)
+	testutil.Git(t, dir, "akira-toriyama", "update-ref", "HEAD", sha)
+}
+
 // TestRemoteURLsKeepsASpacedRemoteName: a remote name may hold a space —
 // `[remote "my fork"]` in a hand-edited config, which git reads — and
 // `--get-regexp`'s line form separates key and value with a space too, so
@@ -2173,6 +2187,17 @@ func TestResolveCommitResolvesThenPeels(t *testing.T) {
 		}
 	}
 
+	// errorLine reads severity, never the message, so the one error: line git
+	// writes at exit 1 over a store it reads in full is a failure too: a peel
+	// the caller typed onto an object of another type. git's line names both
+	// types; the bare tag above is the answer that names the kind.
+	for _, rev := range []string{"on-a-tree^{commit}", "on-a-tree^0", "on-a-blob^{commit}"} {
+		got, err := resolveCommit(context.Background(), dir, rev)
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "error:") {
+			t.Errorf("resolveCommit(%q) = %+v, %v; want CodeAPI quoting git's error: line", rev, got, err)
+		}
+	}
+
 	_, err := resolveCommit(context.Background(), t.TempDir(), "v0.1.0")
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("resolveCommit outside a repository = %v, want CodeAPI", err)
@@ -2190,6 +2215,17 @@ func TestResolveCommitResolvesThenPeels(t *testing.T) {
 // commit, at the code that says to fix the arguments. Each row starts from a
 // tag that reads (the control); a full sha the store does not hold stays an
 // answer beside the broken object.
+//
+// The spelling is resolved before the object is asked about, and resolving
+// `v0.1.0^0` or `v0.1.0~0` already reads the tagged commit: `rev-parse
+// --verify --quiet` then exits 1 under git's error: line on 2.54 and 2.56
+// for all four shapes (128 on 2.39.5 for the two file shapes), which is no
+// more a NO than the peel's exit 1 is. The same holds for what a spelling
+// walks through — `HEAD~2` past a parent whose body does not parse, an
+// abbreviated sha under a fan-out directory git cannot open — and over a
+// store whose alternates directory is gone, where git says of `HEAD~99` that
+// the store is not all there (exit 1 and the line on all three versions) and
+// an absence cannot be vouched for.
 func TestResolveCommitFailsOnAHeldObjectGitCannotRead(t *testing.T) {
 	for name, tc := range map[string]struct {
 		corrupt     func(t *testing.T, dir, sha string) (target string)
@@ -2233,16 +2269,66 @@ func TestResolveCommitFailsOnAHeldObjectGitCannotRead(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			got, err := resolveCommit(context.Background(), dir, "v0.1.0")
-			ce := core.AsError(err)
-			if ce == nil || ce.Code != core.CodeAPI {
-				t.Fatalf("resolveCommit over %s = %+v, %v; want CodeAPI — read as naming nothing, the caller is sent to `git tag` for a tag it lists", name, got, err)
-			}
-			if !strings.Contains(err.Error(), wantMsg) {
-				t.Errorf("the error must carry git's own diagnosis: got %q, want it to mention %q", err, wantMsg)
+			for _, rev := range []string{"v0.1.0", "v0.1.0^0", "v0.1.0~0"} {
+				got, err := resolveCommit(context.Background(), dir, rev)
+				ce := core.AsError(err)
+				if ce == nil || ce.Code != core.CodeAPI {
+					t.Errorf("resolveCommit(%q) over %s = %+v, %v; want CodeAPI — read as naming nothing, the caller is sent to `git tag` for a tag it lists", rev, name, got, err)
+					continue
+				}
+				// git ≤ 2.39 dies on a peel through a file it cannot open
+				// with a fatal: of its own, which is not namesCommit's sentence.
+				if rev != "v0.1.0" && !testutil.GitSignalsUnopenableObject(t) {
+					continue
+				}
+				if !strings.Contains(err.Error(), wantMsg) {
+					t.Errorf("resolveCommit(%q): the error must carry git's own diagnosis: got %q, want it to mention %q", rev, err, wantMsg)
+				}
 			}
 		})
 	}
+
+	t.Run("a parent git cannot parse, walked through", func(t *testing.T) {
+		dir := testutil.NewRepo(t)
+		if got, err := resolveCommit(context.Background(), dir, "HEAD~2"); err != nil || got != (Named{}) {
+			t.Fatalf("resolveCommit(HEAD~2) past the root = %+v, %v; want nothing, nil (the control)", got, err)
+		}
+		childOf(t, dir, unparseableCommit(t, dir))
+		for _, rev := range []string{"HEAD~2", "HEAD^^"} {
+			got, err := resolveCommit(context.Background(), dir, rev)
+			if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "bogus commit object") {
+				t.Errorf("resolveCommit(%q) past a parent git cannot parse = %+v, %v; want CodeAPI quoting git's line — git did not say the history ends there", rev, got, err)
+			}
+		}
+		if got, err := resolveCommit(context.Background(), dir, "HEAD"); err != nil || !got.IsCommit() {
+			t.Errorf("resolveCommit(HEAD), a readable commit on an unparseable parent = %+v, %v; want a commit, nil", got, err)
+		}
+	})
+
+	t.Run("an abbreviated sha under a fan-out directory git cannot open", func(t *testing.T) {
+		dir := testutil.NewRepo(t)
+		head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		if got, err := resolveCommit(context.Background(), dir, head[:7]); err != nil || !got.IsCommit() {
+			t.Fatalf("resolveCommit over a readable abbreviated sha = %+v, %v; want a commit (the control)", got, err)
+		}
+		unreadableFanout(t, dir, head)
+		got, err := resolveCommit(context.Background(), dir, head[:7])
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "Permission denied") {
+			t.Errorf("resolveCommit(%q) under a fan-out directory git cannot open = %+v, %v; want CodeAPI quoting git's line", head[:7], got, err)
+		}
+	})
+
+	t.Run("past the root over a store whose alternates directory is gone", func(t *testing.T) {
+		dir := testutil.NewRepo(t)
+		gone := goneAlternates(t, dir)
+		got, err := resolveCommit(context.Background(), dir, "HEAD~99")
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), gone+" does not exist") {
+			t.Errorf("resolveCommit(HEAD~99), alternates gone = %+v, %v; want CodeAPI quoting git's line — an absence cannot be vouched for over a store git says is not all there", got, err)
+		}
+		if got, err := resolveCommit(context.Background(), dir, "HEAD"); err != nil || !got.IsCommit() {
+			t.Errorf("resolveCommit(HEAD) over a commit the store holds, alternates gone = %+v, %v; want a commit, nil — nothing was absent", got, err)
+		}
+	})
 
 	dir := testutil.NewRepo(t)
 	emptyObject(t, dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
