@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 70214c8..34627fd 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -440,7 +440,7 @@ func (s inlineState) refusal(template, name string) error {
+ 	case s.tag != tagNone:
+ 		line, col := linePosition(template, s.tagAt)
+ 		return fmt.Errorf("%q leaves an HTML tag open where $%s begins, its \"<\" at line %d column %d: no backslash escape works inside a tag, so the value completes the tag instead of standing in it as text — \"i>\" there renders a live <i>, \"img src=x>\" a live image — close the tag with \">\" before the placeholder, or write \"\\<\" where the \"<\" is text", template, name, line, col)
+-	case s.depth > 0:
++	case false:
+ 		line, col := linePosition(template, s.linkAt)
+ 		return fmt.Errorf("%q leaves a \"[\" open where $%s begins, line %d column %d: the value's \"]\" closes the link text and its \"(\" opens a destination no escape reaches — \"click](https://evil.example)\" there renders a link to evil.example — write \"\\[\" where the bracket is text", template, name, line, col)
+ 	case s.closed:

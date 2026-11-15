@@ -1,0 +1,11 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 0e39f49..6f9713b 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -544,5 +544,5 @@ func (s inlineState) refusal(template, name string) error {
+ 		line, col := linePosition(template, s.destAt)
+ 		return fmt.Errorf("%q leaves a link destination open where $%s begins, its \"(\" at line %d column %d: GitHub reads a \"(\", a \"<\" or a quote inside a destination by a grammar of its own (nested parentheses, a bracketed address, a title), and the loader takes no \")\" behind one for the destination's end, so the value may stand inside the link — write the destination without them, or write the link behind the last placeholder", template, name, line, col)
+-	case s.dest == destInline:
++	case false:
+ 		line, col := linePosition(template, s.destAt)
+ 		return fmt.Errorf("%q leaves a link destination open where $%s begins, its \"(\" at line %d column %d: the value is the address or the title of the link, and no backslash escape works there — \"https://evil.example\" behind \"[x](\" links to evil.example, and a backtick the destination takes in leaves a @mention behind it live — close the destination with \")\" before the placeholder", template, name, line, col)

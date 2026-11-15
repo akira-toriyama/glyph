@@ -1,0 +1,11 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 0e39f49..0ff2968 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -479,5 +479,5 @@ func (s inlineState) step(c byte, at int) inlineState {
+ 	case c == '/' && slashes == 1:
+ 		s.slashes, s.colonAt = 2, colonAt
+-	case c == '/' && slashes == 2 && !s.auto:
++	case false:
+ 		s.auto, s.autoAt = true, colonAt
+ 	case c == 'w' || c == 'W':

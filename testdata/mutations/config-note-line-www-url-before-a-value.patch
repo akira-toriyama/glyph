@@ -1,0 +1,11 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 0e39f49..12e2e0e 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -483,5 +483,5 @@ func (s inlineState) step(c byte, at int) inlineState {
+ 	case c == 'w' || c == 'W':
+ 		s.ws = min(ws+1, 3)
+-	case c == '.' && ws == 3 && !s.auto:
++	case false:
+ 		s.auto, s.autoAt = true, at
+ 	}

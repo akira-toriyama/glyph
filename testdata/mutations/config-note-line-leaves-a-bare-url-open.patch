@@ -1,0 +1,11 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 0e39f49..eae69c8 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -547,5 +547,5 @@ func (s inlineState) refusal(template, name string) error {
+ 		line, col := linePosition(template, s.destAt)
+ 		return fmt.Errorf("%q leaves a link destination open where $%s begins, its \"(\" at line %d column %d: the value is the address or the title of the link, and no backslash escape works there — \"https://evil.example\" behind \"[x](\" links to evil.example, and a backtick the destination takes in leaves a @mention behind it live — close the destination with \")\" before the placeholder", template, name, line, col)
+-	case s.auto:
++	case false:
+ 		line, col := linePosition(template, s.autoAt)
+ 		return fmt.Errorf("%q leaves a bare URL open where $%s begins, the %q that starts its link at line %d column %d: GitHub links a bare URL up to the next blank, so the value extends the link the template began — \"evil.example/x\" behind \"https://\" links to evil.example — and a backtick the link takes in leaves a @mention behind it live; put a blank before the placeholder, or write %q where the URL is text", template, name, autolinkTrigger(template[s.autoAt]), line, col, `\`+template[s.autoAt:s.autoAt+1])
