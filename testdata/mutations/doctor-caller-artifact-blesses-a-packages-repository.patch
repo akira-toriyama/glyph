@@ -1,8 +1,8 @@
 diff --git a/internal/doctor/callerartifact.go b/internal/doctor/callerartifact.go
-index b897c74..a2c3a4e 100644
+index adc198a..b3aaea3 100644
 --- a/internal/doctor/callerartifact.go
 +++ b/internal/doctor/callerartifact.go
-@@ -55,7 +55,7 @@ func gradeInput(v string) inputValue {
+@@ -62,7 +62,7 @@ func gradeInput(v string) inputValue {
  	case v[0] == '|', v[0] == '>':
  		return valueUnread
  	}
@@ -10,4 +10,4 @@ index b897c74..a2c3a4e 100644
 +	return valueEmpty
  }
  
- // withoutComment drops a trailing YAML comment from a one-line value: a `#`
+ // checkCallerArtifact scans the local checkout's workflow files for callers

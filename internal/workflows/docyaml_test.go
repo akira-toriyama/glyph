@@ -2,7 +2,7 @@ package workflows
 
 // The YAML a reader copies by hand: the fenced blocks of README.md and docs/*.md,
 // and the usage examples standing in the comments of the workflow and action files
-// (doctor's remedy calls README's callers the known-good copies). actionlint reads a
+// (doctor's remedy names README's callers as the known-good ones). actionlint reads a
 // workflow's executable text and nothing else, so a snippet here that is no YAML
 // stays green and fails only whoever pastes it.
 //

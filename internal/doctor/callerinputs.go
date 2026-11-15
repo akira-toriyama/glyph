@@ -70,7 +70,7 @@ func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile,
 		failMessage: "GitHub kills a reusable call that omits a required input as startup_failure before any job — and " +
 			"it surfaces no error anywhere: not in the run, not in the check suite, not in the API (measured, " +
 			"glyph-test3 2026-08-26). This static read is the only check that can see it coming",
-		failFix:      "add the missing input to the caller's with: block — the callers in glyph's README (Getting started, step 3) are the known-good copies",
+		failFix:      "add the missing input to the caller's with: block — " + readmeCallers,
 		death:        "whether every caller gets past GitHub's silent startup input gate",
 		noCaller:     "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to starve)",
 		passObserved: "%d workflow file(s) call glyph reusables; every judged caller passes what its pinned release requires",
@@ -112,10 +112,14 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 
 // jobWith returns the `with:` mapping belonging to the job whose `uses:` sits
 // on usesLine (1-indexed): each top-level key and its value as the file
-// spells it — the text after the key's colon, a trailing comment included,
-// with any deeper content line folded onto it behind one space. A block
-// scalar's value is its header alone (`|`): contentLines yields none of its
-// text. The job block's bounds are walked out from the uses line itself — up
+// spells it — the text after the key's colon with any deeper content line
+// folded onto it behind one space, each line's trailing comment dropped
+// BEFORE the fold: a comment ends at its line's end, so the line under
+// `binary: # which tool` is the value, and folded behind the comment it read
+// as part of it — an artifact input GitHub refuses graded as empty
+// (glyph-monorepo-test-2 run 43689423925, 2026-11-15). A block scalar's value
+// is its header alone (`|`): contentLines yields none of its text. The job
+// block's bounds are walked out from the uses line itself — up
 // to the job-name line (the first shallower-indented content line), then
 // forward until the block closes — so a `with:` written above its `uses:` is
 // still seen; YAML orders siblings freely and a miss in either direction
@@ -152,7 +156,7 @@ func jobWith(lines []string, usesLine int) map[string]string {
 			inWith = isWith
 			if isWith {
 				// Flow form: with: { a: 1, b: 2 } — the keys sit on this line.
-				if rest = strings.TrimSpace(rest); strings.HasPrefix(rest, "{") {
+				if rest = withoutComment(strings.TrimSpace(rest)); strings.HasPrefix(rest, "{") {
 					for part := range strings.SplitSeq(strings.Trim(rest, "{} "), ",") {
 						if k, v, found := strings.Cut(part, ":"); found {
 							with[strings.TrimSpace(k)] = strings.TrimSpace(v)
@@ -173,14 +177,33 @@ func jobWith(lines []string, usesLine int) map[string]string {
 			// Deeper content: a nested value or a plain scalar's next line,
 			// never a with: key.
 			if last != "" {
-				with[last] = strings.TrimSpace(with[last] + " " + strings.TrimSpace(trimmed))
+				with[last] = strings.TrimSpace(with[last] + " " + withoutComment(strings.TrimSpace(trimmed)))
 			}
 			continue
 		}
 		if k, v, found := strings.Cut(trimmed, ":"); found {
 			last = strings.TrimSpace(k)
-			with[last] = strings.TrimSpace(v)
+			with[last] = withoutComment(strings.TrimSpace(v))
 		}
 	}
 	return with
+}
+
+// withoutComment drops a trailing YAML comment from one line of a value: a
+// `#` at the start or behind whitespace, outside quotes.
+func withoutComment(v string) string {
+	var quote rune
+	for i, r := range v {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '\'':
+			quote = r
+		case r == '#' && (i == 0 || v[i-1] == ' ' || v[i-1] == '\t'):
+			return strings.TrimSpace(v[:i])
+		}
+	}
+	return v
 }

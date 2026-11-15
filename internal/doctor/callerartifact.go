@@ -15,6 +15,7 @@ package doctor
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v6/internal/config"
@@ -30,11 +31,14 @@ var artifactInputs = []string{"app", "binary"}
 type inputValue int
 
 const (
-	// valueEmpty is "" at run time — the input is not named: no value at all
-	// (YAML null, which GitHub hands a string input as "", measured
-	// 2026-11-15 on glyph-monorepo-test-2 run 43678383110: `binary:` with
-	// nothing after it, refusal step skipped) or an empty quoted scalar
-	// (run 42450511719, `binary: ""`).
+	// valueEmpty is "" at run time — the input is not named: YAML null, which
+	// GitHub hands a string input as "" (measured 2026-11-15 on
+	// glyph-monorepo-test-2, the refusal step skipped in each run: `binary:`
+	// with nothing after it, run 43678383110; `~`, 43689418881; `null`,
+	// 43689421291; `Null` and `NULL`, 43690575673), or an empty quoted scalar
+	// (run 42450511719, `binary: ""`). Quoted, a null spelling is a non-empty
+	// string (run 43690585767: `'~'` and `"null"` reached the job as `~` and
+	// `null`).
 	valueEmpty inputValue = iota
 	// valueNamed is a non-empty literal: the reusable refuses it.
 	valueNamed
@@ -44,37 +48,21 @@ const (
 	valueUnread
 )
 
+// nullSpellings are the plain scalars GitHub's workflow parser reads as YAML
+// null, besides the absent value.
+var nullSpellings = []string{"~", "null", "Null", "NULL"}
+
 // gradeInput grades one value as jobWith returns it.
 func gradeInput(v string) inputValue {
-	v = withoutComment(v)
 	switch {
 	case strings.Contains(v, "${{"):
 		return valueUnread
-	case v == "", v == `""`, v == `''`:
+	case v == "", v == `""`, v == `''`, slices.Contains(nullSpellings, v):
 		return valueEmpty
 	case v[0] == '|', v[0] == '>':
 		return valueUnread
 	}
 	return valueNamed
-}
-
-// withoutComment drops a trailing YAML comment from a one-line value: a `#`
-// at the start or behind whitespace, outside quotes.
-func withoutComment(v string) string {
-	var quote rune
-	for i, r := range v {
-		switch {
-		case quote != 0:
-			if r == quote {
-				quote = 0
-			}
-		case r == '"' || r == '\'':
-			quote = r
-		case r == '#' && (i == 0 || v[i-1] == ' ' || v[i-1] == '\t'):
-			return strings.TrimSpace(v[:i])
-		}
-	}
-	return v
 }
 
 // checkCallerArtifact scans the local checkout's workflow files for callers
@@ -133,7 +121,7 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 				case valueUnread:
 					unevaluated = append(unevaluated, fmt.Sprintf(
 						".github/workflows/%s calls %s@%s with %s: %s — a value this checkout does not hold",
-						f.Name, call.Reusable, call.Ref, input, withoutComment(value)))
+						f.Name, call.Reusable, call.Ref, input, value))
 				case valueEmpty:
 					// "" at run time: the reusable's condition is false for it.
 				}

@@ -28,6 +28,13 @@ type callerRow interface{ bound() string }
 func (r permRow) bound() string  { return r.After }
 func (r inputRow) bound() string { return r.After }
 
+// readmeCallers closes a caller check's fix with where the known-good caller
+// of each reusable lives: README holds the lint.yml caller under Install and
+// the other two under Getting started, and a fix that names one section for
+// all three sends a lint.yml caller to a step that only refers back to it.
+const readmeCallers = "glyph's README holds the known-good callers: lint.yml's under Install (\"GitHub Actions\"), " +
+	"pr-verdict.yml's and release.yml's under Getting started, step 3"
+
 // callerSpec is what one caller check judges with; judgeCallers holds the
 // rest. The fail and pass Observed strings are formats: failObserved takes
 // the finding count and the caller-file count, passObserved the caller-file

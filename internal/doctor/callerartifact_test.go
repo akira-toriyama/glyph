@@ -27,7 +27,9 @@ func artifactAt(root string, verified bool, cfg *config.Config) Check {
 // runs green failed here at exit 3 — `binary: ""` on glyph-monorepo-test-2
 // run 42450511719 and a bare `binary:` on run 43678383110 both skipped the
 // refusal step and succeeded. A value the checkout does not hold is unknown,
-// never a verdict either way.
+// never a verdict either way. The opposite error is the worse one: a value on
+// the line under a commented key read as empty passed a caller the reusable
+// refused (run 43689423925).
 func TestCallerArtifactOutcomes(t *testing.T) {
 	packages := loaded(t, packagesConfig("camp", "travel"))
 	single := loaded(t, minimalConfig)
@@ -95,6 +97,36 @@ func TestCallerArtifactOutcomes(t *testing.T) {
 			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
 				"    with:\n      binary:\n        probe\n      dry-run: false\n")},
 			cfg: packages, want: StatusFail, wantDetail: "with binary",
+		},
+		{
+			name: "a value under a key line that carries a comment is still named (run 43689423925)",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      binary: # the tool build.sh produces\n        probe\n")},
+			cfg: packages, want: StatusFail, wantDetail: "with binary",
+		},
+		{
+			name: "a quoted null spelling is a string, and named (run 43690585767)",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      binary: \"null\"\n")},
+			cfg: packages, want: StatusFail, wantDetail: "with binary",
+		},
+		{
+			name: "~ and null spell no value (runs 43689418881, 43689421291)",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      binary: ~\n      app: null  # nothing to build\n")},
+			cfg: packages, want: StatusPass,
+		},
+		{
+			name: "Null and NULL spell no value (run 43690575673)",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      app: Null\n      binary: NULL\n")},
+			cfg: packages, want: StatusPass,
+		},
+		{
+			name: "flow-form with: { binary: \"\" } behind a comment",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with: { binary: \"\" }  # nothing to build")},
+			cfg: packages, want: StatusPass,
 		},
 		{
 			name: "an empty quoted value names no artifact (run 42450511719)",

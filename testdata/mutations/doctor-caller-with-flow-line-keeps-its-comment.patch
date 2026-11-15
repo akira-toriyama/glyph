@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 64467cd..4230768 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -156,7 +156,7 @@ func jobWith(lines []string, usesLine int) map[string]string {
+ 			inWith = isWith
+ 			if isWith {
+ 				// Flow form: with: { a: 1, b: 2 } — the keys sit on this line.
+-				if rest = withoutComment(strings.TrimSpace(rest)); strings.HasPrefix(rest, "{") {
++				if rest = strings.TrimSpace(rest); strings.HasPrefix(rest, "{") {
+ 					for part := range strings.SplitSeq(strings.Trim(rest, "{} "), ",") {
+ 						if k, v, found := strings.Cut(part, ":"); found {
+ 							with[strings.TrimSpace(k)] = strings.TrimSpace(v)

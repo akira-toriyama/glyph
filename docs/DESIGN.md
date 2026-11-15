@@ -4487,10 +4487,16 @@ The severities are the argued part:
   != ''`: an input with no value or an empty quoted one is `""` at run time
   and is not named (a key-presence check failed a caller the reusable ran
   green; glyph-monorepo-test-2 runs 42450511719, `binary: ""`, and
-  43678383110, a bare `binary:`), and a value the checkout does not hold — a
-  `${{ }}` expression, a block scalar — is `unknown`, the grade both other
-  caller checks give what they cannot read, with a non-empty literal beside
-  it still failing. No pin rule: one artifact has no line to attach to at
+  43678383110, a bare `binary:`), and so is YAML null spelled out — `~`,
+  `null`, `Null`, `NULL` unquoted (runs 43689418881, 43689421291 and
+  43690575673; quoted, each is a string and is named, run 43690585767). The
+  value is read as YAML reads it, each line's comment cut before a
+  continuation line joins: under `binary: # which tool` the next line is the
+  value, and read behind the comment it passed a caller the reusable refused
+  (run 43689423925, `TestJobWithDropsEachLinesCommentBeforeTheFold`). A
+  value the checkout does not hold — a `${{ }}` expression, a block scalar —
+  is `unknown`, the grade both other caller checks give what they cannot
+  read, with a non-empty literal beside it still failing. No pin rule: one artifact has no line to attach to at
   any release, so the pair is wrong at every pin — which is also why the
   check's text never says where in the run the refusal lands (after the
   drafts are rewritten through v6.1.0, before the verdict from the next
@@ -4498,8 +4504,11 @@ The severities are the argued part:
   owns that) or a workflow file could not be read; a repository without
   `[[packages]]` passes with nothing to judge. `TestCallerArtifactOutcomes`;
   mutation rows `doctor-caller-artifact-blesses-a-packages-repository`,
-  `doctor-caller-artifact-fails-an-empty-input` and
-  `doctor-caller-artifact-fails-an-expression`.
+  `doctor-caller-artifact-fails-an-empty-input`,
+  `doctor-caller-artifact-fails-a-spelled-null`,
+  `doctor-caller-artifact-fails-an-expression`,
+  `doctor-caller-with-value-folds-behind-its-key-comment` and
+  `doctor-caller-with-flow-line-keeps-its-comment`.
 - **Both caller checks judge a caller at the release it pins, and only where
   this binary can speak for that release — any other caller is `unknown`,
   never a verdict.** GitHub starts a caller against the reusable at the
