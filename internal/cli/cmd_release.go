@@ -229,8 +229,8 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	// (4)"; the escape is the wedge's, or fetch-depth: 0 when the shortfall
 	// names the checkout).
 	if !w.Facts.Complete() {
-		return core.APIf("this walk did not read %s (%s) — refusing to hand down a verdict computed from a range it could not read; re-run the release once the walk can read the range",
-			w.Source, w.Facts.Shortfall(owner, repoName))
+		return core.APIf("this walk did not read %s (%s) — refusing to hand down a verdict computed from a range it could not read; %s",
+			w.Source, w.Facts.Shortfall(owner, repoName), w.Facts.Remedy())
 	}
 	if err := checkLineSelection(o.current, w.Lines); err != nil {
 		return err

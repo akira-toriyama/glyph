@@ -1983,8 +1983,9 @@ stacked on it and merged after it lists the same shas, recorded first under the
 pull that landed them by the oldest-first read-back — whoever authored that pull's
 merge point, and whether or not a walk would expand the pull
 (`TestPullSideReadsAnExcludedAuthorsMergePointAsItsOwn`,
-`TestPullSideReadsAnExcludedAuthorsOwnPullAsItsOwn`: a bot's own pull, which no
-walk expands, keeps its bump under `notes --pr`). Without that, `--pr` of any
+`TestPullSideReadsAnExcludedAuthorsOwnPullAsItsOwn`: a bot's own pull landed by
+squash or rebase, which a walk expands only when its listing is capped — a human's
+merge commit over it does expand — keeps its bump under `notes --pr`). Without that, `--pr` of any
 merged pull dropped its own commits as landed through another pull — `bump` and
 `notes` answered none, and the frozen packages live fire, which previews the merged
 #10 and #11 of `glyph-monorepo-test` at 380db9d, read #10 as "moves nothing"
