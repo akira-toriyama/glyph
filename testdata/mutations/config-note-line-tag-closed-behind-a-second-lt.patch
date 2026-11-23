@@ -1,0 +1,11 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 0e39f49..d732cb9 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -407,5 +407,5 @@ func (s inlineState) step(c byte, at int) inlineState {
+ 	s.escaped = c == '\\' && live
+ 
+-	if c == '<' && (s.tag == tagOpen || s.tag == tagDouble || s.tag == tagSingle) {
++	if false && (s.tag == tagOpen || s.tag == tagDouble || s.tag == tagSingle) {
+ 		s.tag = tagStuck
+ 	}

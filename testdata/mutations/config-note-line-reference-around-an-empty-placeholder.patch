@@ -1,0 +1,21 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 70214c8..7016277 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -266,7 +266,7 @@ func checkLineLeavesNothingOpen(template string, spans []LineSpan) error {
+ 					if err := st.refusal(template, p.Text); err != nil {
+ 						return err
+ 					}
+-					next = addInlineState(addInlineState(next, st), st.behindAValue())
++					next = addInlineState(next, st.behindAValue())
+ 				}
+ 				states = next
+ 				at += len("$") + len(p.Text)
+@@ -430,6 +430,7 @@ func (s inlineState) step(c byte, at int) inlineState {
+ // head included, and the walk keeps both.
+ func (s inlineState) behindAValue() inlineState {
+ 	s.escaped = false
++	s.ref, s.refAt = refNone, 0
+ 	return s
+ }
+ 

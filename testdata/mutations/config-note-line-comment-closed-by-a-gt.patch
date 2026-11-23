@@ -1,0 +1,11 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 0e39f49..2d74d03 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -432,5 +432,5 @@ func (s inlineState) step(c byte, at int) inlineState {
+ 		switch {
+ 		case s.tag == tagLess && (c == '!' || c == '?'):
+-			s.tag = tagStuck
++			s.tag = tagOpen
+ 		case s.tag == tagLess && (isASCIILetter(c) || c == '/'):
+ 			s.tag = tagOpen

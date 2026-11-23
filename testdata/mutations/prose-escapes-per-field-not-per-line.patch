@@ -1,9 +1,8 @@
 diff --git a/internal/markdown/compose.go b/internal/markdown/compose.go
-index dc4ba6a..c6b3b16 100644
+index 6982de6..823f0ef 100644
 --- a/internal/markdown/compose.go
 +++ b/internal/markdown/compose.go
-@@ -159,7 +159,16 @@ func (l *Line) String() string {
- 	// One span scan, over the whole line. It must see the bytes GitHub will see.
+@@ -160,5 +160,14 @@ func (l *Line) String() string {
  	// Prose is flattened but raw here, and that is enough: the spans of this string
  	// are the spans of the escaped line (escape.go, WHY ONE PASS IS ENOUGH).
 -	inSpan := spansBehindOpeners(assembled, prose)
@@ -18,5 +17,4 @@ index dc4ba6a..c6b3b16 100644
 +		base += len(p.s)
 +	}
  
- 	escaped, pos := escapeProseLine(assembled, inSpan, prose)
- 
+ 	escaped, pos := escapeProseLine(assembled, inSpan, prose, value)

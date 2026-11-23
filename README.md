@@ -454,7 +454,16 @@ list item (DESIGN §3) — and the loader refuses one that does not. It refuses 
 block there, and no escape works inside one: a value in it would render raw —
 write text of the template's own before the `<` on its line (blanks, list-item
 or quote markers, at-signs, placeholders and text inside an optional `$[ … ]`
-span do not count: each can leave the block start where it was). `@$author` pages the
+span do not count: each can leave the block start where it was). And it
+refuses a template that leaves a construct open where a placeholder begins,
+for the value to complete: an HTML tag (`- x <$subject`), a link's brackets
+(`- [$subject](https://example.com)`, or `- [x]$subject`, whose value would
+supply the destination), a link destination (`- [x](https://example.com/$subject)`,
+`- [x]: $subject`), a bare URL (`- https://$subject`, `- www.$subject`) or a
+character reference with no blank behind it (`- &#64;$subject`). Close the tag
+or the destination before the placeholder, write `\<`, `\[`, `\://` or
+`www\.` where the bytes are text, and put a blank behind the URL or the
+reference (DESIGN §3 has the grammar). `@$author` pages the
 contributor only when GitHub knows who that is — the `author.login` the API
 reports for a listed commit; a commit the API did not describe (every commit
 under `--range`, every direct push under `--since-tag`) or mapped to no

@@ -1,13 +1,11 @@
 diff --git a/internal/markdown/compose.go b/internal/markdown/compose.go
-index dc4ba6a..92105c1 100644
+index 6982de6..d81b50d 100644
 --- a/internal/markdown/compose.go
 +++ b/internal/markdown/compose.go
-@@ -110,7 +110,7 @@ func (l *Line) Raw(s string) {
- func (l *Line) Prose(s string) {
+@@ -111,5 +111,5 @@ func (l *Line) Prose(s string) {
  	s = flatten(s)
- 	if awaitsBlock(l.assemble()) {
+ 	if assembled, prose, _ := l.assemble(); awaitsBlock(assembled, prose) {
 -		s = strings.TrimLeft(s, " \t")
 +		s = strings.TrimLeft(s, "")
  	}
  	l.parts = append(l.parts, part{partProse, s})
- }

@@ -1,0 +1,11 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 0e39f49..6c15a4c 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -529,5 +529,5 @@ func (s inlineState) refusal(template, name string) error {
+ 		line, col := linePosition(template, s.tagAt)
+ 		return fmt.Errorf("%q leaves an HTML tag open where $%s begins, its \"<\" at line %d column %d: GitHub ends a comment, a processing instruction, a declaration or a tag that holds a second \"<\" by a grammar of its own (at \"-->\", \"?>\", \"]]>\", or the \">\" of whichever \"<\" it read as the tag), and the loader takes no \">\" for that end, so the value may stand inside the construct, where no backslash escape works — write it behind the last placeholder, or write \"\\<\" where the \"<\" is text", template, name, line, col)
+-	case s.tag != tagNone:
++	case s.tag > tagLess:
+ 		line, col := linePosition(template, s.tagAt)
+ 		return fmt.Errorf("%q leaves an HTML tag open where $%s begins, its \"<\" at line %d column %d: no backslash escape works inside a tag, so the value completes the tag instead of standing in it as text — \"i>\" there renders a live <i>, \"img src=x>\" a live image — close the tag with \">\" before the placeholder, or write \"\\<\" where the \"<\" is text", template, name, line, col)

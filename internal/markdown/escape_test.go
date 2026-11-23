@@ -117,7 +117,7 @@ func TestFlatten(t *testing.T) {
 // stateable, and nothing ships it.
 func escapeMarkup(s string) string {
 	prose := func(lo, hi int) bool { return true }
-	out, _ := escapeProseLine(s, spansBehindOpeners(s, prose), prose)
+	out, _ := escapeProseLine(s, spansBehindOpeners(s, prose), prose, prose)
 	return out
 }
 
