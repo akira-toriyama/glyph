@@ -20,7 +20,7 @@ jobs:
   # `coverage` prints the total off the race run's own profile: a REPORT, never a
   # gate (scripts/check.sh's coverage step carries the reason).
   ci:
-    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@v2
+    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@371c6651e66a85f138fbcda4af4b7d6406054548
     with:
       go-version-file: go.mod
       coverage: true
