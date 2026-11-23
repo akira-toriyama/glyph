@@ -1,16 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..43fde8a 100644
+index 65e8606..43f7508 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -355,10 +355,7 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
+@@ -484,7 +484,7 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
  			if aerr != nil {
  				return nil, aerr
  			}
 -			if on {
--				landed[i] = r.SHA
--				continue
--			}
-+			_ = on
++			if on && false {
+ 				landed[i] = r.SHA
+ 			}
  		}
- 		// A merge commit is never replayed by a rebase (measured — see above), so
- 		// it has no landing site to find and no position to hold.

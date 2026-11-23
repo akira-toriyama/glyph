@@ -52,7 +52,7 @@ func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 		{SHA: "3333333333333333333333333333333333333333", Message: ":bug:(ui)~ fix the menu"},
 	}
 
-	landed, err := at(dir).mainFootprint(t.Context(), canonical, listing)
+	landed, err := at(dir).mainFootprint(t.Context(), canonical, listing, "HEAD")
 	if err != nil {
 		t.Fatalf("mainFootprint: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 func TestMainFootprintEmptyListingAsksGitNothing(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 
-	landed, err := at(dir).mainFootprint(t.Context(), "4444444444444444444444444444444444444444", nil)
+	landed, err := at(dir).mainFootprint(t.Context(), "4444444444444444444444444444444444444444", nil, "HEAD")
 	if err != nil {
 		t.Fatalf("an empty listing must not consult git about the canonical commit, got: %v", err)
 	}
@@ -115,6 +115,7 @@ func TestMainFootprintEmptyListingAsksGitNothing(t *testing.T) {
 // footprint-double-landing-counts-released-work-again.patch is what proves it
 // still bites.
 func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
+	one := []string{"0000000000000000000000000000000000000000"} // a parent count of one; no entry's parent is read
 	// Every fixture commit gets its own author date, because the doubles here
 	// are near-identical on purpose: git REUSES a sha when tree, parents,
 	// message, identity and dates all coincide, and this test needs "the same
@@ -156,9 +157,9 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 			"-m", "Merge pull request #3 from akira-toriyama/topic-3", "topic-3")
 
 		landed, err := at(dir).mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
-			{SHA: b1, Parents: 1, Message: ":bug:(ui)~ fix the menu"},
-			{SHA: b2, Parents: 1, Message: ":zap:(ui)~ speed up the menu"},
-		})
+			{SHA: b1, Parents: one, Message: ":bug:(ui)~ fix the menu"},
+			{SHA: b2, Parents: one, Message: ":zap:(ui)~ speed up the menu"},
+		}, "HEAD")
 		if err != nil {
 			t.Fatalf("mainFootprint: %v", err)
 		}
@@ -191,9 +192,9 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 			"-m", "Merge pull request #3 from akira-toriyama/topic-3", "topic-3")
 
 		landed, err := at(dir).mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
-			{SHA: b1, Parents: 1, Message: ":bug:(ui)~ fix the menu"},
-			{SHA: b2, Parents: 1, Message: ":zap:(ui)~ speed up the menu"},
-		})
+			{SHA: b1, Parents: one, Message: ":bug:(ui)~ fix the menu"},
+			{SHA: b2, Parents: one, Message: ":zap:(ui)~ speed up the menu"},
+		}, "HEAD")
 		if err != nil {
 			t.Fatalf("mainFootprint: %v", err)
 		}
@@ -221,9 +222,9 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 		canonical := commit(t, dir, "add.txt", ":sparkles:(core)^ add a thing") // d'
 
 		landed, err := at(dir).mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
-			{SHA: c, Parents: 1, Message: ":bug:(core)~ fix the hotfix"},
-			{SHA: d, Parents: 1, Message: ":sparkles:(core)^ add a thing"},
-		})
+			{SHA: c, Parents: one, Message: ":bug:(core)~ fix the hotfix"},
+			{SHA: d, Parents: one, Message: ":sparkles:(core)^ add a thing"},
+		}, "HEAD")
 		if err != nil {
 			t.Fatalf("mainFootprint: %v", err)
 		}
@@ -304,7 +305,7 @@ func TestReconcileNamesACoveredPullNothingExpanded(t *testing.T) {
 	raws := []gitsource.RawCommit{
 		{SHA: inner7, Author: "akira-toriyama", Message: ":sparkles:(ui)^ add a menu"},
 		{SHA: inner8, Author: "akira-toriyama", Message: ":bug:(ui)~ fix the menu"},
-		{SHA: point7, Author: "akira-toriyama", Message: "Merge pull request #7 from akira-toriyama/menu", Parents: 2},
+		{SHA: point7, Author: "akira-toriyama", Message: "Merge pull request #7 from akira-toriyama/menu", Parents: []string{inner7, inner8}},
 	}
 	pulls := &fakePulls{pulls: map[string][]github.PullRef{
 		inner7: {{Number: 7, MergedAt: "2026-10-01T00:00:00Z", MergeCommitSHA: point7}},

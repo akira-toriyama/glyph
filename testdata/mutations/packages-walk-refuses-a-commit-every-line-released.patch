@@ -1,8 +1,8 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 2d1f733..a4462b5 100644
+index 9b47478..b5912b3 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -328,7 +328,7 @@ func (w *walk) refuse(row bump.Refusal, number int, mergePoint, sha string) {
+@@ -455,7 +455,7 @@ func (w *walk) refuse(row bump.Refusal, number int, mergePoint, sha string) {
  // at an identity every line released (expand's seen arm: a stacked pull's
  // later sighting skipped answers 0 where the line's own walk answers 3).
  func (w *walk) judges(gov string) bool {
@@ -10,4 +10,4 @@ index 2d1f733..a4462b5 100644
 +	return true
  }
  
- // fallback reads a commit no merged pull explains — a direct push, or the API
+ // fallback reads a commit no merged pull explains — a direct push, a bot's own

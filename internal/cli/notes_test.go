@@ -490,7 +490,8 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 		testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 		pushed := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 		testutil.Commit(t, dir, "renovate[bot]", "Update dependency x to v2")
-		usePR(t, walkServer(t, map[string]string{commitPullsPath(pushed): `[]`}))
+		bot := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		usePR(t, walkServer(t, map[string]string{commitPullsPath(pushed): `[]`, commitPullsPath(bot): `[]`}))
 		t.Chdir(dir)
 
 		b := bumpNoReleaseVerdict(t, "--since-tag")

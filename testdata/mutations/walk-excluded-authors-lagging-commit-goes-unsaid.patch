@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 9b47478..0cda3da 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -475,7 +475,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+ 		// and whether the notes show it is their decision. Under the lag it
+ 		// may be the squash of a pull someone else committed to, which no
+ 		// message of its own would say.
+-		if lag {
++		if false && lag {
+ 			w.Report.Warnf("commit %.7s, an exclude_authors author's, is not known to GitHub yet (API lag), so a pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+ 		}
+ 		if raw.SHA == "" || !w.seen[raw.SHA] {

@@ -1,28 +1,30 @@
 diff --git a/internal/walk/base.go b/internal/walk/base.go
+index 021cd3c..5cebef1 100644
 --- a/internal/walk/base.go
 +++ b/internal/walk/base.go
-@@ -85,7 +85,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
+@@ -84,7 +84,7 @@ func (w Walker) sinceTagRange(ctx context.Context, tagFlag string) (revRange, ba
  		}
  		if latest == "" {
- 			revRange, base, err = w.wholeHistory(ctx, cfg, "no version tag in HEAD's history", "", "")
+ 			revRange, base, err = w.wholeHistory(ctx, "no version tag in HEAD's history", "", "")
 -			return revRange, "", base, err
 +			return revRange, "HEAD", base, err
  		}
  		return latest + "..HEAD", latest, &v, nil
  	}
-@@ -109,7 +109,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
+@@ -108,7 +108,7 @@ func (w Walker) sinceTagRange(ctx context.Context, tagFlag string) (revRange, ba
  			// here would fail a job standing behind a tag that already exists.
  			// Same walk, same guard, as auto before the first tag.
- 			revRange, base, err = w.wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "", "")
+ 			revRange, base, err = w.wholeHistory(ctx, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "", "")
 -			return revRange, "", base, err
 +			return revRange, "HEAD", base, err
  		}
  		return prev + "..HEAD", prev, &v, nil
  	}
 diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index afa72bd..7fcfbeb 100644
 --- a/internal/walk/lines.go
 +++ b/internal/walk/lines.go
-@@ -192,7 +192,7 @@ func (w Walker) lineFromLatest(ctx context.Context, cfg *config.Config, p config
+@@ -193,7 +193,7 @@ func (w Walker) lineFromLatest(ctx context.Context, cfg *config.Config, p config
  		return Line{}, err
  	}
  	if latest == "" {

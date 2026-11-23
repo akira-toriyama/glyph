@@ -339,7 +339,8 @@ func TestCompareLinkNeedsAFullShaEnd(t *testing.T) {
 // under [[packages]] the same way.
 func TestCompareLinkNeedsNotes(t *testing.T) {
 	t.Run("single line", func(t *testing.T) {
-		usePR(t, dryServer(t, noneWalk(t)))
+		routes := noneWalk(t)
+		usePR(t, dryServer(t, routes))
 		enableDraftOnNone(t)
 
 		code, _, _ := runGlyph(t, "notes", "--since-tag")
@@ -351,6 +352,7 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 		}
 
 		testutil.Commit(t, ".", "dependabot[bot]", "Bump a dep from 1 to 2")
+		routes[commitPullsPath(testutil.Git(t, ".", "akira-toriyama", "rev-parse", "HEAD"))] = `[]`
 		v := releaseDryRunJSON(t, 1, "--target", goldenTarget)
 		if v.Tag != "Unreleased" || !strings.Contains(v.Body, "Bump a dep from 1 to 2") || !strings.HasSuffix(v.Body, "\n\n"+compareLine("v0.1.0", goldenTarget)) {
 			t.Errorf("positive control: a placeholder with notes must close them with the link, got tag %q:\n%s", v.Tag, v.Body)
@@ -362,7 +364,8 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 		sha := testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 		t.Chdir(dir)
 		enableDraftOnNone(t)
-		usePR(t, dryServer(t, map[string]string{commitPullsPath(sha): `[]`}))
+		routes := map[string]string{commitPullsPath(sha): `[]`}
+		usePR(t, dryServer(t, routes))
 
 		code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json", "--target", goldenTarget)
 		if code != 1 {
@@ -383,6 +386,7 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 		testutil.WriteFile(t, dir, "haiku/go.mod", "module haiku\n")
 		testutil.Git(t, dir, "dependabot[bot]", "add", "haiku/go.mod")
 		testutil.Git(t, dir, "dependabot[bot]", "commit", "-q", "-m", "Bump a haiku dep from 1 to 2")
+		routes[commitPullsPath(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))] = `[]`
 		code, stdout, stderr = runGlyph(t, "release", "--dry-run", "--json", "--target", goldenTarget)
 		if code != 1 {
 			t.Fatalf("release exited %d, want 1\nstderr: %s", code, stderr)

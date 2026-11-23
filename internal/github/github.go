@@ -85,14 +85,14 @@ type PullRef struct {
 
 // Commit mirrors gitsource.RawCommit field-for-field — SHA, the author *name*
 // (what *[bot] matching runs on: the Contents API author override the fleet-sync
-// bot uses carries a name, not a login), parent count, and the verbatim message
+// bot uses carries a name, not a login), parent shas, and the verbatim message
 // — so a PR's pre-squash commits feed the very same participation walk as local
 // commits.
 type Commit struct {
 	SHA     string
 	Author  string
 	Login   string // author.login: the GitHub account GitHub itself mapped the commit to; "" when it mapped none
-	Parents int
+	Parents []string
 	Message string
 	// Recorded mirrors gitsource.RawCommit.Recorded and holds the same text as
 	// Message here: GitHub's commit.message never carries the closing newline
@@ -284,9 +284,11 @@ func (c *Client) PullCommits(ctx context.Context, owner, repo string, number int
 		commits[i] = Commit{
 			SHA:      ac.SHA,
 			Author:   ac.Commit.Author.Name,
-			Parents:  len(ac.Parents),
 			Message:  ac.Commit.Message,
 			Recorded: ac.Commit.Message,
+		}
+		for _, p := range ac.Parents {
+			commits[i].Parents = append(commits[i].Parents, p.SHA)
 		}
 		if ac.Author != nil {
 			commits[i].Login = ac.Author.Login

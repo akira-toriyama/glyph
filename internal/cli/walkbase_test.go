@@ -450,26 +450,26 @@ func TestSinceTagBelowOnAnUndeclaredLineIsUsage(t *testing.T) {
 // draftplan.CheckPublishedFloor family: nothing broken, no retry clears it,
 // the escape is in the message). Under the cap the walk runs unchanged — a
 // skip would fold zero commits and verdict the first
-// release out of existence — and the count excludes the bot authors the walk
-// itself never asks about.
+// release out of existence — and the count holds every commit, a bot's
+// included: the walk asks about each.
 func TestSinceTagUnboundedWalkRefused(t *testing.T) {
-	// 199 human commits (plus the fixture's root) and 10 bot commits: 200
-	// walk-visible, exactly AT the cap. The bot commits prove the guard counts
-	// what the walk VISITS, not raw history length.
-	dir := testutil.NewUntaggedHistory(t, 199, 10)
+	// 189 human commits, the fixture's root and 10 bot commits: 200, exactly
+	// AT the cap. The bot commits prove the guard counts what the walk ASKS
+	// about, an excluded author's commit too.
+	dir := testutil.NewUntaggedHistory(t, 189, 10)
 	t.Chdir(dir)
 
-	// One more visible commit crosses the cap: both resolved forms must refuse
+	// One more commit crosses the cap: both resolved forms must refuse
 	// before anything reaches the API — the server holds no routes, so any
 	// request fails the test.
-	testutil.Commit(t, dir, "akira-toriyama", ":memo:= the 201st visible commit")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= the 201st commit")
 	srv := walkServer(t, map[string]string{})
 	usePR(t, srv)
 
 	for _, flag := range []string{"--since-tag", "--since-tag=below:v9.9.9"} {
 		code, _, stderr := runGlyph(t, "bump", flag)
 		if code != 4 {
-			t.Fatalf("bump %s over 201 walk-visible untagged commits exited %d, want 4 (refuse "+
+			t.Fatalf("bump %s over 201 untagged commits exited %d, want 4 (refuse "+
 				"the unbounded walk)\nstderr: %s", flag, code, stderr)
 		}
 		for _, want := range []string{"201", "200", "--since-tag=TAG"} {
