@@ -580,13 +580,14 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 // TestLintStdinOutsideACheckoutIsNeverAViolation: the commit-msg hook's mode
 // rides inside a gate whose founding contract is that it never blocks on its
 // own account. glyph reads glyph.toml from the checkout, so outside a
-// repository the run fails — but with git's own failure (4), never the
-// violation code (3), which is the ONLY code the installed hook blocks on; the
-// script passes every other code through.
+// repository the run fails — as the caller's place (2, t-ckvh; git's own
+// failure, 4, before that ruling), never the violation code (3), which is the
+// ONLY code the installed hook blocks on; the script passes every other code
+// through.
 func TestLintStdinOutsideACheckoutIsNeverAViolation(t *testing.T) {
 	t.Chdir(t.TempDir())
 	setStdin(t, ":bug:(x)~ fix a crash\n")
-	if code, _, stderr := runGlyph(t, "lint", "--stdin"); code != 4 {
-		t.Fatalf("linting a message outside a repository exited %d, want 4 (git cannot answer; the hook script passes every non-3 through)\nstderr: %s", code, stderr)
+	if code, _, stderr := runGlyph(t, "lint", "--stdin"); code != 2 {
+		t.Fatalf("linting a message outside a repository exited %d, want 2 (outside a repository is the caller's place; the hook script passes every non-3 through)\nstderr: %s", code, stderr)
 	}
 }
