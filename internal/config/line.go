@@ -256,12 +256,14 @@ func stepBlockState(states int, c byte) int {
 //     by which of the four it is.
 //   - Link text is open while a "[" has no "]" of its own, and the "]" that
 //     closes one refuses a placeholder right behind it. Images, footnotes and
-//     reference links are the same brackets. A backtick or a "<" no backslash
-//     escapes inside open link text leaves the text open: no later "]" closes
-//     it. What hides a "]" from GitHub there — a code span, a tag, a comment,
-//     an angle autolink (`- [a `]` b]($subject)` links where the subject
-//     points) — starts with one of those two bytes, so the walk reads none of
-//     them and still ends no link text early.
+//     reference links are the same brackets. A backtick, a "<" or a "[" no
+//     backslash escapes inside open link text leaves the text open: no later
+//     "]" closes it. GitHub reads a "]" inside link text as text in three
+//     places only — a code span, raw HTML or an autolink, and the destination
+//     or title of a link or image nested in the text — and they start with a
+//     backtick, a "<" and a nested "[", so the walk reads none of them and
+//     still ends no link text early (`- [a `]` b]($subject)` and
+//     `- [a ![b](c]) d]($subject)` link where the subject points).
 //   - A link destination is open from a "(" right behind such a "]" to the
 //     next ")" no backslash escapes. A "(", a "<" or a quote before that ")"
 //     is where GitHub's grammar forks (balanced parentheses, a bracketed
@@ -288,7 +290,7 @@ func stepBlockState(states int, c byte) int {
 // A backslash makes the opener behind it text, as it does at GitHub; inside an
 // open tag it does not, as in HTML. Nothing else of Markdown is read: a
 // template's own code span or line ending closes nothing here, and inside link
-// text a code span's backtick keeps the text open (above).
+// text a backtick, a "<" or a "[" keeps the text open (above).
 //
 // A commit decides what stands before a placeholder, and the loader sees none
 // (checkLineOpensNoHTMLBlock): an optional span is read as rendered and as
@@ -349,7 +351,7 @@ type inlineState struct {
 	depth  int // "[" with no "]" of their own yet
 	linkAt int // the outermost of them
 
-	hidden   bool // a backtick or a "<" no backslash escaped stood inside open link text: no "]" closes it
+	hidden   bool // a backtick, a "<" or a "[" no backslash escaped stood inside open link text: no "]" closes it
 	hiddenAt int  // that byte
 
 	closed   bool // the last byte is a "]" that closed a "["
@@ -468,6 +470,8 @@ func (s inlineState) step(c byte, at int) inlineState {
 	case c == '[' && live:
 		if s.depth == 0 {
 			s.linkAt = at
+		} else if !s.hidden {
+			s.hidden, s.hiddenAt = true, at
 		}
 		s.depth++
 	case c == ']' && live && s.depth > 0 && !s.hidden:
@@ -552,11 +556,15 @@ func (s inlineState) refusal(template, name string) error {
 	case s.hidden:
 		line, col := linePosition(template, s.linkAt)
 		hiddenLine, hiddenCol := linePosition(template, s.hiddenAt)
-		what := "backtick"
-		if template[s.hiddenAt] == '<' {
-			what = `"<"`
+		opener := template[s.hiddenAt]
+		what, construct, noun, move := "a backtick", "a code span", "backtick", "it"
+		switch opener {
+		case '<':
+			what, construct, noun = `a "<"`, "an HTML tag or an autolink", `"<"`
+		case '[':
+			what, construct, noun, move = `a nested "["`, "the destination of a nested link or image", "bracket", "the nested link or image"
 		}
-		return fmt.Errorf("%q leaves a \"[\" open where $%s begins, line %d column %d, with a %s inside its text at line %d column %d: glyph does not read a code span or an HTML tag inside link text, so it cannot tell which \"]\" closes the text at GitHub, and the value may stand inside the link — \"https://evil.example\" behind \"[a `]` b](\" links to evil.example — write \"\\%c\" where the %s is text, or move it out of the link text", template, name, line, col, what, hiddenLine, hiddenCol, template[s.hiddenAt], what)
+		return fmt.Errorf("%q leaves a \"[\" open where $%s begins, line %d column %d, with %s inside its text at line %d column %d: glyph does not read %s inside link text, so it cannot tell which \"]\" closes the text at GitHub, and the value may stand inside the link — where GitHub reads it as the link's destination, \"https://evil.example\" links there — write \"\\%c\" where the %s is text, or move %s out of the link text", template, name, line, col, what, hiddenLine, hiddenCol, construct, opener, noun, move)
 	case s.depth > 0:
 		line, col := linePosition(template, s.linkAt)
 		return fmt.Errorf("%q leaves a \"[\" open where $%s begins, line %d column %d: the value's \"]\" closes the link text and its \"(\" opens a destination no escape reaches — \"click](https://evil.example)\" there renders a link to evil.example — write \"\\[\" where the bracket is text", template, name, line, col)

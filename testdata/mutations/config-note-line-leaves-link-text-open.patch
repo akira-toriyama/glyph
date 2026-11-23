@@ -1,11 +1,11 @@
 diff --git a/internal/config/line.go b/internal/config/line.go
-index 58b920e..496bccc 100644
+index b31dd93..35170a2 100644
 --- a/internal/config/line.go
 +++ b/internal/config/line.go
-@@ -550,7 +550,7 @@ func (s inlineState) refusal(template, name string) error {
- 			what = `"<"`
+@@ -565,7 +565,7 @@ func (s inlineState) refusal(template, name string) error {
+ 			what, construct, noun, move = `a nested "["`, "the destination of a nested link or image", "bracket", "the nested link or image"
  		}
- 		return fmt.Errorf("%q leaves a \"[\" open where $%s begins, line %d column %d, with a %s inside its text at line %d column %d: glyph does not read a code span or an HTML tag inside link text, so it cannot tell which \"]\" closes the text at GitHub, and the value may stand inside the link — \"https://evil.example\" behind \"[a `]` b](\" links to evil.example — write \"\\%c\" where the %s is text, or move it out of the link text", template, name, line, col, what, hiddenLine, hiddenCol, template[s.hiddenAt], what)
+ 		return fmt.Errorf("%q leaves a \"[\" open where $%s begins, line %d column %d, with %s inside its text at line %d column %d: glyph does not read %s inside link text, so it cannot tell which \"]\" closes the text at GitHub, and the value may stand inside the link — where GitHub reads it as the link's destination, \"https://evil.example\" links there — write \"\\%c\" where the %s is text, or move %s out of the link text", template, name, line, col, what, hiddenLine, hiddenCol, construct, opener, noun, move)
 -	case s.depth > 0:
 +	case false:
  		line, col := linePosition(template, s.linkAt)

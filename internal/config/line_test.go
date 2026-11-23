@@ -248,9 +248,16 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 	open := func(name, at string) string {
 		return `leaves a "[" open where $` + name + " begins, " + at + ": "
 	}
-	hidden := func(name, at, what, whatAt string) string {
-		return `leaves a "[" open where $` + name + " begins, " + at + ", with a " + what + " inside its text at " + whatAt +
-			`: glyph does not read a code span or an HTML tag inside link text, so it cannot tell which "]" closes the text at GitHub`
+	hidden := func(name, at, opener, openerAt string) string {
+		head := `leaves a "[" open where $` + name + " begins, " + at + ", with "
+		mid := ` inside link text, so it cannot tell which "]" closes the text at GitHub, and the value may stand inside the link — where GitHub reads it as the link's destination, "https://evil.example" links there — `
+		switch opener {
+		case "backtick":
+			return head + "a backtick inside its text at " + openerAt + ": glyph does not read a code span" + mid + "write \"\\`\" where the backtick is text, or move it out of the link text"
+		case `"<"`:
+			return head + `a "<" inside its text at ` + openerAt + ": glyph does not read an HTML tag or an autolink" + mid + `write "\<" where the "<" is text, or move it out of the link text`
+		}
+		return head + `a nested "[" inside its text at ` + openerAt + ": glyph does not read the destination of a nested link or image" + mid + `write "\[" where the bracket is text, or move the nested link or image out of the link text`
 	}
 	closed := func(name, at string) string {
 		return "puts $" + name + ` right behind the "]" at ` + at + `, which closes a "[": `
@@ -294,7 +301,7 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 
 		{"the value is the link text", "- [$subject](https://example.com)", open("subject", "line 1 column 3")},
 		{"an image", "- ![$subject](https://example.com/a.png)", open("subject", "line 1 column 4")},
-		{"the outer bracket behind a closed inner one", "- [a [b] $subject", open("subject", "line 1 column 3")},
+		{"the outer bracket behind a nested pair", "- [a [b] $subject", hidden("subject", "line 1 column 3", `"["`, "line 1 column 6")},
 		{"a bracket inside an optional span", "- $subject$[ [$pr]]", open("pr", "line 1 column 14")},
 		{"a backslash that is itself escaped", `- \\[$subject]`, open("subject", "line 1 column 5")},
 		{"a backslash the value before the bracket uses up", `- x \$hash[$subject]`, open("subject", "line 1 column 11")},
@@ -308,6 +315,12 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 		{"a ] an angle autolink hides", "- [a <https://x.example/]> c]($subject)", hidden("subject", "line 1 column 3", `"<"`, "line 1 column 6")},
 		{"a ] a code span hides, then the value in the text", "- [a `]` $subject](https://example.com)", hidden("subject", "line 1 column 3", "backtick", "line 1 column 6")},
 		{"a ] a tag's attribute hides, then the value in the text", `- [a <b title="]"> $subject](https://example.com)`, hidden("subject", "line 1 column 3", `"<"`, "line 1 column 6")},
+		{"a ] a nested image's destination hides, then the value in the destination", "- [a ![b](c]) d](/$subject)", hidden("subject", "line 1 column 3", `"["`, "line 1 column 7")},
+		{"a ] a nested image's destination hides, then the value as the destination", "- [a ![b](c]) d]($subject)", hidden("subject", "line 1 column 3", `"["`, "line 1 column 7")},
+		{"a ] a nested image's destination hides, then the value in the text", "- [a ![b](c]) $subject](https://example.com)", hidden("subject", "line 1 column 3", `"["`, "line 1 column 7")},
+		{"a ] a nested link's destination hides in an image, then the value in the destination", "- ![a [b](c]) d](/$subject)", hidden("subject", "line 1 column 4", `"["`, "line 1 column 7")},
+		{"a ] a nested link's destination hides in an image, then the value as the destination", "- ![a [b](c]) d]($subject)", hidden("subject", "line 1 column 4", `"["`, "line 1 column 7")},
+		{"a ] a nested link's destination hides in an image, then the value in the text", "- ![a [b](c]) $subject](https://example.com/a.png)", hidden("subject", "line 1 column 4", `"["`, "line 1 column 7")},
 
 		{"the value is the destination", "- [x]($subject)", dest("subject", "line 1 column 6")},
 		{"the value ends the destination", "- [x](https://example.com/$subject)", dest("subject", "line 1 column 6")},
@@ -337,7 +350,8 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 		{"www in capitals", "- WWW.$subject", url("subject", "www.", "line 1 column 3")},
 		{"the value extends a www URL", "- see www.example.com/$subject", url("subject", "www.", "line 1 column 7")},
 		{"a URL in parentheses", "- x (https://a.example)$subject", url("subject", "://", "line 1 column 11")},
-		{"a URL behind brackets that are no link", "- [a [b](u) c](https://a.example)$subject", url("subject", "://", "line 1 column 21")},
+		{"a URL behind a bracket that closes nothing", "- a [b](u) c](https://a.example)$subject", url("subject", "://", "line 1 column 20")},
+		{"a nested link inside link text, then a URL", "- [a [b](u) c](https://a.example)$subject", hidden("subject", "line 1 column 3", `"["`, "line 1 column 6")},
 		{"a :// around a dropped span", "- https:$[$pr]//$subject", url("subject", "://", "line 1 column 8")},
 		{"a www. around a dropped span", "- ww$[$pr]w.$subject", url("subject", "www.", "line 1 column 3")},
 
@@ -416,6 +430,8 @@ func TestLoadAcceptsAConstructClosedBeforeAPlaceholder(t *testing.T) {
 		{"a tag inside link text behind the last placeholder", "- $subject [a <b>c</b>](https://example.com)"},
 		{"an escaped backtick inside closed link text", "- [a \\` b](https://example.com) $subject"},
 		{"an escaped < inside closed link text", `- [a \< b](https://example.com) $subject`},
+		{"a nested image inside link text behind the last placeholder", "- $subject [![b](c)](https://example.com)"},
+		{"an escaped [ inside closed link text", `- [a \[ b](https://example.com) $subject`},
 
 		{"a reference and a blank", "- &amp; $subject"},
 		{"an at-sign reference and a blank", "- &#64; $subject"},

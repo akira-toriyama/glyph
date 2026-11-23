@@ -1,9 +1,9 @@
 diff --git a/internal/config/line.go b/internal/config/line.go
-index 58b920e..529e488 100644
+index b31dd93..3a205f7 100644
 --- a/internal/config/line.go
 +++ b/internal/config/line.go
-@@ -468,7 +468,7 @@ func (s inlineState) step(c byte, at int) inlineState {
- 			s.linkAt = at
+@@ -474,7 +474,7 @@ func (s inlineState) step(c byte, at int) inlineState {
+ 			s.hidden, s.hiddenAt = true, at
  		}
  		s.depth++
 -	case c == ']' && live && s.depth > 0 && !s.hidden:
