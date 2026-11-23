@@ -1,0 +1,12 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 70214c8..a8d8a86 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -429,7 +429,6 @@ func (s inlineState) step(c byte, at int) inlineState {
+ // placeholder that rendered empty leaves the state as it was, a reference's
+ // head included, and the walk keeps both.
+ func (s inlineState) behindAValue() inlineState {
+-	s.escaped = false
+ 	return s
+ }
+ 

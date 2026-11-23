@@ -6,23 +6,11 @@ name: glyph-lint
 # not gate). This is glyph's OFFICIAL commit-lint integration: the workflow
 # and the binary it runs ship from the same repo and the same release, so a
 # caller pins ONE concrete tag and can never mix workflow and binary revisions
-# (GoReleaser owns the vX.Y.Z tag space — never pin a moving ref). Each family
-# repo needs only the ~10-line caller stub distributed by fleet-sync:
+# (GoReleaser owns the vX.Y.Z tag space — never pin a moving ref).
 #
-#   # .github/workflows/commit-lint.yml in a code repo
-#   name: commit-lint
-#   on:
-#     pull_request:
-#       # a retitle re-fires the squash-title lint only with `edited`, not a default type
-#       types: [opened, synchronize, reopened, edited]
-#     push:
-#       branches: [main]  # optional — annotates direct pushes, never fails them
-#   permissions:
-#     contents: read
-#     pull-requests: read  # the squash-title lint reads GET /pulls/{n}
-#   jobs:
-#     lint:
-#       uses: akira-toriyama/glyph/.github/workflows/lint.yml@vX.Y.Z  # pin a release tag
+# The caller is README's (Install, "GitHub Actions"): a few lines around
+#
+#   uses: akira-toriyama/glyph/.github/workflows/lint.yml@vX.Y.Z  # pin a release tag
 #
 # @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
 # https://github.com/akira-toriyama/glyph/releases. No live version is written
@@ -83,7 +71,7 @@ on:
         default: ubuntu-latest
 
 # A reusable can only downgrade the caller's token, never raise it, so the
-# caller's stub must grant pull-requests: read too (it is in the stub above).
+# caller must grant pull-requests: read too (README's caller does).
 # The two directions fail differently (measured in .github#186, recorded in
 # the distributed caller): a caller granting less than this block declares
 # never reaches any step — the run dies as startup_failure before it starts.

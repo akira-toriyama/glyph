@@ -1,13 +1,13 @@
 diff --git a/README.md b/README.md
-index a0c953c..21c999a 100644
+index 5d0f57f..7e4a07a 100644
 --- a/README.md
 +++ b/README.md
 @@ -147,7 +147,8 @@ on:
      # a retitle re-fires the squash-title lint only with `edited`, not a default type
      types: [opened, synchronize, reopened, edited]
    push:
--    branches: [main]  # optional — annotates direct pushes, never fails them
-+    branches: main  # optional — annotates direct pushes, never fails them
+-    branches: [main]  # optional — annotates a direct push (exit 3 swallowed there alone; a push it cannot judge still fails)
++    branches: main  # optional — annotates a direct push (exit 3 swallowed there alone; a push it cannot judge still fails)
 +      - release
  permissions:
    contents: read

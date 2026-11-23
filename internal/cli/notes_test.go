@@ -175,6 +175,53 @@ func TestNotesRefusesATemplateThatOpensAnHTMLBlock(t *testing.T) {
 	}
 }
 
+// TestNotesRefusesATemplateThatLeavesAConstructOpen: a note.line whose literal
+// text leaves a tag, a link's brackets, a link destination, a bare URL or a
+// character reference open where a placeholder begins is a config the loader
+// refuses, so notes answers 2 and
+// names the template, the construct and where it stands. Before the refusal each
+// template loaded and exited 0, and a value completed what it opened (t-gwsr;
+// TestLoadRefusesAConstructOpenAtAPlaceholder has the measured renders).
+func TestNotesRefusesATemplateThatLeavesAConstructOpen(t *testing.T) {
+	preset, ok := config.Preset("gemoji")
+	if !ok {
+		t.Fatalf("gemoji preset missing")
+	}
+	const shipped = "line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'"
+	if !strings.Contains(string(preset), shipped) {
+		t.Fatalf("the gemoji preset no longer carries %q; move this test's edit with it", shipped)
+	}
+	for _, c := range []struct{ name, line, want string }{
+		{"a tag", "- x <$subject", `leaves an HTML tag open where $subject begins, its "<" at line 1 column 5: `},
+		{"link text", "- [$subject](https://example.com)", `leaves a "[" open where $subject begins, line 1 column 3: `},
+		{"closed link text", "- [x]$subject", `puts $subject right behind the "]" at line 1 column 5, which closes a "[": `},
+		{"a link destination", "- [x](https://example.com/$subject)", `leaves a link destination open where $subject begins, its "(" at line 1 column 6: `},
+		{"a link reference definition", "- [x]: $subject", `leaves a link reference definition open where $subject begins, its ":" at line 1 column 6: `},
+		{"a bare URL", "- see https://example.com/$subject", `leaves a bare URL open where $subject begins, the "://" that starts its link at line 1 column 12: `},
+		{"a comment", "- x <!-- a > $subject", `leaves an HTML tag open where $subject begins, its "<" at line 1 column 5: `},
+		{"a character reference", "- &#64;$author", "puts $author behind the character reference at line 1 column 3 with no blank between them: "},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir, base := testutil.NewTaggedRepo(t)
+			seedConfig(t, dir, strings.Replace(string(preset), shipped, "line = '"+c.line+"'", 1))
+			testutil.Commit(t, dir, "octocat", ":bug:~ fix it")
+			t.Chdir(dir)
+
+			code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+			if code != int(core.CodeUsage) {
+				t.Fatalf("notes exited %d, want %d\nstdout: %s\nstderr: %s", code, core.CodeUsage, stdout, stderr)
+			}
+			if stdout != "" {
+				t.Errorf("a refused config printed a body:\n%s", stdout)
+			}
+			env := decodeErrorEnvelope(t, stderr)
+			if want := `note.line: "` + c.line + `" ` + c.want; env.Code != int(core.CodeUsage) || !strings.Contains(env.Message, want) {
+				t.Errorf("envelope = %+v, want code %d and a message holding %q", env, core.CodeUsage, want)
+			}
+		})
+	}
+}
+
 // TestNotesEmptyIsNoRelease: a docs-only range is the soft no-release exit —
 // nothing on stdout, exit 1, the reason in the stderr envelope.
 func TestNotesEmptyIsNoRelease(t *testing.T) {

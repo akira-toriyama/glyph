@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 70214c8..be4d72d 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -283,7 +283,7 @@ func checkLineLeavesNothingOpen(template string, spans []LineSpan) error {
+ 		}
+ 		if span.Optional {
+ 			merged := slices.Clone(states)
+-			for _, st := range dropped {
++			for _, st := range dropped[:0] {
+ 				merged = addInlineState(merged, st)
+ 			}
+ 			states = merged

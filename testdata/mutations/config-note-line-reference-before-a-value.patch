@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index f15a688..99796ff 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -579,7 +579,7 @@ func (s inlineState) refusal(template, name string) error {
+ 			trigger, example, escaped = "www.", `"evil.example/x" behind "www." links to www.evil.example`, "."
+ 		}
+ 		return fmt.Errorf("%q leaves a bare URL open where $%s begins, the %q that starts its link at line %d column %d: GitHub links a bare URL up to the next blank, so the value extends the link the template began — %s — and a backtick the link takes in leaves a @mention behind it live; put a blank before the placeholder, or write \"\\%s\" for its %q where the URL is text", template, name, trigger, line, col, example, escaped, escaped)
+-	case s.pending:
++	case false:
+ 		line, col := linePosition(template, s.pendingAt)
+ 		return fmt.Errorf("%q puts $%s behind the character reference at line %d column %d with no blank between them: the mention fence reads the line's bytes and GitHub resolves a reference after it has read them, so \"&#64;\" and the value \"octocat\" render a live @octocat — put a blank between them, or write the character itself", template, name, line, col)
+ 	}

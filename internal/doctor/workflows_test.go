@@ -160,10 +160,11 @@ const commentClosesWith = `jobs:
 // TestScannersAgreeACommentClosesABlockScalar is the positive control for
 // contentLines' order: a comment at or left of a block scalar's key closes
 // it, and what follows is structure to every scanner — the call and its
-// grant after a comment-closed heredoc (scanUses, callerGrants), and the
-// with: key after a comment-closed `with: |` (jobWithKeys). No YAML parser
-// accepts lines that deep past the comment; the fixtures hold the three
-// scanners to one reading of a comment there.
+// grant after a comment-closed heredoc (scanUses, callerGrants). No YAML
+// parser accepts lines that deep past the comment; the fixtures hold the
+// scanners to one reading of a comment there. jobWith reads no `with: |` at
+// all, so it names that line unread rather than read the text as keys or as
+// none.
 func TestScannersAgreeACommentClosesABlockScalar(t *testing.T) {
 	refs := scanUses("w.yml", commentClosesHeredoc)
 	if len(refs) != 1 || refs[0].Line != 8 || refs[0].Ref != "v6.0.0" {
@@ -173,8 +174,8 @@ func TestScannersAgreeACommentClosesABlockScalar(t *testing.T) {
 	if !seen || grants["contents"] != "write" {
 		t.Errorf("callerGrants = %v (block seen %t), want contents: write — the permissions block after the comment is structure", grants, seen)
 	}
-	if keys := jobWithKeys(strings.Split(commentClosesWith, "\n"), 3); !keys["install-notes"] {
-		t.Errorf("jobWithKeys = %v, want install-notes — the key after the comment is structure", keys)
+	if keys, unread := jobWithKeys(strings.Split(commentClosesWith, "\n"), 3); len(keys) != 0 || unread != "job release, line 4 `with: |`" {
+		t.Errorf("jobWithKeys = %v, %q — want no keys, the with: | line unread", keys, unread)
 	}
 }
 

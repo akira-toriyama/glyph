@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 5799249..7c9119f 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -205,7 +205,7 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
+ 			if !ok && !strings.HasPrefix(trimmed, "-") {
+ 				return notRead(i, line)
+ 			}
+-			isWith := ok && k == "with"
++			isWith := ok && k == "with" && strings.HasPrefix(trimmed, k+":")
+ 			inWith = isWith
+ 			if isWith {
+ 				// Flow form: with: { a: 1, b: 2 } — the keys sit on this line.

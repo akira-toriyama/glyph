@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerartifact.go b/internal/doctor/callerartifact.go
+index ca7c201..6ce943f 100644
+--- a/internal/doctor/callerartifact.go
++++ b/internal/doctor/callerartifact.go
+@@ -61,7 +61,7 @@ func gradeInput(v string) inputValue {
+ 		return valueUnread
+ 	case v == "", v == `""`, v == `''`, slices.Contains(nullSpellings, v):
+ 		return valueEmpty
+-	case v[0] == '|', v[0] == '>', v[0] == '*', v[0] == '&', v[0] == '!':
++	case v[0] == '|', v[0] == '>', v[0] == '&', v[0] == '!':
+ 		return valueUnread
+ 	}
+ 	return valueNamed
