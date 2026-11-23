@@ -358,11 +358,12 @@ type inlineState struct {
 	dest   destState
 	destAt int // the "(" or the ":" behind the "]" of a destination that is not destNone
 
-	slashes uint8 // 1 behind a ":" no backslash escaped, 2 behind ":/": one more "/" writes "://"
-	colonAt int   // that ":"
-	ws      uint8 // how many "w" the last bytes are, up to three: a "." then writes "www."
-	auto    bool  // inside a bare URL the template began, and no blank since
-	autoAt  int   // the ":" of its "://" or the "." of its "www."
+	slashes uint8  // 1 behind a ":" no backslash escaped, 2 behind ":/": one more "/" writes "://"
+	colonAt int    // that ":"
+	ws      uint8  // how many "w" the last bytes are, up to three: a "." then writes "www."
+	wsAt    [3]int // the last ws of those "w", oldest first
+	auto    bool   // inside a bare URL the template began, and no blank since
+	autoAt  int    // the ":" of its "://" or the first "w" of its "www."
 
 	ref   refState
 	refAt int // the "&" of a reference that is not refNone
@@ -482,8 +483,8 @@ func (s inlineState) step(c byte, at int) inlineState {
 		s.pending, s.pendingAt = false, 0
 		s.auto, s.autoAt = false, 0
 	}
-	slashes, colonAt, ws := s.slashes, s.colonAt, s.ws
-	s.slashes, s.colonAt, s.ws = 0, 0, 0
+	slashes, colonAt, ws, wsAt := s.slashes, s.colonAt, s.ws, s.wsAt
+	s.slashes, s.colonAt, s.ws, s.wsAt = 0, 0, 0, [3]int{}
 	switch {
 	case c == ':' && live:
 		s.slashes, s.colonAt = 1, at
@@ -492,9 +493,14 @@ func (s inlineState) step(c byte, at int) inlineState {
 	case c == '/' && slashes == 2 && !s.auto:
 		s.auto, s.autoAt = true, colonAt
 	case c == 'w' || c == 'W':
-		s.ws = min(ws+1, 3)
+		if ws < 3 {
+			wsAt[ws] = at
+		} else {
+			wsAt = [3]int{wsAt[1], wsAt[2], at}
+		}
+		s.ws, s.wsAt = min(ws+1, 3), wsAt
 	case c == '.' && ws == 3 && !s.auto:
-		s.auto, s.autoAt = true, at
+		s.auto, s.autoAt = true, wsAt[0]
 	}
 	digit := c >= '0' && c <= '9'
 	hex := digit || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
@@ -567,20 +573,16 @@ func (s inlineState) refusal(template, name string) error {
 		return fmt.Errorf("%q leaves a link destination open where $%s begins, its \"(\" at line %d column %d: the value is the address or the title of the link, and no backslash escape works there — \"https://evil.example\" behind \"[x](\" links to evil.example, and a backtick the destination takes in leaves a @mention behind it live — close the destination with \")\" before the placeholder", template, name, line, col)
 	case s.auto:
 		line, col := linePosition(template, s.autoAt)
-		return fmt.Errorf("%q leaves a bare URL open where $%s begins, the %q that starts its link at line %d column %d: GitHub links a bare URL up to the next blank, so the value extends the link the template began — \"evil.example/x\" behind \"https://\" links to evil.example — and a backtick the link takes in leaves a @mention behind it live; put a blank before the placeholder, or write %q where the URL is text", template, name, autolinkTrigger(template[s.autoAt]), line, col, `\`+template[s.autoAt:s.autoAt+1])
+		trigger, example, escaped := "://", `"evil.example/x" behind "https://" links to evil.example`, ":"
+		if template[s.autoAt] != ':' {
+			trigger, example, escaped = "www.", `"evil.example/x" behind "www." links to www.evil.example`, "."
+		}
+		return fmt.Errorf("%q leaves a bare URL open where $%s begins, the %q that starts its link at line %d column %d: GitHub links a bare URL up to the next blank, so the value extends the link the template began — %s — and a backtick the link takes in leaves a @mention behind it live; put a blank before the placeholder, or write \"\\%s\" for its %q where the URL is text", template, name, trigger, line, col, example, escaped, escaped)
 	case s.pending:
 		line, col := linePosition(template, s.pendingAt)
 		return fmt.Errorf("%q puts $%s behind the character reference at line %d column %d with no blank between them: the mention fence reads the line's bytes and GitHub resolves a reference after it has read them, so \"&#64;\" and the value \"octocat\" render a live @octocat — put a blank between them, or write the character itself", template, name, line, col)
 	}
 	return nil
-}
-
-// autolinkTrigger names what an inlineState's autoAt byte belongs to.
-func autolinkTrigger(c byte) string {
-	if c == ':' {
-		return "://"
-	}
-	return "www."
 }
 
 func isASCIILetter(c byte) bool {

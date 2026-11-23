@@ -264,6 +264,10 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 	url := func(name, trigger, at string) string {
 		return "leaves a bare URL open where $" + name + " begins, the " + strconv.Quote(trigger) + " that starts its link at " + at + ": "
 	}
+	urlAdvice := func(name, trigger, at, example, escaped string) string {
+		return url(name, trigger, at) + "GitHub links a bare URL up to the next blank, so the value extends the link the template began — " + example +
+			` — and a backtick the link takes in leaves a @mention behind it live; put a blank before the placeholder, or write "\` + escaped + `" for its "` + escaped + `" where the URL is text`
+	}
 	ref := func(name, at string) string {
 		return "puts $" + name + " behind the character reference at " + at + " with no blank between them: "
 	}
@@ -323,19 +327,19 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 		{"the value is a definition's title", `- [x]: /url "$subject"`, definition("subject", "line 1 column 6")},
 		{"a footnote definition", "- [^1]: $subject", definition("subject", "line 1 column 7")},
 
-		{"the value is the URL's host", "- https://$subject", url("subject", "://", "line 1 column 8")},
+		{"the value is the URL's host", "- https://$subject", urlAdvice("subject", "://", "line 1 column 8", `"evil.example/x" behind "https://" links to evil.example`, ":")},
 		{"http", "- http://$subject", url("subject", "://", "line 1 column 7")},
 		{"a scheme in capitals", "- HTTPS://$subject", url("subject", "://", "line 1 column 8")},
 		{"any scheme", "- ftp://$subject", url("subject", "://", "line 1 column 6")},
 		{"the value extends the host", "- see https://example.com$subject", url("subject", "://", "line 1 column 12")},
 		{"the value extends the path", "- see https://example.com/$subject", url("subject", "://", "line 1 column 12")},
-		{"www", "- www.$subject", url("subject", "www.", "line 1 column 6")},
-		{"www in capitals", "- WWW.$subject", url("subject", "www.", "line 1 column 6")},
-		{"the value extends a www URL", "- see www.example.com/$subject", url("subject", "www.", "line 1 column 10")},
+		{"www", "- www.$subject", urlAdvice("subject", "www.", "line 1 column 3", `"evil.example/x" behind "www." links to www.evil.example`, ".")},
+		{"www in capitals", "- WWW.$subject", url("subject", "www.", "line 1 column 3")},
+		{"the value extends a www URL", "- see www.example.com/$subject", url("subject", "www.", "line 1 column 7")},
 		{"a URL in parentheses", "- x (https://a.example)$subject", url("subject", "://", "line 1 column 11")},
 		{"a URL behind brackets that are no link", "- [a [b](u) c](https://a.example)$subject", url("subject", "://", "line 1 column 21")},
 		{"a :// around a dropped span", "- https:$[$pr]//$subject", url("subject", "://", "line 1 column 8")},
-		{"a www. around a dropped span", "- ww$[$pr]w.$subject", url("subject", "www.", "line 1 column 12")},
+		{"a www. around a dropped span", "- ww$[$pr]w.$subject", url("subject", "www.", "line 1 column 3")},
 
 		{"a decimal reference", "- &#64;$subject", ref("subject", "line 1 column 3")},
 		{"a decimal reference with leading zeros", "- &#0064;$subject", ref("subject", "line 1 column 3")},
