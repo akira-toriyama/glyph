@@ -1,0 +1,30 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 9fb6912..2bb2f62 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -134,9 +134,6 @@ func previewRun(ctx context.Context, o previewOptions) error {
+ 	if err := checkPRFlag(o.pr); err != nil {
+ 		return err
+ 	}
+-	if err := checkRepoFlag(o.repo); err != nil {
+-		return err
+-	}
+ 	cfg, err := loadConfig(ctx)
+ 	if err != nil {
+ 		return err
+diff --git a/internal/cli/source.go b/internal/cli/source.go
+index 9f9f2d3..49bc25b 100644
+--- a/internal/cli/source.go
++++ b/internal/cli/source.go
+@@ -80,10 +80,7 @@ func (s source) check() error {
+ 	default:
+ 		err = checkRangeFlag(s.rng)
+ 	}
+-	if err != nil {
+-		return err
+-	}
+-	return checkRepoFlag(s.repo)
++	return err
+ }
+ 
+ // readSource reads the commits a verdict is computed over from the source

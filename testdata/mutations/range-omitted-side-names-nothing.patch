@@ -1,0 +1,16 @@
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index fe78152..c0e9257 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -144,11 +144,6 @@ func rangeEndpoints(revRange string) []string {
+ 		return []string{rangeOperator.ReplaceAllString(strings.TrimPrefix(revRange, "^"), "")}
+ 	}
+ 	ends := []string{left, right}
+-	for i, end := range ends {
+-		if end == "" {
+-			ends[i] = "HEAD"
+-		}
+-	}
+ 	return ends
+ }
+ 

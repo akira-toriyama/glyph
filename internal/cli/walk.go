@@ -51,11 +51,12 @@ func apiWalker(gh *github.Client) walk.Walker {
 }
 
 // sinceTagInput is the release walk as every command reaches it: the
-// --since-tag value checked as the caller's input (usage, 2) before the
-// repository is resolved, then one walk over every declared line. bump,
-// notes, release and preview share it; the result's Facts say whether the
-// walk read its range (release refuses on them, preview reports the
-// shortfall, bump and notes discard them).
+// repository resolved, then one walk over every declared line. The
+// --since-tag value arrives accepted — each command asks walk.CheckTag at
+// its entrance, before glyph.toml is loaded (source.check, releaseRun), and
+// preview walks from Auto. bump, notes, release and preview share it; the
+// result's Facts say whether the walk read its range (release refuses on
+// them, preview reports the shortfall, bump and notes discard them).
 func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag string) (walk.Result, error) {
 	return sinceTagInputScoped(ctx, cfg, tagFlag, repoFlag, nil)
 }
@@ -63,9 +64,6 @@ func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag st
 // sinceTagInputScoped is sinceTagInput with the range narrowed to scope
 // (walk.Scope; preview is its one user).
 func sinceTagInputScoped(ctx context.Context, cfg *config.Config, tagFlag, repoFlag string, scope *walk.Scope) (walk.Result, error) {
-	if err := walk.CheckTag(tagFlag); err != nil {
-		return walk.Result{}, err
-	}
 	owner, repo, err := resolveRepo(ctx, repoFlag)
 	if err != nil {
 		return walk.Result{}, err
