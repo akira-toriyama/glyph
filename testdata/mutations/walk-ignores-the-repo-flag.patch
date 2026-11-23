@@ -1,13 +1,13 @@
 diff --git a/internal/cli/source.go b/internal/cli/source.go
-index 8070617..d8da4ea 100644
+index 3af598a..ce9a7e7 100644
 --- a/internal/cli/source.go
 +++ b/internal/cli/source.go
-@@ -83,7 +83,7 @@ func readSource(ctx context.Context, cfg *config.Config, src source) (walk.Resul
+@@ -102,7 +102,7 @@ func readSource(ctx context.Context, cfg *config.Config, src source) (walk.Resul
  	case sourcePull:
  		return pullLines(ctx, cfg, src.pull, src.repo)
  	case sourceWalk:
 -		return sinceTagInput(ctx, cfg, src.tag, src.repo)
 +		return sinceTagInput(ctx, cfg, src.tag, "")
  	default:
- 		if err := checkRangeFlag(src.rng); err != nil {
- 			return walk.Result{}, err
+ 		return rangeLines(ctx, cfg, src.rng)
+ 	}

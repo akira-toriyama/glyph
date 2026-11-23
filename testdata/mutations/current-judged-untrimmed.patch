@@ -1,0 +1,12 @@
+diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+index 7eebe15..8e0c975 100644
+--- a/internal/cli/cmd_bump.go
++++ b/internal/cli/cmd_bump.go
+@@ -272,7 +272,6 @@ func currentVersion(ctx context.Context, flag string, base *bump.Version, l conf
+ // TRIMMED, as --since-tag and --range are: ` v1.2.3` is the version the
+ // caller typed, and was refused as "not a plain semver".
+ func parseCurrent(flag string) (*bump.Version, error) {
+-	flag = strings.TrimSpace(flag)
+ 	if flag == "" {
+ 		return nil, nil
+ 	}

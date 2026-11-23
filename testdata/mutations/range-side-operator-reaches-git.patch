@@ -1,0 +1,13 @@
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index fe78152..e3e3c82 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -125,7 +125,7 @@ func CheckRangeOperators(revRange string) error {
+ 	}
+ 	for _, side := range []string{left, right} {
+ 		if strings.HasPrefix(side, "^") || rangeOperator.MatchString(side) {
+-			return core.Usagef("--range %q carries a set operator on a side of its range (%q) — git reads ^, ^!, ^@ and ^-<n> on a single revision only; name both sides plainly, or give the one revision with its operator alone", revRange, side)
++			continue
+ 		}
+ 	}
+ 	return nil
