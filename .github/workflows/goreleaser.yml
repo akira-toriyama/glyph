@@ -256,12 +256,13 @@ jobs:
           args: release --clean --release-notes=${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The tag this run is FOR, stated — never inferred. GoReleaser picks
-          # its current tag with `git describe` when this is unset, and a
-          # commit carrying two tags (a release cut on the same tree as its
-          # last rc) makes that a coin toss: measured 2026-09-10, the v3.3.0
-          # push built 3.3.0-rc.2 artifacts and tried to upload them onto the
-          # rc.2 release (422 already_exists), leaving v3.3.0 with no release
+          # The tag this run is FOR, stated — never inferred. Unset, GoReleaser
+          # takes the first tag pointing at HEAD in `-version:refname` order
+          # (README has the mechanism), which on a commit carrying two tags (a
+          # release cut on the same tree as its last rc) is the rc, every
+          # time: measured 2026-09-10, the v3.3.0 push built 3.3.0-rc.2
+          # artifacts and tried to upload them onto the rc.2 release (422
+          # already_exists), leaving v3.3.0 with no release
           # while every pin site was about to move to it.
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
         if: steps.existing.outputs.release != 'published'
