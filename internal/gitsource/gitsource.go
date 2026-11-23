@@ -343,8 +343,9 @@ var objectID = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 // severity, as everywhere, so both error: lines git writes over a store it
 // reads in full fail too: a peel the caller typed onto an object of another
 // type (`<tag-on-a-tree>^{commit}`, `^0`), where git's line names both types,
-// and an abbreviation two objects share with a suffix after it (`<prefix>^0`,
-// "short object ID … is ambiguous"; the bare prefix writes no line, a NO).
+// and an abbreviation two objects share followed by `^`, `~1` or `^0` ("short
+// object ID … is ambiguous"; the bare prefix and `<prefix>^{commit}` write no
+// line, a NO).
 // Whether the resolved object is a commit this repository can read is
 // namesCommit's question and only namesCommit's: `rev-parse --verify --quiet
 // <sha>^{commit}` exits 1 as well for an empty object file on git 2.54 and
