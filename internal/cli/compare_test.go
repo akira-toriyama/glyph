@@ -134,6 +134,29 @@ func TestReleaseBodyClosesTheNotesWithTheCompareLink(t *testing.T) {
 	}
 }
 
+// TestReleaseEmptyFooterAppendsNothing: release.yml's `install-notes` is
+// optional and reaches glyph as a file whatever it holds, so a caller with
+// nothing to install hands over an empty one — and the draft must then be the
+// notes alone, ending at the compare link: no `---` line, nothing after it.
+// The rule lives here, in the one place the body is composed, so the
+// reusable carries no branch for it. Positive control: the same walk with a
+// non-empty footer does draw the separator.
+func TestReleaseEmptyFooterAppendsNothing(t *testing.T) {
+	usePR(t, dryServer(t, oneFixWalk(t)))
+	bare := releaseDryRunJSON(t, 0)
+	if !strings.Contains(bare.Body, linkOpening) || strings.Contains(bare.Body, "\n---\n") {
+		t.Fatalf("canary: the footer-less body must hold the compare link and no --- line:\n%s", bare.Body)
+	}
+	if with := releaseDryRunJSON(t, 0, "--footer-file", writeFooter(t, "x\n")); with.Body != bare.Body+"\n---\n\nx\n" {
+		t.Fatalf("canary: a footer is not appended behind one --- line, so the absence below proves nothing:\n%s", with.Body)
+	}
+	empty := releaseDryRunJSON(t, 0, "--footer-file", writeFooter(t, ""))
+	if empty.Body != bare.Body {
+		t.Errorf("an empty --footer-file changed the draft: a caller with nothing to install must get the notes alone\n"+
+			"--- got ---\n%s\n--- want ---\n%s", empty.Body, bare.Body)
+	}
+}
+
 // TestCompareLinkKeepsTheBaseTagsSpelling: the left side is the tag the walk
 // resolved, in its own spelling. ParseVersion accepts a bare `1.0.0`, and
 // Version.String() re-adds the v — the verdict's current reads v1.0.0 — so a

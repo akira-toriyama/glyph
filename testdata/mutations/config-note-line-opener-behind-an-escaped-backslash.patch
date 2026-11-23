@@ -1,0 +1,11 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 0e39f49..100e474 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -405,5 +405,5 @@ func addInlineState(set []inlineState, st inlineState) []inlineState {
+ func (s inlineState) step(c byte, at int) inlineState {
+ 	live := !s.escaped
+-	s.escaped = c == '\\' && live
++	s.escaped = c == '\\'
+ 
+ 	if c == '<' && (s.tag == tagOpen || s.tag == tagDouble || s.tag == tagSingle) {

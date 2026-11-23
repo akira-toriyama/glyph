@@ -566,8 +566,9 @@ pattern says it means:
     delimiter (escape.go's theorem), so the price is rendering, paid only by a
     repository whose own pattern captures such bytes — accepted.
 - Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
-  `note.line`, a `note.line` that opens with no list-item marker or puts `<`
-  at a block start (§3) and a section that does not state exactly one axis
+  `note.line`, a `note.line` that opens with no list-item marker, puts `<`
+  at a block start or leaves a construct open where a placeholder begins (§3)
+  and a section that does not state exactly one axis
   are LOAD errors, never repairs (mutation row
   `config-unknown-schema-accepted.patch`): this file decides CI
   verdicts, and a silently-misread key is a silently-changed verdict. **A key
@@ -1136,6 +1137,143 @@ and a lone CR line ending,
 `config-note-line-html-block-behind-a-paren-ordinal`,
 `config-note-line-html-block-behind-a-multi-digit-ordinal`,
 `config-note-line-html-block-behind-a-carriage-return`).
+**No construct of the template's stands open where a placeholder begins**
+(t-gwsr, 2026-11-15; the loader refuses one at exit 2 and names the construct,
+the placeholder, and the construct's line and column). The prose escape puts
+its backslash on the byte that opens a construct, and only where that byte is
+a value's, so an opener the template wrote stays live and the value lands
+inside it. Five constructs, each measured through `glyph notes --range` and
+`POST /markdown` (gfm) on a template that loaded at c06e426:
+
+- **An HTML tag.** `- x <$subject` with the subject `i>live</i> y` rendered a
+  live `<i>` that stayed open into the next item, `- x <i $subject>` with
+  `title=a` rendered `<i title="a">`, and `- x <a title=">" $subject>k</a>`
+  with `href=//evil.example` rendered that href. A tag is open from a `<` that
+  a letter or `/` follows, or that the placeholder itself follows, to the next
+  `>` outside a quoted attribute value. Nothing closes one that holds a second
+  `<`, and nothing closes `<!` or `<?`: `- x <!-- a > $subject` with
+  `` ` --> @octocat ` `` rendered a live @octocat, the comment ending at the
+  value's `-->` with its first backtick inside, and `- x <a '<i x='> $subject`
+  with `` ` '> @octocat ` `` the same, GitHub reading the second `<` as the tag.
+- **A link's brackets.** `- [$subject](https://example.com)` with
+  `click](https://evil.example) y` rendered a link to evil.example: the value's
+  `]` closes the link text, and rule 2's backslash in `https\://` is consumed
+  inside a destination. `- [x]$subject` rendered the same link from
+  `(https://evil.example) y`, and from `: /url` a link reference definition, so
+  `[x]` linked to /url. Link text is open while a `[` has no `]` of its own, and
+  the `]` that closes one refuses a placeholder right behind it; an image, a
+  footnote and a reference link are the same brackets. A backtick, a `<` or a
+  `[` no backslash escapes inside open link text leaves the text open: no
+  later `]` closes it. `` - [a `]` b](/$subject) `` loaded and, with
+  `` x) @octocat ` ``, rendered a live @octocat, `` - [a `]` b]($subject) ``
+  with `https://evil.example` a link there, and `- [a ![b](c]) d](/$subject)`
+  and `- ![a [b](c]) d](/$subject)` a live @mention through the nested
+  destination (measured 2026-11-23): GitHub reads a `]` inside link text as
+  text in three places only — a code span, raw HTML or an autolink, and the
+  destination or title of a link or image nested in the text — and they start
+  with a backtick, a `<` and a nested `[`, so the rule is complete without
+  reading any of them. A template that means one of them as text there
+  escapes it (`` \` ``, `\<`, `\[`), or moves it out of the link text.
+- **A link destination.** `- [x]($subject)` with `https://evil.example`
+  rendered a link there, `- ![x]($subject)` an image proxied from the value's
+  host, and `- [x]: $subject` a link reference definition.
+  `- [x](https://example.com/$subject)` with `` x`) @octocat ` `` and
+  `- [x](https://example.com "$subject")` with `` ` ") @octocat ` `` each
+  rendered a live @octocat: the destination, or its title, takes the value's
+  first backtick in, and the fence's code span no longer pairs. A destination
+  is open from a `(` right behind a `]` that closes a `[` to the next `)` no
+  backslash escapes, whatever the placeholder (`$hash` and `$pr` too) and
+  whatever host the template wrote. A `(`, a `<` or a quote before that `)` is
+  where GitHub's grammar forks — balanced parentheses, a bracketed address, a
+  title, each legal only in its place — so nothing closes the destination from
+  there: `- [x](a"b "c) $subject` and `- [x](a(b) $subject` each rendered a
+  live @octocat, the value's backtick inside a title GitHub was still reading
+  or still willing to read.
+  A `:` right behind such a `]` opens a definition, which nothing closes.
+- **A bare URL.** `- https://$subject` with `evil.example/x` rendered a link to
+  evil.example, as `http://`, `HTTPS://` and `www.` did;
+  `- see https://example.com$subject` with `.evil.example/x` a link to
+  example.com.evil.example; and `- see https://example.com/$subject` with
+  `` ` @octocat ` `` a live @octocat, the URL taking the backtick in. A bare URL
+  is open from `://` or `www.` to the next blank. No scheme is asked for and
+  none excluded (GitHub linked neither `ftp://evil.example/x` nor `WWW.`, and
+  both are refused), and only a blank ends one: `- x (https://a.example)$subject`
+  with `` /x` @octocat ` `` rendered a link to `https://a.example)/x%60` and a
+  live @octocat.
+- **A character reference.** `- &#64;$subject` with `octocat now` rendered a
+  live @octocat, as `&commat;`, `&#x40;` and `&#0064;` did, as `- &#64;oct$subject`
+  did with `ocat now`, and as `- &$pr#64;$subject` did for a commit with no
+  pull: the mention fence reads the line's bytes, and GitHub resolves the
+  reference into an at-sign after it has read them. The identity gate below
+  falls with it: `- $subject &#64;$author` rendered a live @octocat for a git
+  author named `octocat` under `--range`, where `@$author` renders the name.
+  A reference is any that has the shape rule 4 tests (decimal, hex or named,
+  closed by `;`), whatever it decodes to, and it reaches the placeholder
+  across every byte but a blank.
+
+The walk never ends a construct before GitHub does. Each test is blunter than
+the grammar it stands for, on the refusing side, as the block-start rule is:
+whether the bytes of a tag are a valid one is not asked, a template's own code
+span or line ending closes nothing (inside link text a backtick, a `<` or a
+`[` keeps the text open, the brackets above), and no table says which references decode
+to an at-sign (that would owe the boundary to GitHub's table, the reasoning
+`markdown.entityAt` gives for its shape). Where two readings of the template's
+bytes end a construct at different bytes — a comment against a tag, a title
+against an address — the walk does not pick one: it stops ending the construct,
+so `- x <!-- c --> $subject` and `- [x](https://example.com "t") $subject`,
+which GitHub renders with the value as text, do not load, and such a construct
+goes behind the last placeholder. A link whose text holds a backtick, a `<` or a
+`[` is the same cost: code-styled text, `- [`x`](https://example.com) $subject`,
+and a badge, `- [![b](https://img.example/b.png)](https://example.com) $subject`,
+do not load, and go behind the last placeholder too. A backslash makes the opener behind it text,
+as at GitHub, and inside an open tag it does not, as in HTML. The loader sees
+no commit, so it reads an optional span as rendered and as dropped and an
+earlier placeholder as a value and as empty, and nothing may be open under any
+of those readings. What loads, measured with the same values: a construct the
+template closed (`- x <b>$subject</b>` and `- x <b>y</b> $subject` render the
+value as text, `- [x] $subject` and `- &#64; $subject` no link and no mention,
+`- [x](https://example.com) $subject` and `- see https://example.com/ $subject`
+the template's link and the value as text behind it), a `<` no tag starts at
+(`- x < $subject`, `- x <1$subject`), an escaped opener (`- x \<$subject`,
+`- \[$subject]`, `- https\://$subject`, `- www\.$subject`, `- \&#64;$subject`),
+an opener behind the last placeholder, and the shipped `@$author`: a mention
+the template wrote is no URL. Rejected: escaping the value harder (no escape of
+the value closes a construct it stands inside — the `https\://` above),
+narrowing the README's guarantee to the shipped presets (it holds for every
+template the loader accepts), a destination that loads where the template fixed
+the host (the value is inside a link either way, and the backtick above needs
+no host), and refusing the head of a reference or of a bare URL (`- &$subject`,
+`- &#$subject`, `- &#x$subject`, `- &comm$subject`, `- &#64$subject`,
+`- http$subject`, `- https:$subject`, `- https:/$subject`, `- ww$subject`,
+`- www$subject`): rules 4 and 2 already escape one a value completes, and each
+rendered its own text, no mention and no link. That holds for the one value
+that is not prose, the login `@$author` writes live: `- &#$author;$subject`
+wrote `&#64;octocat` for the account named `64` and rendered a live @octocat,
+so rules 2 and 4 fire where any byte of the construct is a value's, a login's
+included (`TestAReferenceALoginCompletesIsEscaped`). Rejected too: refusing an
+address the template begins (`- contact local@$subject`, `- mailto:$subject`,
+each a `mailto:` link to the value's host). A value writes a whole address
+under every template and GitHub links it — the one construct rule 2 leaves
+alive, since an address takes no backtick in and no additive escape disarms it
+(`markdown.escapeProseLine`) — so `- contact $subject` with
+`local@evil.example` and `- contact local$subject` with `@evil.example`
+rendered the same link, the second from text before a placeholder, which no
+loader can refuse. Reach, measured the same day: three `note.line` values are
+all that a preset or a `glyph.toml` ever carried — the presets at all 43 tags,
+the `glyph.toml` of 47 fleet clones, and every revision of one on every ref of
+glyph-test and glyph-monorepo-test — and each loads
+(`config.checkLineLeavesNothingOpen` has the table of renders;
+`TestLoadRefusesAConstructOpenAtAPlaceholder`,
+`TestLoadAcceptsAConstructClosedBeforeAPlaceholder`,
+`TestNotesRefusesATemplateThatLeavesAConstructOpen`; mutation rows
+`config-note-line-leaves-a-tag-open`, `config-note-line-leaves-link-text-open`,
+`config-note-line-value-behind-a-closing-bracket`,
+`config-note-line-leaves-a-destination-open`,
+`config-note-line-leaves-a-bare-url-open` and
+`config-note-line-reference-before-a-value` for the six refusals, and the
+ledger's other `config-note-line-` rows from
+`config-note-line-tag-named-by-a-value` on, one for each shape refused and each
+shape that must keep loading).
 The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
 live mention — crediting the contributor is intended behaviour, and every
@@ -1354,9 +1492,11 @@ text under the existing placeholder grammar (so every template already in the
 fleet loads unchanged): only `$[` carries both of the file's own signals — `$`
 marks what glyph interprets, and the bracket already means optional in the
 same file's `[commit]` template block (`[(scope: a-z 0-9 -)]`, `[<body>]`). A bare `[`
-stays literal, which is what leaves the `- [$scope] $subject` idiom and
+stays literal, which is what leaves the `- \[$scope\] $subject` idiom and
 Markdown links untouched, and brackets *inside* a span nest — the closing `]`
-is the first at depth zero, so `$[ [$scope]]` renders `[cli]` or leaves whole,
+is the first at depth zero, so `$[ \[$scope\]]` renders `[cli]` or leaves whole
+(the backslashes are the template's: a bare `[` that is still open where a
+placeholder begins does not load, below),
 and an unpaired `[` is refused as unterminated instead of closing the span one
 character early (measured: closing at the first `]` of any kind left a stray
 `]` on every rendered line).
@@ -1406,8 +1546,10 @@ trailer named `subject` loaded and rendered each bot line as `- `, its text
 replaced by an absent trailer, at exit 0, and a trailer named after a
 skip-only `branch` group was refused as "$branch would mean two things".
 Rejected: refusing a template that cites a name the fallback cannot bind —
-`- [$scope] $subject`, the idiom above, renders a bot line with an empty
-scope and its text (measured: `- [] Bump foo from 1 to 2`), the per-winner
+`- \[$scope\] $subject`, the idiom above, renders a bot line with an empty
+scope and its text (measured 2026-10-04 with the brackets bare, which loaded
+then: `- [] Bump foo from 1 to 2`; `- \[\] x` today, which GitHub renders
+`[] x`), the per-winner
 rendering every pattern already gets (the `Revert` pattern captures no scope
 either), so that refusal would ban citing any group but `$subject`; it is
 rejected on that ground alone, since no fleet file would have moved (42
@@ -2362,7 +2504,8 @@ line (`internal/cli/cmd_preview.go: previewRun`, one loop over the lines
 the pull touches, the bare line among them; `preview.Package`), the pending
 side from one walk; and the reusable (t-dc9e): `release.yml` hands the
 per-line verdicts through as its `packages` output, the scalars `""`, and
-refuses `app` / `binary` once the verdict says packages. Every `e-7hat` task
+refuses `app` / `binary` on a packages repository ("The reusables", below,
+has where and why). Every `e-7hat` task
 was done by 2026-09-15: the line is complete, the fleet pins a tag that
 carries it (v3.3.0, the first), and its live fire is `glyph-monorepo-test`
 (below — the permanent packages harness, named beside `glyph-test` in
@@ -3710,13 +3853,28 @@ single line's url is withheld (the handle makes auto-publish a two-line
 caller step; publishing stays human). Its artifact inputs (`app` / `binary`)
 describe one artifact for one draft, and are refused when the repository
 declares packages: a monorepo attaches per line in its own job, reading
-`packages`. The refusal is asked of the verdict envelope — after the drafts
-are upserted, before the build — rather than of the input-validation step,
-because the declaration lives in the caller's `glyph.toml`, which that step
-has not checked out and which glyph alone reads (a grep for `[[packages]]` in
-the workflow would fork the grammar, the defect class the outputs exist to
-avoid); the drafts written first are correct, and the misconfigured run stays
-red until the input is dropped. `lint.yml` is unchanged, and
+`packages`. The refusal is asked of glyph itself, right after the install and
+before the verdict: `bump --range HEAD..HEAD --json` over the checkout —
+local git, no request — answers one `packages` entry per declared line, and a
+non-empty array beside either input fails the run before any draft is
+touched. It was first asked of the verdict envelope, after the upsert and
+before the build, and the drafts had by then been rewritten with the
+misconfigured caller's footer when the run went red (glyph-monorepo-test-2 run
+41805408808, `binary: probe`, 2026-11-04). It is not asked of the
+input-validation step because the declaration lives in the caller's
+`glyph.toml`, which that step has not checked out and which glyph alone reads
+(a grep for `[[packages]]` in the workflow would fork the grammar, the defect
+class the outputs exist to avoid); the misconfigured run stays red until the
+input is dropped, and `glyph doctor` names the pair before the push
+(`workflow-caller-artifact`, §7). Executed by
+`TestReleaseRefusesArtifactInputsOnAPackagesRepository`, which also reads the
+step's own `if:` and the absence of `continue-on-error` off the step (the
+Xcode and cache steps under it carry the same condition, and a search of the
+text between the refusal and the verdict was satisfied by theirs); mutation
+rows `release-packages-probe-never-refuses`,
+`release-packages-refusal-waits-for-the-verdict`,
+`release-packages-refusal-ignores-the-binary-input` and
+`release-packages-refusal-continues-on-error`. `lint.yml` is unchanged, and
 `pr-verdict.yml`'s one change is `breaking` following `level` into `""`
 (Preview, above). The rollout is the runbook's: the binary change is additive, so
 `fleet-preflight` must report zero verdict moves and zero body re-renders on
@@ -4580,7 +4738,9 @@ The severities are the argued part:
   in the run, not in the check suite, not in the API (measured, glyph-test3
   2026-08-26: three pushes, three silent `startup_failure`s). The required-set
   is a table mirroring the shipped reusables' `workflow_call.inputs`, held
-  lockstep by test exactly as the permissions table is. Both caller checks read
+  lockstep by test exactly as the permissions table is — empty since
+  `install-notes` became optional after v6.1.0, so the check's judging is
+  kept live by a fixture table in its tests. Both caller checks read
   every workflow file, and one they cannot read leaves them `unknown`, never
   skipped: skipping it once turned `chmod 000` on a failing caller into a pass
   whose observation claimed no caller existed — the pin check's own unknown
@@ -4588,6 +4748,50 @@ The severities are the argued part:
   whether a caller starts. A defect observed in a file that was read still
   fails (`TestCallerChecksNeverPassOverAnUnreadableFile`, mutation row
   `doctor-caller-checks-skip-an-unreadable-file`).
+- **A `release.yml` caller naming `app` or `binary` on a repository that
+  declares `[[packages]]` ⇒ fail (`workflow-caller-artifact`).** The reusable
+  refuses the same pair (§4.1, "The reusables"), so the run is red on every
+  push until the input goes; doctor reads the same two facts — the value the
+  caller's `with:` gives the input, through the inputs check's reader, and
+  the loaded `glyph.toml` — and names the pair before the push. The value,
+  not the key, because the reusable asks `inputs.app != '' || inputs.binary
+  != ''`: an input with no value or an empty quoted one is `""` at run time
+  and is not named (a key-presence check failed a caller the reusable ran
+  green; glyph-monorepo-test-2 runs 42450511719, `binary: ""`, and
+  43678383110, a bare `binary:`), and so is YAML null spelled out — `~`,
+  `null`, `Null`, `NULL` unquoted (runs 43689418881, 43689421291 and
+  43690575673; quoted, each is a string and is named, run 43690585767). The
+  reader reads two forms of `with:` and no other: a block of `key: value`
+  lines, each key a plain scalar or a simply quoted one (`"binary"` is the key
+  binary), and a flow mapping that opens and closes on the `with:` line, split
+  on the commas outside quotes. Anything else — an alias, an anchor or a tag
+  on `with:`, a `{` closing on a later line, a nested collection, a merge key,
+  a `?` key — is `unknown` here and in the inputs check wherever the pinned
+  release requires an input (where it requires none, `with:` is not read), and
+  in a file that is valid YAML never a key set either way: read as text, a
+  quoted key and `with: *w` passed callers that name `binary` as YAML reads
+  them (`TestJobWithReadsTheFormsItNamesAndNoOther`). The job's own keys are
+  read the same way, so `with  :` and `"with":` are `with`.
+  Each line's comment is cut before a continuation line joins: under
+  `binary: # which tool` the next line is the value, and read behind the
+  comment it passed a caller the reusable refused (run 43689423925,
+  `TestJobWithDropsEachLinesCommentBeforeTheFold`). A value the checkout
+  does not hold — a `${{ }}` expression, a block scalar, an alias, a value
+  carrying an anchor or a tag (`&b ""` and `!!null` are empty) — is
+  `unknown`, the grade both other caller checks give what they cannot
+  read, with a non-empty literal beside it still failing. No pin rule: one artifact has no line to attach to at
+  any release, so the pair is wrong at every pin — which is also why the
+  check's text never says where in the run the refusal lands (after the
+  drafts are rewritten through v6.1.0, before the verdict from the next
+  release on). Unknown when `glyph.toml` was not loaded (the config check
+  owns that) or a workflow file could not be read; a repository without
+  `[[packages]]` passes with nothing to judge. `TestCallerArtifactOutcomes`;
+  mutation rows `doctor-caller-artifact-blesses-a-packages-repository`,
+  `doctor-caller-artifact-fails-an-empty-input`,
+  `doctor-caller-artifact-fails-a-spelled-null`,
+  `doctor-caller-artifact-fails-an-expression`,
+  `doctor-caller-with-value-folds-behind-its-key-comment` and
+  `doctor-caller-with-flow-line-keeps-its-comment`.
 - **Both caller checks judge a caller at the release it pins, and only where
   this binary can speak for that release — any other caller is `unknown`,
   never a verdict.** GitHub starts a caller against the reusable at the
@@ -4596,7 +4800,12 @@ The severities are the argued part:
   and they have moved: read with the checks' own parsers at every release tag
   (33 on 2026-09-29, and confirmed with an independent YAML parser by the
   ruling's review), `lint.yml` gained `pull-requests: read` at v2.0.0 and
-  `release.yml` stopped requiring `app` at v0.8.0. Judging every pin by the
+  `release.yml` stopped requiring `app` at v0.8.0 and `install-notes` after
+  v6.1.0 — a repository whose release is the notes has nothing to install, and
+  the placeholder footer it had to pass to satisfy the input was the first
+  thing a README-only adopter tripped on (glyph-test-2, 2026-11-04; an empty
+  input reaches `release` as an empty `--footer-file`, for which it appends
+  nothing, `TestReleaseEmptyFooterAppendsNothing`). Judging every pin by the
   running binary's tables was wrong both ways at adfc5e1: a `lint.yml@v1.0.0`
   caller granting exactly what v1.0.0 declares failed at `3` — crying wolf, on
   nine of the 57 local checkouts measured (stale branches and worktrees, each

@@ -216,6 +216,7 @@ const (
 	idWorkflowPinned = "workflow-glyph-pins"
 	idCallerPerms    = "workflow-caller-permissions"
 	idCallerInputs   = "workflow-caller-inputs"
+	idCallerArtifact = "workflow-caller-artifact"
 	idCommitMsgHook  = "commit-msg-hook"
 	idCommitMsgFires = "commit-msg-hook-fires"
 	idPrePushHook    = "pre-push-hook"
@@ -239,9 +240,9 @@ const (
 // it. Then the token checks, because the read explains every settings
 // check's could-not-run below it (and the write advisory rides on the
 // same response), then the three merge methods, then the squash policy they
-// enable, then the remaining LOCAL checks — the workflow pins, the two caller
-// checks and the three hook checks — which, like the config, need no network
-// at all, so they still answer when the API side is entirely dark.
+// enable, then the remaining LOCAL checks — the workflow pins, the three
+// caller checks and the three hook checks — which, like the config, need no
+// network at all, so they still answer when the API side is entirely dark.
 func Run(in Input) *Report {
 	// The fired hook's lint reads the same glyph.toml, so the config verdict is
 	// an input to the live-fire check — see checkHookFires.
@@ -262,6 +263,7 @@ func Run(in Input) *Report {
 		checkWorkflowPins(in.Root, rootVerified, workflows, workflowsErr, in.ActionFiles, in.ActionFilesErr),
 		checkCallerPermissions(in.Root, rootVerified, workflows, workflowsErr, in.GlyphVersion),
 		checkCallerInputs(in.Root, rootVerified, workflows, workflowsErr, in.GlyphVersion),
+		checkCallerArtifact(in.Root, rootVerified, workflows, workflowsErr, in.Config),
 		checkHook(hook.Kinds()[0], idCommitMsgHook, in.CommitMsgHook, in.CommitMsgHookErr, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
 		checkPrePushHook(in.PrePushHook, in.PrePushHookErr, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteRefless, in.RemoteHeadsErr),
@@ -373,7 +375,7 @@ func checkTokenWrite(in Input) Check {
 		"writes the rolling draft over the API, and this credential's write would be refused (403) only after the " +
 		"walk has already spent its API budget. On a repository that never runs release there is nothing to do"
 	c.Fix = "for a release repository: run with a credential that can write — in Actions, `permissions: contents: write` " +
-		"on the release caller (the reusable's stub carries it); locally, a token with repo write access"
+		"on the release caller (the one in glyph's README, Getting started step 3, grants it); locally, a token with repo write access"
 	return c
 }
 

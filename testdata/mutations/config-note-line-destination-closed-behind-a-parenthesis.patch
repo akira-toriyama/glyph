@@ -1,0 +1,11 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 0e39f49..e4f011e 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -449,5 +449,5 @@ func (s inlineState) step(c byte, at int) inlineState {
+ 	case s.dest == destInline && c == ')' && live:
+ 		s.dest, s.destAt = destNone, 0
+-	case s.dest == destInline && (c == '(' || c == '<' || c == '"' || c == '\''):
++	case s.dest == destInline && (c == '<' || c == '"' || c == '\''):
+ 		s.dest = destStuck
+ 	}

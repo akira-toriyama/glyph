@@ -109,7 +109,7 @@ func (l *Line) Raw(s string) {
 // <li>x</li>, "-     x" a <pre>; measured 2026-11-04).
 func (l *Line) Prose(s string) {
 	s = flatten(s)
-	if awaitsBlock(l.assemble()) {
+	if assembled, prose, _ := l.assemble(); awaitsBlock(assembled, prose) {
 		s = strings.TrimLeft(s, " \t")
 	}
 	l.parts = append(l.parts, part{partProse, s})
@@ -154,14 +154,14 @@ func (l *Line) Mention(login, name string) {
 // returns the same bytes: both passes are fixed points and the parts are not
 // consumed.
 func (l *Line) String() string {
-	assembled, prose := l.assemble()
+	assembled, prose, value := l.assemble()
 
 	// One span scan, over the whole line. It must see the bytes GitHub will see.
 	// Prose is flattened but raw here, and that is enough: the spans of this string
 	// are the spans of the escaped line (escape.go, WHY ONE PASS IS ENOUGH).
 	inSpan := spansBehindOpeners(assembled, prose)
 
-	escaped, pos := escapeProseLine(assembled, inSpan, prose)
+	escaped, pos := escapeProseLine(assembled, inSpan, prose, value)
 
 	// Mention's exemptions, re-found in the escaped string through pos. A
 	// handle carries none of the bytes escapeProseLine rewrites, so its own
@@ -178,9 +178,11 @@ func (l *Line) String() string {
 	return escapeMentionsSkipping(escaped, live)
 }
 
-// assemble is the line so far and the ownership question over it: whether any
-// byte of a range is author prose.
-func (l *Line) assemble() (string, func(lo, hi int) bool) {
+// assemble is the line so far and two ownership questions over it: whether any
+// byte of a range is author prose, and whether any is a value's — prose, or the
+// login Mention wrote live. The login is trusted to page and to nothing else:
+// an account's name is not glyph's markup, and "64" and "commat" are accounts.
+func (l *Line) assemble() (s string, prose, value func(lo, hi int) bool) {
 	var b strings.Builder
 	var owner []partKind
 	for _, p := range l.parts {
@@ -192,12 +194,17 @@ func (l *Line) assemble() (string, func(lo, hi int) bool) {
 			owner = append(owner, p.kind)
 		}
 	}
-	return b.String(), func(lo, hi int) bool {
-		for i := max(lo, 0); i < min(hi, len(owner)); i++ {
-			if owner[i] == partProse {
-				return true
+	holds := func(is func(partKind) bool) func(lo, hi int) bool {
+		return func(lo, hi int) bool {
+			for i := max(lo, 0); i < min(hi, len(owner)); i++ {
+				if is(owner[i]) {
+					return true
+				}
 			}
+			return false
 		}
-		return false
 	}
+	return b.String(),
+		holds(func(k partKind) bool { return k == partProse }),
+		holds(func(k partKind) bool { return k != partRaw })
 }

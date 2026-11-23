@@ -1,0 +1,13 @@
+diff --git a/README.md b/README.md
+index 5d0f57f..9a45e7b 100644
+--- a/README.md
++++ b/README.md
+@@ -274,7 +274,7 @@ concurrency:
+   group: release
+   cancel-in-progress: false
+ permissions:
+-  contents: write  # the draft
++  contents: read  # the draft
+ jobs:
+   release:
+     uses: akira-toriyama/glyph/.github/workflows/release.yml@vX.Y.Z  # pin a release tag

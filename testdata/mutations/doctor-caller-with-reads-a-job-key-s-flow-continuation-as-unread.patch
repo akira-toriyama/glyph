@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 0107119..502b6dd 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -235,7 +235,7 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
+ 					}
+ 					inWith = false
+ 				}
+-			} else if v := withoutComment(strings.TrimSpace(rest)); v != "" && strings.IndexByte("[{\"'", v[0]) >= 0 {
++			} else if v := withoutComment(strings.TrimSpace(rest)); false && v != "" && strings.IndexByte("[{\"'", v[0]) >= 0 {
+ 				held, heldAt = flowOpen(v, flowState{}), i
+ 			}
+ 			continue

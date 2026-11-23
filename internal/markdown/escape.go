@@ -147,7 +147,7 @@ func flatten(s string) string {
 //     documented mention hole instead. Zero subjects in the fleet's 9,548 carry
 //     an entity-shaped ampersand, so the rendering cost is measured at zero.
 //     The construct is the whole reference, so the '&' takes the backslash when
-//     any byte through the ';' is prose. Read at the '&' alone, the rule leaves
+//     any byte through the ';' is a value's. Read at the '&' alone, the rule leaves
 //     a template's "&" to a value's "#x40;octocat": under `line = '- &$subject'`
 //     that renders a live mention (measured 2026-11-09, t-39hk;
 //     TestAReferenceAValueCompletesIsEscaped).
@@ -619,7 +619,14 @@ func spansBehindOpeners(s string, prose func(lo, hi int) bool) []bool {
 // escapeProseLine applies the five rules above to the ASSEMBLED line s, which
 // is the only context in which they are decidable. Detection reads the whole
 // string; a backslash is inserted only where the construct it would disarm
-// touches author prose, which prose reports for a byte range.
+// touches a value, which value reports for a byte range: author prose, or the
+// login Line.Mention wrote live. A login is letters, digits and hyphens, so it
+// is never the byte a rule fires on, and it does complete a construct the
+// template began: `- &#$author;$subject` wrote "&#64;octocat" for the account
+// named 64, and `- &$author;$subject` "&commat;octocat" for the account named
+// commat, each a live @octocat at GitHub (measured 2026-11-15, POST /markdown;
+// TestAReferenceALoginCompletesIsEscaped). Rule 5 asks prose alone: a login at
+// a block start is the template's to place (config.checkLineOpensNoHTMLBlock).
 //
 // Per field, every one of the rules carries state or context that a field
 // boundary truncates (t-9np1, measured on the per-field escaper that shipped):
@@ -641,13 +648,13 @@ func spansBehindOpeners(s string, prose func(lo, hi int) bool) []bool {
 // pos[i] is the offset in the result of input byte i (and pos[len(s)] the end) —
 // the fence pass needs it to find Mention's exempt ranges again after escaping has
 // shifted everything right.
-func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (string, []int) {
+func escapeProseLine(s string, inSpan []bool, prose, value func(lo, hi int) bool) (string, []int) {
 	var b strings.Builder
 	b.Grow(len(s))
 	pos := make([]int, len(s)+1)
 	opens := blockOpeners(s, prose)
 	esc := func(lo, hi, at int) {
-		if prose(lo, hi) {
+		if value(lo, hi) {
 			b.WriteByte('\\')
 		}
 		b.WriteByte(s[at])

@@ -1,10 +1,10 @@
 diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
-index 82f2ebd..80ab20b 100644
+index dad5bae..eb51bd1 100644
 --- a/internal/doctor/callerinputs.go
 +++ b/internal/doctor/callerinputs.go
-@@ -55,7 +55,7 @@ func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile,
- 				var missing []string
- 				keys := jobWithKeys(lines, call.Line)
+@@ -62,7 +62,7 @@ func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile,
+ 					return nil, withUnreadLine(f.Name, call, unread)
+ 				}
  				for _, want := range row.Required {
 -					if !keys[want] {
 +					if false && !keys[want] {

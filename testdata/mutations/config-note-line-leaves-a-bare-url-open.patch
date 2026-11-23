@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index f15a688..c09fd27 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -572,7 +572,7 @@ func (s inlineState) refusal(template, name string) error {
+ 	case s.dest == destInline:
+ 		line, col := linePosition(template, s.destAt)
+ 		return fmt.Errorf("%q leaves a link destination open where $%s begins, its \"(\" at line %d column %d: the value is the address or the title of the link, and no backslash escape works there — \"https://evil.example\" behind \"[x](\" links to evil.example, and a backtick the destination takes in leaves a @mention behind it live — close the destination with \")\" before the placeholder", template, name, line, col)
+-	case s.auto:
++	case false:
+ 		line, col := linePosition(template, s.autoAt)
+ 		trigger, example, escaped := "://", `"evil.example/x" behind "https://" links to evil.example`, ":"
+ 		if template[s.autoAt] != ':' {

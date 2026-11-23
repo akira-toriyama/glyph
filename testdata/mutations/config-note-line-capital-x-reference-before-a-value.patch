@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 70214c8..31aaa92 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -408,7 +408,7 @@ func (s inlineState) step(c byte, at int) inlineState {
+ 		s.ref, s.refAt = refHash, refAt
+ 	case ref == refAmp && isASCIILetter(c):
+ 		s.ref, s.refAt = refName, refAt
+-	case ref == refHash && (c == 'x' || c == 'X'):
++	case ref == refHash && c == 'x':
+ 		s.ref, s.refAt = refHexMark, refAt
+ 	case (ref == refHash || ref == refDigits) && digit:
+ 		s.ref, s.refAt = refDigits, refAt

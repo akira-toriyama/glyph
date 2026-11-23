@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -20,9 +21,12 @@ import (
 // lockstep, so a reusable growing a required input without a row here fails a
 // test instead of shipping a check that blesses callers GitHub will kill, and
 // TestCallerDeclarationBoundsMatchReleasedTags holds After to glyph's tags.
+// No reusable requires an input today — release.yml required install-notes
+// through v6.1.0 — so the judging below is exercised by a fixture table in
+// its tests, never by a live row.
 var reusableRequiredInputs = map[string]inputRow{
 	"lint.yml":       {After: "v0.1.0"},
-	"release.yml":    {After: "v0.7.0", Required: []string{"install-notes"}},
+	"release.yml":    {After: "v6.1.0"},
 	"pr-verdict.yml": {After: "v0.3.0"},
 }
 
@@ -49,25 +53,34 @@ func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile,
 		glyph:       glyph,
 		floor:       inputsFloor,
 		rows:        reusableRequiredInputs,
-		file: func(f workflowFile) func(reusableCall, inputRow) []string {
+		file: func(f workflowFile) func(reusableCall, inputRow) ([]string, string) {
 			lines := strings.Split(f.Body, "\n")
-			return func(call reusableCall, row inputRow) []string {
+			return func(call reusableCall, row inputRow) ([]string, string) {
+				if len(row.Required) == 0 {
+					// Nothing to ask of with:, so nothing it holds is unread: a
+					// caller at a pin that requires no input is never
+					// could-not-run over its with: (exit 4 where 0 is right).
+					return nil, ""
+				}
 				var missing []string
-				keys := jobWithKeys(lines, call.Line)
+				keys, unread := jobWithKeys(lines, call.Line)
+				if unread != "" {
+					return nil, withUnreadLine(f.Name, call, unread)
+				}
 				for _, want := range row.Required {
 					if !keys[want] {
 						missing = append(missing, fmt.Sprintf(
 							".github/workflows/%s calls %s@%s but its with: never names %s", f.Name, call.Reusable, call.Ref, want))
 					}
 				}
-				return missing
+				return missing, ""
 			}
 		},
 		failObserved: "%d missing required input(s) across the %d workflow file(s) that call a glyph reusable",
 		failMessage: "GitHub kills a reusable call that omits a required input as startup_failure before any job — and " +
 			"it surfaces no error anywhere: not in the run, not in the check suite, not in the API (measured, " +
 			"glyph-test3 2026-08-26). This static read is the only check that can see it coming",
-		failFix:      "add the missing input to the caller's with: block — the commented stub in each reusable's header is the known-good copy",
+		failFix:      "add the missing input to the caller's with: block — " + readmeCallers,
 		death:        "whether every caller gets past GitHub's silent startup input gate",
 		noCaller:     "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to starve)",
 		passObserved: "%d workflow file(s) call glyph reusables; every judged caller passes what its pinned release requires",
@@ -97,17 +110,73 @@ func inputsExpected(glyph string) string {
 }
 
 // jobWithKeys returns the top-level keys of the `with:` mapping belonging to
-// the job whose `uses:` sits on usesLine (1-indexed). The job block's bounds
-// are walked out from the uses line itself — up to the job-name line (the
-// first shallower-indented content line), then forward until the block closes
-// — so a `with:` written above its `uses:` is still seen; YAML orders siblings
-// freely and a miss in either direction would cry wolf over a healthy caller.
-// The forward walk reads only contentLines: an install-notes heredoc's content
-// must not read as keys.
-func jobWithKeys(lines []string, usesLine int) map[string]bool {
+// the job whose `uses:` sits on usesLine (1-indexed): jobWith's keys and its
+// unread, for a check that asks only whether an input is named.
+func jobWithKeys(lines []string, usesLine int) (map[string]bool, string) {
 	keys := map[string]bool{}
+	with, unread := jobWith(lines, usesLine)
+	for k := range with {
+		keys[k] = true
+	}
+	return keys, unread
+}
+
+// What both caller checks say of a caller whose with: jobWith does not read:
+// could-not-run, never a verdict either way (DESIGN §7).
+const (
+	withUnreadWhy = "doctor reads a with: written as a block of plain `key: value` lines or as a one-line `{ … }`, " +
+		"and no other form"
+	withUnreadFix = "write the caller's with: as a block of plain `key: value` lines or a one-line `{ … }`"
+)
+
+// withUnreadLine is the Details line of a call whose with: jobWith does not
+// read; unread is jobWith's account of it.
+func withUnreadLine(file string, call reusableCall, unread string) string {
+	return fmt.Sprintf(".github/workflows/%s calls %s@%s with a with: doctor does not read: %s",
+		file, call.Reusable, call.Ref, unread)
+}
+
+// jobWith returns the `with:` mapping belonging to the job whose `uses:` sits
+// on usesLine (1-indexed): each top-level key and its value as the file
+// spells it — the text after the key's colon with any deeper content line
+// folded onto it behind one space, each line's trailing comment dropped
+// BEFORE the fold: a comment ends at its line's end, so the line under
+// `binary: # which tool` is the value, and folded behind the comment it read
+// as part of it — an artifact input GitHub refuses graded as empty
+// (glyph-monorepo-test-2 run 43689423925, 2026-11-15). A block scalar's value
+// is its header alone (`|`): contentLines yields none of its text. The job
+// block's bounds are walked out from the uses line itself — up
+// to the job-name line (the first shallower-indented content line), then
+// forward until the block closes — so a `with:` written above its `uses:` is
+// still seen; YAML orders siblings freely and a miss in either direction
+// would cry wolf over a healthy caller. The forward walk reads only
+// contentLines: an install-notes heredoc's content must not read as keys.
+//
+// The reader names the forms it reads, and a form it does not positively
+// recognise is unread, never a key set either way in a file that is valid
+// YAML (a tab-indented key line, or one between the job's indent and the
+// keys', reads as no key — GitHub refuses either file outright): unread, when
+// not "", names the job, the line and its text, and the map is nil. The job's
+// own key lines are withEntry's too, so `with  :` and `"with":` are with, a
+// job-level line it does not read could be with and is unread, and a `-` line
+// there is a sequence entry under the key above. A job key whose value leaves
+// a bracket or a quote open owns every line up to where it closes, whatever
+// their indent: a `]` at the job's indent continues `needs: [`, and read as a
+// job-level line it made a healthy caller could-not-run (exit 4). Only the
+// job's own with: is unread for its form; a value still open where the job
+// ends swallowed the rest, with: included, so that is unread too. The forms
+// read: the
+// `with:` line's rest, its comment cut, is empty (block form) or a flow
+// mapping closing on that line, split by flowEntries; each block-form line at
+// the key indent is one withEntry. An alias, an anchor or a tag on `with:`, a
+// `{` closing on a later line, a merge key, a `?` key, a key carrying an
+// anchor or a tag — PyYAML reads each as setting keys this reader cannot see
+// (a quoted `"binary": probe` read as the key `"binary"` passed a caller the
+// reusable refuses).
+func jobWith(lines []string, usesLine int) (map[string]string, string) {
+	with := map[string]string{}
 	if usesLine < 1 || usesLine > len(lines) {
-		return keys
+		return with, ""
 	}
 	jobIndent := indentOf(lines[usesLine-1])
 	start := usesLine - 1
@@ -121,27 +190,53 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 		}
 		start = i
 	}
+	notRead := func(i int, line string) (map[string]string, string) {
+		job := "?"
+		if start > 0 {
+			job, _, _ = strings.Cut(strings.TrimSpace(lines[start-1]), ":")
+		}
+		return nil, fmt.Sprintf("job %s, line %d `%s`", job, i+1, withoutComment(strings.TrimSpace(line)))
+	}
 	inWith := false
+	var held flowState // what a job key's value, from line heldAt, left open
+	heldAt := -1
 	withKeyIndent := -1 // indent of the keys directly inside with:, learned from the first one
-	for _, line := range contentLines(lines, start) {
+	last := ""          // the with: key a deeper line continues
+	for i, line := range contentLines(lines, start) {
+		if held.open() {
+			held = flowOpen(line, held)
+			continue
+		}
 		trimmed := strings.TrimLeft(line, " \t")
 		ind := indentOf(line)
 		if ind < jobIndent {
 			break // the job block closed
 		}
 		if ind == jobIndent {
-			rest, isWith := strings.CutPrefix(trimmed, "with:")
+			k, rest, ok := withEntry(trimmed)
+			if !ok && !strings.HasPrefix(trimmed, "-") {
+				return notRead(i, line)
+			}
+			isWith := ok && k == "with"
 			inWith = isWith
 			if isWith {
 				// Flow form: with: { a: 1, b: 2 } — the keys sit on this line.
-				if rest = strings.TrimSpace(rest); strings.HasPrefix(rest, "{") {
-					for part := range strings.SplitSeq(strings.Trim(rest, "{} "), ",") {
-						if k, _, found := strings.Cut(part, ":"); found {
-							keys[strings.TrimSpace(k)] = true
+				if rest = withoutComment(strings.TrimSpace(rest)); rest != "" {
+					entries, flow := flowEntries(rest)
+					if !flow {
+						return notRead(i, line)
+					}
+					for _, e := range entries {
+						k, v, ok := withEntry(e)
+						if !ok {
+							return notRead(i, line)
 						}
+						with[k] = v
 					}
 					inWith = false
 				}
+			} else if v := withoutComment(strings.TrimSpace(rest)); v != "" && strings.IndexByte("[{\"'", v[0]) >= 0 {
+				held, heldAt = flowOpen(v, flowState{}), i
 			}
 			continue
 		}
@@ -152,11 +247,168 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 			withKeyIndent = ind
 		}
 		if ind != withKeyIndent {
-			continue // deeper content: a nested value, never a with: key
+			// Deeper content: a nested value or a plain scalar's next line,
+			// never a with: key.
+			if last != "" {
+				with[last] = strings.TrimSpace(with[last] + " " + withoutComment(strings.TrimSpace(trimmed)))
+			}
+			continue
 		}
-		if k, _, found := strings.Cut(trimmed, ":"); found {
-			keys[strings.TrimSpace(k)] = true
+		k, v, ok := withEntry(trimmed)
+		if !ok {
+			return notRead(i, line)
+		}
+		last = k
+		with[last] = withoutComment(v)
+	}
+	if held.open() {
+		return notRead(heldAt, lines[heldAt])
+	}
+	return with, ""
+}
+
+// flowSyntax walks one line s as flow text, starting inside quote (0: in
+// none), and calls at with each flow indicator outside quotes — , : { } [ ] —
+// up to a comment. It returns the quote the line leaves open. A quote opens
+// only where a scalar begins, so the apostrophe in a plain `don't` is text,
+// and a doubled apostrophe inside single quotes is a quote, not the close.
+func flowSyntax(s string, quote byte, at func(i int, c byte)) byte {
+	begins := true
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote == '"' && c == '\\':
+			i++
+		case quote == '\'' && c == '\'' && i+1 < len(s) && s[i+1] == '\'':
+			i++
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			if begins {
+				quote = c
+			}
+			begins = false
+		case c == '#' && (i == 0 || s[i-1] == ' ' || s[i-1] == '\t'):
+			return quote
+		case strings.IndexByte(",:{}[]", c) >= 0:
+			at(i, c)
+			begins = c != '}' && c != ']'
+		case c != ' ' && c != '\t':
+			begins = false
 		}
 	}
-	return keys
+	return quote
+}
+
+// flowState is what a value's lines so far leave open: the bracket depth and
+// the quote they are inside.
+type flowState struct {
+	depth int
+	quote byte
+}
+
+func (f flowState) open() bool { return f.depth > 0 || f.quote != 0 }
+
+// flowOpen returns what f leaves open once line s is read after it.
+func flowOpen(s string, f flowState) flowState {
+	f.quote = flowSyntax(s, f.quote, func(_ int, c byte) {
+		switch c {
+		case '[', '{':
+			f.depth++
+		case ']', '}':
+			f.depth--
+		}
+	})
+	return f
+}
+
+// flowEntries splits a flow mapping written whole on one line, `{ … }`, into
+// its entries, on the commas outside quotes (flowSyntax). flow is false for
+// anything else: no `{`, a `{` that does not close at the line's end, a
+// nested `{` or `[`, a quote left open.
+func flowEntries(s string) (entries []string, flow bool) {
+	if len(s) < 2 || s[0] != '{' || s[len(s)-1] != '}' {
+		return nil, false
+	}
+	s = s[1 : len(s)-1]
+	from, nested := 0, false
+	if flowSyntax(s, 0, func(i int, c byte) {
+		switch c {
+		case ',':
+			entries = append(entries, s[from:i])
+			from = i + 1
+		case ':':
+		default:
+			nested = true
+		}
+	}) != 0 || nested {
+		return nil, false
+	}
+	entries = append(entries, s[from:])
+	return slices.DeleteFunc(entries, func(e string) bool { return strings.TrimSpace(e) == "" }), true
+}
+
+// withEntry reads one `with:` entry, `key: value`, whose key is a plain
+// scalar or a quoted one without escapes — unquoted here, as YAML reads
+// `"binary"` as binary. value is trimmed, its comment not cut. ok is false
+// for any other entry: a merge key `<<`, a `?` key, a key carrying an anchor,
+// an alias or a tag, a quoted key with an escape, no `: ` at all.
+func withEntry(s string) (key, value string, ok bool) {
+	s = strings.TrimSpace(s)
+	var rest string
+	switch {
+	case s == "":
+		return "", "", false
+	case s[0] == '"' || s[0] == '\'':
+		end := strings.IndexByte(s[1:], s[0])
+		if end < 0 {
+			return "", "", false
+		}
+		key, rest = s[1:1+end], s[2+end:]
+		if strings.ContainsRune(key, '\\') || !strings.HasPrefix(rest, ":") {
+			return "", "", false // an escape, `''` included, is not a simple key
+		}
+		rest = rest[1:]
+		if rest != "" && rest[0] != ' ' && rest[0] != '\t' {
+			return "", "", false
+		}
+	case strings.IndexByte("-?:,[]{}#&*!|>%@`", s[0]) >= 0:
+		return "", "", false
+	default:
+		at := -1
+		for i := 0; i < len(s) && at < 0; i++ {
+			if s[i] == ':' && (i+1 == len(s) || s[i+1] == ' ' || s[i+1] == '\t') {
+				at = i
+			}
+		}
+		if at < 0 {
+			return "", "", false
+		}
+		key, rest = strings.TrimSpace(s[:at]), s[at+1:]
+		if key == "<<" {
+			return "", "", false
+		}
+	}
+	return key, strings.TrimSpace(rest), true
+}
+
+// withoutComment drops a trailing YAML comment from one line of a value: a
+// `#` at the start or behind whitespace, outside quotes.
+func withoutComment(v string) string {
+	var quote rune
+	for i, r := range v {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '\'':
+			quote = r
+		case r == '#' && (i == 0 || v[i-1] == ' ' || v[i-1] == '\t'):
+			return strings.TrimSpace(v[:i])
+		}
+	}
+	return v
 }

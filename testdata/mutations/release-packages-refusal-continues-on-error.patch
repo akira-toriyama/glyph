@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index b6051eb..5872223 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -310,6 +310,7 @@ jobs:
+       # never a transient.
+       - name: Refuse an artifact input on a packages repository
+         if: inputs.app != '' || inputs.binary != ''
++        continue-on-error: true
+         env:
+           APP: ${{ inputs.app }}
+           BINARY: ${{ inputs.binary }}

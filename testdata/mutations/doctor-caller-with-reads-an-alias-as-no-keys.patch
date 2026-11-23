@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index dad5bae..da9a26f 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -197,7 +197,7 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
+ 				if rest = withoutComment(strings.TrimSpace(rest)); rest != "" {
+ 					entries, flow := flowEntries(rest)
+ 					if !flow {
+-						return notRead(i, line)
++						continue
+ 					}
+ 					for _, e := range entries {
+ 						k, v, ok := withEntry(e)

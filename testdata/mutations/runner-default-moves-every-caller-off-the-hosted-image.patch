@@ -1,8 +1,8 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index f261188..94ee477 100644
+index 88ee9d2..7bf0f4f 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -78,7 +78,7 @@ on:
+@@ -68,7 +68,7 @@ on:
            the `$/` reference the install step is written with; the
            GitHub-hosted image does both.
          type: string
@@ -10,4 +10,4 @@ index f261188..94ee477 100644
 +        default: self-hosted
  
  # A reusable can only downgrade the caller's token, never raise it, so the
- # caller's stub must grant pull-requests: read too (it is in the stub above).
+ # caller must grant pull-requests: read too (README's caller does).

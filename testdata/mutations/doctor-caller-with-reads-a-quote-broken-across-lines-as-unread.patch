@@ -1,0 +1,15 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 0107119..f95fae3 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -204,7 +204,9 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
+ 	last := ""          // the with: key a deeper line continues
+ 	for i, line := range contentLines(lines, start) {
+ 		if held.open() {
+-			held = flowOpen(line, held)
++			if held = flowOpen(line, held); held.quote != 0 {
++				return notRead(i, line)
++			}
+ 			continue
+ 		}
+ 		trimmed := strings.TrimLeft(line, " \t")

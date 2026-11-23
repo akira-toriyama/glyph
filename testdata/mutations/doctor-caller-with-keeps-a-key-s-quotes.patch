@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index dad5bae..2af96b7 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -296,7 +296,7 @@ func withEntry(s string) (key, value string, ok bool) {
+ 		if end < 0 {
+ 			return "", "", false
+ 		}
+-		key, rest = s[1:1+end], s[2+end:]
++		key, rest = s[:2+end], s[2+end:]
+ 		if strings.ContainsRune(key, '\\') || !strings.HasPrefix(rest, ":") {
+ 			return "", "", false // an escape, `''` included, is not a simple key
+ 		}

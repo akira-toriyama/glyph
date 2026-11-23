@@ -1,10 +1,10 @@
 diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
-index c936e80..3a82ab6 100644
+index f57e5eb..78fb8bb 100644
 --- a/internal/doctor/callerperms.go
 +++ b/internal/doctor/callerperms.go
-@@ -73,12 +73,15 @@ func checkCallerPermissions(root string, rootVerified bool, workflows []workflow
+@@ -72,12 +72,15 @@ func checkCallerPermissions(root string, rootVerified bool, workflows []workflow
  		rows:  reusableNeeds,
- 		file: func(f workflowFile) func(reusableCall, permRow) []string {
+ 		file: func(f workflowFile) func(reusableCall, permRow) ([]string, string) {
  			grants, declared := callerGrants(f.Body)
 -			if !declared {
 +			if !declared && false {
@@ -12,9 +12,9 @@ index c936e80..3a82ab6 100644
  				// this file cannot see that setting. Not judged — see the header.
  				return nil
  			}
- 			return func(call reusableCall, row permRow) []string {
+ 			return func(call reusableCall, row permRow) ([]string, string) {
 +				if !declared {
-+					return nil
++					return nil, ""
 +				}
  				var missing []string
  				for _, n := range row.Needs {

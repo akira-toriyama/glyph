@@ -1,0 +1,10 @@
+diff --git a/internal/markdown/compose.go b/internal/markdown/compose.go
+index 6982de6..2856986 100644
+--- a/internal/markdown/compose.go
++++ b/internal/markdown/compose.go
+@@ -207,4 +207,4 @@ func (l *Line) assemble() (s string, prose, value func(lo, hi int) bool) {
+ 	return b.String(),
+ 		holds(func(k partKind) bool { return k == partProse }),
+-		holds(func(k partKind) bool { return k != partRaw })
++		holds(func(k partKind) bool { return k == partProse })
+ }
