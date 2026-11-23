@@ -43,8 +43,9 @@ const (
 	// valueNamed is a non-empty literal: the reusable refuses it.
 	valueNamed
 	// valueUnread is a value a checkout does not hold: an expression GitHub
-	// evaluates at run time, or a block scalar, whose text this reader does
-	// not read.
+	// evaluates at run time, a block scalar, whose text this reader does not
+	// read, or an alias, whose anchor it does not follow (`*e` over `&e ""`
+	// is no value; PyYAML).
 	valueUnread
 )
 
@@ -59,7 +60,7 @@ func gradeInput(v string) inputValue {
 		return valueUnread
 	case v == "", v == `""`, v == `''`, slices.Contains(nullSpellings, v):
 		return valueEmpty
-	case v[0] == '|', v[0] == '>':
+	case v[0] == '|', v[0] == '>', v[0] == '*':
 		return valueUnread
 	}
 	return valueNamed
@@ -95,7 +96,7 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 	}
 
 	callers := 0
-	var findings, unevaluated, unreadable []string
+	var findings, unevaluated, unreadWith, unreadable []string
 	for _, f := range workflows {
 		if f.Err != nil {
 			unreadable = append(unreadable, f.unreadableLine())
@@ -107,7 +108,11 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 				continue
 			}
 			callers++
-			with := jobWith(lines, call.Line)
+			with, unread := jobWith(lines, call.Line)
+			if unread != "" {
+				unreadWith = append(unreadWith, withUnreadLine(f.Name, call, unread))
+				continue
+			}
 			for _, input := range artifactInputs {
 				value, named := with[input]
 				if !named {
@@ -132,7 +137,7 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 	if len(findings) > 0 {
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf("%d artifact input(s) across the %d workflow file(s) that call release.yml", len(findings), callers)
-		c.Details = append(append(findings, unevaluated...), unreadable...)
+		c.Details = slices.Concat(findings, unevaluated, unreadWith, unreadable)
 		c.Message = "a repository that declares [[packages]] keeps one rolling draft per line, and `app` / `binary` name one " +
 			"artifact for one draft — there is no line it would attach to, so release.yml refuses the run, and it stays " +
 			"red on every push until the input goes"
@@ -144,10 +149,15 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 	if len(unevaluated) > 0 {
 		c.Status = StatusUnknown
 		gaps := []string{fmt.Sprintf("%d artifact input(s) set from a value this checkout does not hold", len(unevaluated))}
-		why := []string{"release.yml refuses an artifact input by its value at run time, and an expression or a block " +
-			"scalar is not a value doctor reads"}
+		why := []string{"release.yml refuses an artifact input by its value at run time, and an expression, a block " +
+			"scalar or an alias is not a value doctor reads"}
 		fixes := []string{"write the input as a literal, or drop it — a value that is non-empty at run time is refused " +
 			"on this repository"}
+		if len(unreadWith) > 0 {
+			gaps = append(gaps, fmt.Sprintf("%d caller(s) whose with: doctor does not read", len(unreadWith)))
+			why = append(why, withUnreadWhy)
+			fixes = append(fixes, withUnreadFix)
+		}
 		if len(unreadable) > 0 {
 			gaps = append(gaps, fmt.Sprintf("%d workflow file(s) could not be read", len(unreadable)))
 			why = append(why, "a file doctor cannot read could hold any caller")
@@ -156,10 +166,10 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 		c.Observed = strings.Join(gaps, "; ") + "; no caller names an artifact outright"
 		c.Message = strings.Join(why, ", and ") + " — " + death + " is unverified here, not verified"
 		c.Fix = strings.Join(fixes, "; ")
-		c.Details = append(unevaluated, unreadable...)
+		c.Details = slices.Concat(unevaluated, unreadWith, unreadable)
 		return c
 	}
-	if unverifiedCallers(&c, nil, nil, unreadable, death) {
+	if unverifiedCallers(&c, nil, nil, unreadWith, unreadable, death) {
 		return c
 	}
 	c.Status = StatusPass

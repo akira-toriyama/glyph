@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -52,18 +53,21 @@ func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile,
 		glyph:       glyph,
 		floor:       inputsFloor,
 		rows:        reusableRequiredInputs,
-		file: func(f workflowFile) func(reusableCall, inputRow) []string {
+		file: func(f workflowFile) func(reusableCall, inputRow) ([]string, string) {
 			lines := strings.Split(f.Body, "\n")
-			return func(call reusableCall, row inputRow) []string {
+			return func(call reusableCall, row inputRow) ([]string, string) {
 				var missing []string
-				keys := jobWithKeys(lines, call.Line)
+				keys, unread := jobWithKeys(lines, call.Line)
+				if unread != "" {
+					return nil, withUnreadLine(f.Name, call, unread)
+				}
 				for _, want := range row.Required {
 					if !keys[want] {
 						missing = append(missing, fmt.Sprintf(
 							".github/workflows/%s calls %s@%s but its with: never names %s", f.Name, call.Reusable, call.Ref, want))
 					}
 				}
-				return missing
+				return missing, ""
 			}
 		},
 		failObserved: "%d missing required input(s) across the %d workflow file(s) that call a glyph reusable",
@@ -100,14 +104,30 @@ func inputsExpected(glyph string) string {
 }
 
 // jobWithKeys returns the top-level keys of the `with:` mapping belonging to
-// the job whose `uses:` sits on usesLine (1-indexed): jobWith's keys, for a
-// check that asks only whether an input is named.
-func jobWithKeys(lines []string, usesLine int) map[string]bool {
+// the job whose `uses:` sits on usesLine (1-indexed): jobWith's keys and its
+// unread, for a check that asks only whether an input is named.
+func jobWithKeys(lines []string, usesLine int) (map[string]bool, string) {
 	keys := map[string]bool{}
-	for k := range jobWith(lines, usesLine) {
+	with, unread := jobWith(lines, usesLine)
+	for k := range with {
 		keys[k] = true
 	}
-	return keys
+	return keys, unread
+}
+
+// What both caller checks say of a caller whose with: jobWith does not read:
+// could-not-run, never a verdict either way (DESIGN §7).
+const (
+	withUnreadWhy = "doctor reads a with: written as a block of plain `key: value` lines or as a one-line `{ … }`, " +
+		"and no other form"
+	withUnreadFix = "write the caller's with: as a block of plain `key: value` lines or a one-line `{ … }`"
+)
+
+// withUnreadLine is the Details line of a call whose with: jobWith does not
+// read; unread is jobWith's account of it.
+func withUnreadLine(file string, call reusableCall, unread string) string {
+	return fmt.Sprintf(".github/workflows/%s calls %s@%s with a with: doctor does not read: %s",
+		file, call.Reusable, call.Ref, unread)
 }
 
 // jobWith returns the `with:` mapping belonging to the job whose `uses:` sits
@@ -125,10 +145,21 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 // still seen; YAML orders siblings freely and a miss in either direction
 // would cry wolf over a healthy caller. The forward walk reads only
 // contentLines: an install-notes heredoc's content must not read as keys.
-func jobWith(lines []string, usesLine int) map[string]string {
+//
+// The reader names the forms it reads, and a form it does not positively
+// recognise is unread, never a key set either way: unread, when not "", names
+// the job, the line and its text, and the map is nil. The forms read: the
+// `with:` line's rest, its comment cut, is empty (block form) or a flow
+// mapping closing on that line, split by flowEntries; each block-form line at
+// the key indent is one withEntry. An alias, an anchor or a tag on `with:`, a
+// `{` closing on a later line, a merge key, a `?` key, a key carrying an
+// anchor or a tag — PyYAML reads each as setting keys this reader cannot see
+// (a quoted `"binary": probe` read as the key `"binary"` passed a caller the
+// reusable refuses).
+func jobWith(lines []string, usesLine int) (map[string]string, string) {
 	with := map[string]string{}
 	if usesLine < 1 || usesLine > len(lines) {
-		return with
+		return with, ""
 	}
 	jobIndent := indentOf(lines[usesLine-1])
 	start := usesLine - 1
@@ -142,10 +173,17 @@ func jobWith(lines []string, usesLine int) map[string]string {
 		}
 		start = i
 	}
+	notRead := func(i int, line string) (map[string]string, string) {
+		job := "?"
+		if start > 0 {
+			job, _, _ = strings.Cut(strings.TrimSpace(lines[start-1]), ":")
+		}
+		return nil, fmt.Sprintf("job %s, line %d `%s`", job, i+1, withoutComment(strings.TrimSpace(line)))
+	}
 	inWith := false
 	withKeyIndent := -1 // indent of the keys directly inside with:, learned from the first one
 	last := ""          // the with: key a deeper line continues
-	for _, line := range contentLines(lines, start) {
+	for i, line := range contentLines(lines, start) {
 		trimmed := strings.TrimLeft(line, " \t")
 		ind := indentOf(line)
 		if ind < jobIndent {
@@ -156,11 +194,17 @@ func jobWith(lines []string, usesLine int) map[string]string {
 			inWith = isWith
 			if isWith {
 				// Flow form: with: { a: 1, b: 2 } — the keys sit on this line.
-				if rest = withoutComment(strings.TrimSpace(rest)); strings.HasPrefix(rest, "{") {
-					for part := range strings.SplitSeq(strings.Trim(rest, "{} "), ",") {
-						if k, v, found := strings.Cut(part, ":"); found {
-							with[strings.TrimSpace(k)] = strings.TrimSpace(v)
+				if rest = withoutComment(strings.TrimSpace(rest)); rest != "" {
+					entries, flow := flowEntries(rest)
+					if !flow {
+						return notRead(i, line)
+					}
+					for _, e := range entries {
+						k, v, ok := withEntry(e)
+						if !ok {
+							return notRead(i, line)
 						}
+						with[k] = v
 					}
 					inWith = false
 				}
@@ -181,12 +225,103 @@ func jobWith(lines []string, usesLine int) map[string]string {
 			}
 			continue
 		}
-		if k, v, found := strings.Cut(trimmed, ":"); found {
-			last = strings.TrimSpace(k)
-			with[last] = withoutComment(strings.TrimSpace(v))
+		k, v, ok := withEntry(trimmed)
+		if !ok {
+			return notRead(i, line)
+		}
+		last = k
+		with[last] = withoutComment(v)
+	}
+	return with, ""
+}
+
+// flowEntries splits a flow mapping written whole on one line, `{ … }`, into
+// its entries, on the commas outside quotes. flow is false for anything else:
+// no `{`, a `{` that does not close at the line's end, a nested `{` or `[`, a
+// quote left open. A quote opens only where a scalar begins, so the
+// apostrophe in a plain `don't` is text.
+func flowEntries(s string) (entries []string, flow bool) {
+	if len(s) < 2 || s[0] != '{' || s[len(s)-1] != '}' {
+		return nil, false
+	}
+	s = s[1 : len(s)-1]
+	var quote byte
+	begins, from := true, 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote == '"' && c == '\\':
+			i++
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			if begins {
+				quote = c
+			}
+			begins = false
+		case strings.IndexByte("{}[]", c) >= 0:
+			return nil, false
+		case c == ',' || c == ':':
+			if c == ',' {
+				entries = append(entries, s[from:i])
+				from = i + 1
+			}
+			begins = true
+		case c != ' ' && c != '\t':
+			begins = false
 		}
 	}
-	return with
+	if quote != 0 {
+		return nil, false
+	}
+	entries = append(entries, s[from:])
+	return slices.DeleteFunc(entries, func(e string) bool { return strings.TrimSpace(e) == "" }), true
+}
+
+// withEntry reads one `with:` entry, `key: value`, whose key is a plain
+// scalar or a quoted one without escapes — unquoted here, as YAML reads
+// `"binary"` as binary. value is trimmed, its comment not cut. ok is false
+// for any other entry: a merge key `<<`, a `?` key, a key carrying an anchor,
+// an alias or a tag, a quoted key with an escape, no `: ` at all.
+func withEntry(s string) (key, value string, ok bool) {
+	s = strings.TrimSpace(s)
+	var rest string
+	switch {
+	case s == "":
+		return "", "", false
+	case s[0] == '"' || s[0] == '\'':
+		end := strings.IndexByte(s[1:], s[0])
+		if end < 0 {
+			return "", "", false
+		}
+		key, rest = s[1:1+end], s[2+end:]
+		if strings.ContainsRune(key, '\\') || !strings.HasPrefix(rest, ":") {
+			return "", "", false // an escape, `''` included, is not a simple key
+		}
+		rest = rest[1:]
+		if rest != "" && rest[0] != ' ' && rest[0] != '\t' {
+			return "", "", false
+		}
+	case strings.IndexByte("-?:,[]{}#&*!|>%@`", s[0]) >= 0:
+		return "", "", false
+	default:
+		at := -1
+		for i := 0; i < len(s) && at < 0; i++ {
+			if s[i] == ':' && (i+1 == len(s) || s[i+1] == ' ' || s[i+1] == '\t') {
+				at = i
+			}
+		}
+		if at < 0 {
+			return "", "", false
+		}
+		key, rest = strings.TrimSpace(s[:at]), s[at+1:]
+		if key == "<<" {
+			return "", "", false
+		}
+	}
+	return key, strings.TrimSpace(rest), true
 }
 
 // withoutComment drops a trailing YAML comment from one line of a value: a

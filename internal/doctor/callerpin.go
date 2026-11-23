@@ -49,10 +49,11 @@ type callerSpec[R callerRow] struct {
 	// rows is the check's table, keyed by the reusable's lower-cased file name.
 	rows map[string]R
 	// file prepares one caller file read whole and returns the judge of each
-	// call it makes, which answers that call's finding lines — or nil when the
-	// file is not judged at all. A nil comes before any pin is judged, so an
-	// exempt file is never could-not-run over its pins.
-	file         func(f workflowFile) func(call reusableCall, row R) []string
+	// call it makes, which answers that call's finding lines, or the one
+	// Details line of a call whose with: it does not read (withUnreadLine) —
+	// or nil when the file is not judged at all. A nil comes before any pin is
+	// judged, so an exempt file is never could-not-run over its pins.
+	file         func(f workflowFile) func(call reusableCall, row R) (findings []string, unread string)
 	failObserved string
 	failMessage  string
 	failFix      string
@@ -74,7 +75,7 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
 	}
 
 	callers := 0
-	var findings, skipped, remedies, unreadable []string
+	var findings, skipped, remedies, unreadWith, unreadable []string
 	for _, f := range workflows {
 		if f.Err != nil {
 			// Not left to the pin check: its unknown answers whether a ref is
@@ -104,7 +105,12 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
 				remedies = remember(remedies, nj.Remedy)
 				continue
 			}
-			findings = append(findings, judge(call, row)...)
+			found, unread := judge(call, row)
+			if unread != "" {
+				unreadWith = append(unreadWith, unread)
+				continue
+			}
+			findings = append(findings, found...)
 		}
 	}
 	sort.Strings(findings)
@@ -112,12 +118,12 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
 	if len(findings) > 0 {
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf(spec.failObserved, len(findings), callers)
-		c.Details = slices.Concat(findings, skipped, unreadable)
+		c.Details = slices.Concat(findings, skipped, unreadWith, unreadable)
 		c.Message = spec.failMessage
 		c.Fix = spec.failFix
 		return c
 	}
-	if unverifiedCallers(&c, skipped, remedies, unreadable, spec.death) {
+	if unverifiedCallers(&c, skipped, remedies, unreadWith, unreadable, spec.death) {
 		return c
 	}
 	c.Status = StatusPass
@@ -198,10 +204,11 @@ func unknownReusable(file string) *notJudged {
 
 // unverifiedCallers fills c's could-not-run arm for a caller check that found
 // no defect: callers it could not judge at their pin (skipped, one Details
-// line each, with remedies) and files it could not read. It reports false when
-// there is neither, and the check passes. death names what goes unverified.
-func unverifiedCallers(c *Check, skipped, remedies, unreadable []string, death string) bool {
-	if len(skipped) == 0 && len(unreadable) == 0 {
+// line each, with remedies), callers whose with: it does not read (unreadWith,
+// withUnreadLine's) and files it could not read. It reports false when there
+// is none, and the check passes. death names what goes unverified.
+func unverifiedCallers(c *Check, skipped, remedies, unreadWith, unreadable []string, death string) bool {
+	if len(skipped) == 0 && len(unreadWith) == 0 && len(unreadable) == 0 {
 		return false
 	}
 	c.Status = StatusUnknown
@@ -212,6 +219,11 @@ func unverifiedCallers(c *Check, skipped, remedies, unreadable []string, death s
 			"glyph cannot speak for the release those callers pin")
 		fixes = append(fixes, remedies...)
 	}
+	if len(unreadWith) > 0 {
+		gaps = append(gaps, fmt.Sprintf("%d caller(s) whose with: doctor does not read", len(unreadWith)))
+		why = append(why, withUnreadWhy)
+		fixes = append(fixes, withUnreadFix)
+	}
 	if len(unreadable) > 0 {
 		gaps = append(gaps, fmt.Sprintf("%d workflow file(s) could not be read", len(unreadable)))
 		why = append(why, "a file doctor cannot read could hold any caller")
@@ -220,7 +232,7 @@ func unverifiedCallers(c *Check, skipped, remedies, unreadable []string, death s
 	c.Observed = strings.Join(gaps, "; ") + "; no judged caller is short"
 	c.Message = strings.Join(why, ", and ") + " — " + death + " is unverified here, not verified"
 	c.Fix = strings.Join(fixes, "; ")
-	c.Details = append(append([]string{}, skipped...), unreadable...)
+	c.Details = slices.Concat(skipped, unreadWith, unreadable)
 	return true
 }
 

@@ -173,6 +173,139 @@ func TestCallerArtifactOutcomes(t *testing.T) {
 			cfg: packages, want: StatusFail, wantDetail: "with app, and this repository",
 		},
 		{
+			name:  "a double-quoted key is the key it quotes: binary",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      \"binary\": probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a single-quoted key is the key it quotes: binary",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      'binary': x\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a quoted key in the flow form is the key it quotes",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with: { \"binary\": probe }")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a flow mapping that closes on a later line is unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with: {\n      binary: probe\n    }\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "does not read: job j, line 7 `with: {`",
+		},
+		{
+			name:  "an alias for with: is unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    env: &w { binary: probe }\n    with: *w\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "does not read: job j, line 8 `with: *w`",
+		},
+		{
+			name:  "an anchored flow with: is unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with: &w { binary: probe }\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "line 7 `with: &w { binary: probe }`",
+		},
+		{
+			name:  "a tagged flow with: is unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with: !!map { binary: probe }\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "line 7 `with: !!map { binary: probe }`",
+		},
+		{
+			name:  "a merge key is unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      <<: *x\n      dry-run: false\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "line 8 `<<: *x`",
+		},
+		{
+			name:  "a ? key is unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      ? binary\n      : probe\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "line 8 `? binary`",
+		},
+		{
+			name:  "a key carrying an anchor is unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      &k binary: probe\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "line 8 `&k binary: probe`",
+		},
+		{
+			name:  "a nested collection in the flow form is unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with: { tags: [a, b], binary: probe }\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "line 7",
+		},
+		{
+			name:  "an alias value is a value the checkout does not hold",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    env:\n      E: &e \"\"\n    with:\n      binary: *e\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "with binary: *e",
+		},
+		{
+			name:  "a comma inside quotes splits no flow entry",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with: { install-notes: \"a, binary: b\" }")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "an apostrophe in a plain flow value opens no quote",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with: { install-notes: don't, binary: probe }")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a literal block scalar is unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      binary: |\n        probe\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "with binary: |",
+		},
+		{
+			name:  "an empty quoted value behind a comment",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      binary: \"\" # c\n      app: '' # don't\n")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "a # with no space before it is the value",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      binary: probe#1\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "an anchored literal is named",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      binary: &b probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a comment line between the key and its value",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      # the tool\n      binary:\n        # build.sh makes it\n        probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a comment on the with: line opens the block form",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with: # inputs\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "keys at a deeper indent",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n          binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a with: on a step is not the caller's",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    steps:\n      - uses: actions/checkout@v4\n        with:\n          binary: probe\n")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "a with: on another job is not the caller's",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "  other:\n    runs-on: ubuntu-latest\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "a CRLF file",
+			files: map[string]string{".github/workflows/release.yml": crlf(callerWith("release.yml", "    with:\n      binary: probe\n"))},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a leading document marker",
+			files: map[string]string{".github/workflows/release.yml": "---\n" + callerWith("release.yml", "    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name: "a named artifact beside an unread with: still fails",
+			files: map[string]string{
+				".github/workflows/release.yml": callerWith("release.yml", "    with: *w\n"),
+				".github/workflows/second.yml":  callerWith("release.yml", "    with:\n      app: MyApp\n"),
+			},
+			cfg: packages, want: StatusFail, wantDetail: "with a with: doctor does not read: job j, line 7 `with: *w`",
+		},
+		{
 			name: "glyph.toml not loaded is could-not-run, never a verdict",
 			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
 				"    with:\n      binary: probe\n")},

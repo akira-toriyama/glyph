@@ -1,9 +1,9 @@
 diff --git a/internal/doctor/callerartifact.go b/internal/doctor/callerartifact.go
-index adc198a..b3aaea3 100644
+index 70fa5b1..696ab20 100644
 --- a/internal/doctor/callerartifact.go
 +++ b/internal/doctor/callerartifact.go
-@@ -62,7 +62,7 @@ func gradeInput(v string) inputValue {
- 	case v[0] == '|', v[0] == '>':
+@@ -63,7 +63,7 @@ func gradeInput(v string) inputValue {
+ 	case v[0] == '|', v[0] == '>', v[0] == '*':
  		return valueUnread
  	}
 -	return valueNamed

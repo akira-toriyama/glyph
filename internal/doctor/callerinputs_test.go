@@ -1,8 +1,10 @@
 package doctor
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -138,9 +140,29 @@ func TestCallerInputsOutcomes(t *testing.T) {
 			want:  StatusPass,
 		},
 		{
-			name: "a with: whose value is a block scalar names no input — its text is not a mapping",
+			name: "a with: whose value is a block scalar is a form doctor does not read — its text is not keys",
 			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
 				"    with: |\n      install-notes: x")},
+			want: StatusUnknown, wantDetail: "does not read: job j, line 7 `with: |`",
+		},
+		{
+			name: "an alias for with: is a form doctor does not read",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with: *w\n")},
+			want: StatusUnknown, wantDetail: "does not read: job j, line 7 `with: *w`",
+		},
+		{
+			name: "a quoted key is the input it quotes",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with:\n      \"install-notes\": x\n")},
+			want: StatusPass,
+		},
+		{
+			name: "a missing input beside an unread with: still fails",
+			files: map[string]string{
+				".github/workflows/release.yml": callerWith("release.yml", "    with: *w\n"),
+				".github/workflows/second.yml":  callerWith("release.yml", "    with:\n      dry-run: true\n"),
+			},
 			want: StatusFail, wantDetail: "never names install-notes",
 		},
 		{
@@ -223,12 +245,91 @@ func TestJobWithDropsEachLinesCommentBeforeTheFold(t *testing.T) {
 					uses = i + 1
 				}
 			}
-			got, named := jobWith(lines, uses)["binary"]
+			with, unread := jobWith(lines, uses)
+			got, named := with["binary"]
+			if unread != "" {
+				t.Fatalf("jobWith left %q unread", unread)
+			}
 			if !named {
 				t.Fatalf("binary is not a with: key of %q", tt.with)
 			}
 			if got != tt.want {
 				t.Errorf("binary = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestUnreadWithIsCouldNotRunInBothCallerChecks holds DESIGN §7's grade for
+// what a caller check cannot read: a with: in a form jobWith does not read is
+// could-not-run in both checks that read it, naming the file, the job and the
+// text, never a pass over keys it cannot see and never a fail over keys it
+// cannot see either (an alias `with: *w` over `&w { binary: probe }` passed a
+// caller release.yml refuses; PyYAML reads binary there).
+func TestUnreadWithIsCouldNotRunInBothCallerChecks(t *testing.T) {
+	requiringInstallNotes(t)
+	files := map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+		"    env: &w { binary: probe, install-notes: x }\n    with: *w\n")}
+	checks := map[string]Check{
+		"workflow-caller-inputs":   inputsAt(checkoutAt(t, files), true, "dev"),
+		"workflow-caller-artifact": artifactAt(checkoutAt(t, files), true, loaded(t, packagesConfig("camp"))),
+	}
+	for id, c := range checks {
+		if c.Status != StatusUnknown {
+			t.Errorf("%s: status = %s, want unknown (observed %q, details %v)", id, c.Status, c.Observed, c.Details)
+			continue
+		}
+		want := ".github/workflows/release.yml calls release.yml@v4.2.0 with a with: doctor does not read: job j, line 8 `with: *w`"
+		if !slices.Contains(c.Details, want) {
+			t.Errorf("%s: details %v never say %q", id, c.Details, want)
+		}
+		if !strings.Contains(c.Message, withUnreadWhy) || !strings.Contains(c.Message, "unverified here, not verified") {
+			t.Errorf("%s: message %q must say which forms doctor reads and that it verified nothing", id, c.Message)
+		}
+		if c.Fix != withUnreadFix {
+			t.Errorf("%s: fix = %q, want %q", id, c.Fix, withUnreadFix)
+		}
+	}
+}
+
+// TestJobWithReadsTheFormsItNamesAndNoOther holds jobWith's principle: a form
+// it positively recognises is read — a quoted key as the key it quotes, a
+// flow mapping split on the commas outside quotes — and any other is unread,
+// never a key set (each want is PyYAML's reading of the same lines).
+func TestJobWithReadsTheFormsItNamesAndNoOther(t *testing.T) {
+	tests := []struct {
+		name, with string
+		want       map[string]string // nil: unread
+	}{
+		{"a double-quoted key", "    with:\n      \"binary\": probe\n", map[string]string{"binary": "probe"}},
+		{"a single-quoted key", "    with:\n      'binary': x\n", map[string]string{"binary": "x"}},
+		{"a quoted key in the flow form", "    with: { \"binary\": probe }", map[string]string{"binary": "probe"}},
+		{"a comma inside quotes", "    with: { install-notes: \"a, binary: b\" }", map[string]string{"install-notes": `"a, binary: b"`}},
+		{"an apostrophe in a plain flow value", "    with: { a: don't, binary: probe }", map[string]string{"a": "don't", "binary": "probe"}},
+		{"an alias value is kept for the grade", "    with:\n      binary: *e\n", map[string]string{"binary": "*e"}},
+		{"with: behind a comment, the block form under it", "    with: # c\n      binary: probe\n", map[string]string{"binary": "probe"}},
+		{"an alias for with:", "    with: *w\n", nil},
+		{"an anchored flow with:", "    with: &w { binary: probe }\n", nil},
+		{"a tagged flow with:", "    with: !!map { binary: probe }\n", nil},
+		{"a flow mapping closing on a later line", "    with: {\n      binary: probe }\n", nil},
+		{"a nested collection in the flow form", "    with: { a: { b: c }, binary: probe }\n", nil},
+		{"a merge key", "    with:\n      <<: *x\n", nil},
+		{"a ? key", "    with:\n      ? binary\n      : probe\n", nil},
+		{"a key carrying a tag", "    with:\n      !!str binary: probe\n", nil},
+		{"a quoted key with an escape", "    with:\n      \"bin\\x61ry\": probe\n", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := strings.Split(callerWith("release.yml", tt.with), "\n")
+			got, unread := jobWith(lines, 6)
+			if tt.want == nil {
+				if unread == "" || got != nil {
+					t.Errorf("jobWith = %v, %q — want unread and no keys", got, unread)
+				}
+				return
+			}
+			if unread != "" || !maps.Equal(got, tt.want) {
+				t.Errorf("jobWith = %v, %q — want %v, read", got, unread, tt.want)
 			}
 		})
 	}

@@ -70,14 +70,14 @@ func checkCallerPermissions(root string, rootVerified bool, workflows []workflow
 		glyph: glyph,
 		floor: permsFloor,
 		rows:  reusableNeeds,
-		file: func(f workflowFile) func(reusableCall, permRow) []string {
+		file: func(f workflowFile) func(reusableCall, permRow) ([]string, string) {
 			grants, declared := callerGrants(f.Body)
 			if !declared {
 				// No explicit block: the repository's default token decides, and
 				// this file cannot see that setting. Not judged — see the header.
 				return nil
 			}
-			return func(call reusableCall, row permRow) []string {
+			return func(call reusableCall, row permRow) ([]string, string) {
 				var missing []string
 				for _, n := range row.Needs {
 					if !satisfies(grants, n.Scope, n.Level) {
@@ -86,7 +86,7 @@ func checkCallerPermissions(root string, rootVerified bool, workflows []workflow
 							f.Name, call.Reusable, call.Ref, n.Scope, n.Level))
 					}
 				}
-				return missing
+				return missing, ""
 			}
 		},
 		failObserved: "%d missing grant(s) across the %d workflow file(s) that call a glyph reusable",

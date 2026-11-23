@@ -4619,12 +4619,20 @@ The severities are the argued part:
   43678383110, a bare `binary:`), and so is YAML null spelled out — `~`,
   `null`, `Null`, `NULL` unquoted (runs 43689418881, 43689421291 and
   43690575673; quoted, each is a string and is named, run 43690585767). The
-  value is read as YAML reads it, each line's comment cut before a
-  continuation line joins: under `binary: # which tool` the next line is the
-  value, and read behind the comment it passed a caller the reusable refused
-  (run 43689423925, `TestJobWithDropsEachLinesCommentBeforeTheFold`). A
-  value the checkout does not hold — a `${{ }}` expression, a block scalar —
-  is `unknown`, the grade both other caller checks give what they cannot
+  reader reads two forms of `with:` and no other: a block of `key: value`
+  lines, each key a plain scalar or a simply quoted one (`"binary"` is the key
+  binary), and a flow mapping that opens and closes on the `with:` line, split
+  on the commas outside quotes. Anything else — an alias, an anchor or a tag
+  on `with:`, a `{` closing on a later line, a nested collection, a merge key,
+  a `?` key — is `unknown` in both checks that read `with:`, never a key set
+  either way: read as text, a quoted key and `with: *w` passed callers that
+  name `binary` as YAML reads them (`TestJobWithReadsTheFormsItNamesAndNoOther`).
+  Each line's comment is cut before a continuation line joins: under
+  `binary: # which tool` the next line is the value, and read behind the
+  comment it passed a caller the reusable refused (run 43689423925,
+  `TestJobWithDropsEachLinesCommentBeforeTheFold`). A value the checkout
+  does not hold — a `${{ }}` expression, a block scalar, an alias — is
+  `unknown`, the grade both other caller checks give what they cannot
   read, with a non-empty literal beside it still failing. No pin rule: one artifact has no line to attach to at
   any release, so the pair is wrong at every pin — which is also why the
   check's text never says where in the run the refusal lands (after the
