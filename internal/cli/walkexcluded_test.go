@@ -393,6 +393,16 @@ func TestSinceTagExcludedAuthorsCappedListingIsTruncatedNotLost(t *testing.T) {
 	}
 	capped := apiListing(entries...)
 	const truncated = "merged pull request #5 returned the maximum 250 commits, so GitHub truncated its listing and the rest could not be read"
+	// The listing is capped again on every run, so the refusal's next step is
+	// the wedge escape, never the re-run a lag gets (mutation row
+	// truncated-listing-remedy-is-a-rerun).
+	const escape = "could not read; cut a tag at or past what the walk cannot read, merged pull request #5's merge point"
+	wedged := func(t *testing.T, stderr string) {
+		t.Helper()
+		if !strings.Contains(stderr, escape) || strings.Contains(stderr, "re-run") {
+			t.Errorf("the refusal's next step must be the wedge escape and no re-run:\n  %s\nstderr: %s", escape, stderr)
+		}
+	}
 	t.Run("a merge commit the bot pressed", func(t *testing.T) {
 		dir, _ := testutil.NewTaggedRepo(t)
 		mp := mergeInto(t, dir, "akira-toriyama", "dependabot[bot]", prTopic(5), prMergeSubject(5), ":bug:~ fix the build")
@@ -409,6 +419,7 @@ func TestSinceTagExcludedAuthorsCappedListingIsTruncatedNotLost(t *testing.T) {
 		if strings.Contains(stderr, "nothing in the range resolved to it") || strings.Contains(stderr, "stood aside for a merge point nothing resolved") {
 			t.Errorf("the pull resolved; it is truncated, not lost:\n%s", stderr)
 		}
+		wedged(t, stderr)
 	})
 	t.Run("a squash under the bot's name", func(t *testing.T) {
 		dir, _ := testutil.NewTaggedRepo(t)
@@ -423,6 +434,7 @@ func TestSinceTagExcludedAuthorsCappedListingIsTruncatedNotLost(t *testing.T) {
 		if code != 4 || stdout != "" || !strings.Contains(stderr, truncated) {
 			t.Fatalf("release --dry-run = exit %d stdout %q, want 4 naming the truncation, as a human's squash of the same listing answers:\n  %s\nstderr: %s", code, stdout, truncated, stderr)
 		}
+		wedged(t, stderr)
 	})
 }
 
