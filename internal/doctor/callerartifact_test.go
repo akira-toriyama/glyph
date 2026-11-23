@@ -371,6 +371,56 @@ func TestCallerArtifactOutcomes(t *testing.T) {
 			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
 		},
 		{
+			name:  "a quoted scalar broken across lines inside the open collection",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [ \"a\n      b\" ]\n    with:\n      install-notes: x\n")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "a quoted scalar broken across lines inside the open collection, an artifact after it",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [ \"a\n      b\" ]\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a quote opened on a continuation line closes on the next",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [\n      \"a,\n      b\"\n    ]\n    with:\n      install-notes: x\n")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "a quote opened on a continuation line closes on the next, an artifact after it",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [\n      \"a,\n      b\"\n    ]\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a quoted value continued on the next line, no bracket",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    name: \"a\n      b\"\n    with:\n      install-notes: x\n")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "a quoted value continued on the next line, no bracket, an artifact after it",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    name: \"a\n      b\"\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a single-quoted value with an escaped quote, continued",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    name: 'it''s\n      more'\n    with:\n      install-notes: x\n")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "a single-quoted value with an escaped quote, continued, an artifact after it",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    name: 'it''s\n      more'\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a bracket that never closes swallows the with: below it: unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [\n      a\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "does not read: job j, line 7 `needs: [`",
+		},
+		{
+			name:  "a quote that never closes swallows the with: below it: unread",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    name: \"a\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "does not read: job j, line 7 `name: \"a`",
+		},
+		{
 			name: "glyph.toml not loaded is could-not-run, never a verdict",
 			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
 				"    with:\n      binary: probe\n")},

@@ -159,11 +159,13 @@ func withUnreadLine(file string, call reusableCall, unread string) string {
 // not "", names the job, the line and its text, and the map is nil. The job's
 // own key lines are withEntry's too, so `with  :` and `"with":` are with, a
 // job-level line it does not read could be with and is unread, and a `-` line
-// there is a sequence entry under the key above. A job key whose value opens a
-// flow collection that does not close on its line owns every line up to the
-// bracket that closes it, whatever their indent: a `]` at the job's indent
-// continues `needs: [`, and read as a job-level line it made a healthy caller
-// could-not-run (exit 4). The forms read: the
+// there is a sequence entry under the key above. A job key whose value leaves
+// a bracket or a quote open owns every line up to where it closes, whatever
+// their indent: a `]` at the job's indent continues `needs: [`, and read as a
+// job-level line it made a healthy caller could-not-run (exit 4). Only the
+// job's own with: is unread for its form; a value still open where the job
+// ends swallowed the rest, with: included, so that is unread too. The forms
+// read: the
 // `with:` line's rest, its comment cut, is empty (block form) or a flow
 // mapping closing on that line, split by flowEntries; each block-form line at
 // the key indent is one withEntry. An alias, an anchor or a tag on `with:`, a
@@ -196,15 +198,13 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
 		return nil, fmt.Sprintf("job %s, line %d `%s`", job, i+1, withoutComment(strings.TrimSpace(line)))
 	}
 	inWith := false
-	open := 0 // the bracket depth a job key's flow collection leaves open
+	var held flowState // what a job key's value, from line heldAt, left open
+	heldAt := -1
 	withKeyIndent := -1 // indent of the keys directly inside with:, learned from the first one
 	last := ""          // the with: key a deeper line continues
 	for i, line := range contentLines(lines, start) {
-		if open > 0 {
-			var closed bool
-			if open, closed = flowOpen(withoutComment(strings.TrimSpace(line)), open); !closed {
-				return notRead(i, line)
-			}
+		if held.open() {
+			held = flowOpen(line, held)
 			continue
 		}
 		trimmed := strings.TrimLeft(line, " \t")
@@ -235,11 +235,8 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
 					}
 					inWith = false
 				}
-			} else if v := withoutComment(strings.TrimSpace(rest)); strings.HasPrefix(v, "[") || strings.HasPrefix(v, "{") {
-				var closed bool
-				if open, closed = flowOpen(v, 0); !closed {
-					return notRead(i, line)
-				}
+			} else if v := withoutComment(strings.TrimSpace(rest)); v != "" && strings.IndexByte("[{\"'", v[0]) >= 0 {
+				held, heldAt = flowOpen(v, flowState{}), i
 			}
 			continue
 		}
@@ -264,20 +261,25 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
 		last = k
 		with[last] = withoutComment(v)
 	}
+	if held.open() {
+		return notRead(heldAt, lines[heldAt])
+	}
 	return with, ""
 }
 
-// flowSyntax walks s as flow text and calls at with each flow indicator
-// outside quotes — , : { } [ ] — stopping when at returns false. It reports
-// whether the walk ran to the end with every quote closed. A quote opens only
-// where a scalar begins, so the apostrophe in a plain `don't` is text.
-func flowSyntax(s string, at func(i int, c byte) bool) bool {
-	var quote byte
+// flowSyntax walks one line s as flow text, starting inside quote (0: in
+// none), and calls at with each flow indicator outside quotes — , : { } [ ] —
+// up to a comment. It returns the quote the line leaves open. A quote opens
+// only where a scalar begins, so the apostrophe in a plain `don't` is text,
+// and `''` inside single quotes is a quote, not the close.
+func flowSyntax(s string, quote byte, at func(i int, c byte)) byte {
 	begins := true
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
 		case quote == '"' && c == '\\':
+			i++
+		case quote == '\'' && c == '\'' && i+1 < len(s) && s[i+1] == '\'':
 			i++
 		case quote != 0:
 			if c == quote {
@@ -288,32 +290,38 @@ func flowSyntax(s string, at func(i int, c byte) bool) bool {
 				quote = c
 			}
 			begins = false
+		case c == '#' && (i == 0 || s[i-1] == ' ' || s[i-1] == '\t'):
+			return quote
 		case strings.IndexByte(",:{}[]", c) >= 0:
-			if !at(i, c) {
-				return false
-			}
+			at(i, c)
 			begins = c != '}' && c != ']'
 		case c != ' ' && c != '\t':
 			begins = false
 		}
 	}
-	return quote == 0
+	return quote
 }
 
-// flowOpen returns the bracket depth s leaves open when the flow text before
-// it left depth open; closed is false when s leaves a quote open, which this
-// reader does not carry to the next line.
-func flowOpen(s string, depth int) (open int, closed bool) {
-	closed = flowSyntax(s, func(_ int, c byte) bool {
+// flowState is what a value's lines so far leave open: the bracket depth and
+// the quote they are inside.
+type flowState struct {
+	depth int
+	quote byte
+}
+
+func (f flowState) open() bool { return f.depth > 0 || f.quote != 0 }
+
+// flowOpen returns what f leaves open once line s is read after it.
+func flowOpen(s string, f flowState) flowState {
+	f.quote = flowSyntax(s, f.quote, func(_ int, c byte) {
 		switch c {
 		case '[', '{':
-			depth++
+			f.depth++
 		case ']', '}':
-			depth--
+			f.depth--
 		}
-		return true
 	})
-	return depth, closed
+	return f
 }
 
 // flowEntries splits a flow mapping written whole on one line, `{ … }`, into
@@ -325,18 +333,17 @@ func flowEntries(s string) (entries []string, flow bool) {
 		return nil, false
 	}
 	s = s[1 : len(s)-1]
-	from := 0
-	if !flowSyntax(s, func(i int, c byte) bool {
+	from, nested := 0, false
+	if flowSyntax(s, 0, func(i int, c byte) {
 		switch c {
 		case ',':
 			entries = append(entries, s[from:i])
 			from = i + 1
 		case ':':
 		default:
-			return false // a nested collection
+			nested = true
 		}
-		return true
-	}) {
+	}) != 0 || nested {
 		return nil, false
 	}
 	entries = append(entries, s[from:])
