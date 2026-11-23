@@ -59,8 +59,8 @@ func under(block, head string) string {
 	return strings.Join(nested, "\n")
 }
 
-// TestReleaseArtifactsCarryNoTimeButTheCommits: every time and every account
-// a release artifact carries is stated in .goreleaser.yaml from the commit,
+// TestReleaseArtifactsCarryNoTimeButTheCommits: every time, every account and
+// every file mode a release artifact carries is stated in .goreleaser.yaml,
 // so two runs over one commit produce the same bytes — which is what lets a
 // re-run of a published tag's build be compared with the published sha256,
 // and an attestation be re-issued over the bytes it first named.
@@ -74,6 +74,12 @@ func under(block, head string) string {
 // and README.md the second the checkout wrote them; every member carried the
 // building account's id and name. With the keys, the two runs agree on all
 // ten sha256, and the members read uid 0 `root` at the committer time.
+//
+// Measured 2026-11-23, same tool: a clone and build under umask 077 packed
+// LICENSE and README.md `-rw-------` where umask 022 packs `-rw-r--r--`, and
+// all four archives, checksums.txt and the cask differed — GoReleaser copies
+// a file's mode from the checkout unless `info.mode` states it. builds_info
+// needs none: GoReleaser forces 0755 on a binary.
 func TestReleaseArtifactsCarryNoTimeButTheCommits(t *testing.T) {
 	for _, canary := range []string{"{{.Date}}", "{{ .Date }}", "{{ .Timestamp }}", `{{ .Now.Format "2006" }}`} {
 		if !wallClockTemplate.MatchString(canary) {
@@ -145,11 +151,36 @@ func TestReleaseArtifactsCarryNoTimeButTheCommits(t *testing.T) {
 			t.Errorf("the archive's files entry %q states no `mtime: \"{{ .CommitDate }}\"`, so its tar header "+
 				"carries the time the checkout wrote the file", name)
 		}
+		if !regexp.MustCompile(`(?m)^\s+mode:\s*0644\s*$`).MatchString(item) {
+			t.Errorf("the archive's files entry %q states no `mode: 0644`, so its tar header carries the mode the "+
+				"checkout's umask left: under umask 077 every archive, checksums.txt and the cask change", name)
+		}
 	}
 	every := len(regexp.MustCompile(`(?m)^\s+mtime:`).FindAllString(archives, -1))
 	fromCommit := len(regexp.MustCompile(`(?m)^\s+mtime:\s*`+commitDateTemplate+`\s*$`).FindAllString(archives, -1))
 	if every != fromCommit {
 		t.Errorf("%d of the archive's %d `mtime:` keys are not \"{{ .CommitDate }}\"", every-fromCommit, every)
+	}
+}
+
+// TestReleaseArtifactsCarryNoBuildDirectory: every build passes -trimpath.
+// Without it the compiler writes the checkout's absolute path into the
+// binary, so two clones of one commit at different paths build different
+// binaries — measured 2026-11-23 with GoReleaser v2.20.2: 78 build-directory
+// strings in each, and `go test ./internal/workflows` still passed. build.sh
+// passes it too, so a source build is not tied to where it was checked out.
+func TestReleaseArtifactsCarryNoBuildDirectory(t *testing.T) {
+	builds := topLevelBlock(t, code(repoFile(t, ".goreleaser.yaml")), "builds")
+	entries := len(regexp.MustCompile(`(?m)^  - `).FindAllString(builds, -1))
+	trimmed := len(regexp.MustCompile(`(?m)^    flags:\s*\[[^\]]*-trimpath[\s,\]]`).FindAllString(builds, -1))
+	if entries == 0 || trimmed != entries {
+		t.Errorf(".goreleaser.yaml has %d build(s) and %d `flags: [-trimpath]`: without it the compiler writes "+
+			"the checkout's path into the binary, so a clone of the same commit at another path builds "+
+			"different bytes", entries, trimmed)
+	}
+	if !strings.Contains(repoFile(t, "build.sh"), "go build -trimpath ") {
+		t.Error("build.sh's `go build` passes no -trimpath: its binary then carries the checkout's path, so two " +
+			"checkouts of one commit build different bytes")
 	}
 }
 

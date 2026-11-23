@@ -1,0 +1,12 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index 169f78d..e2a5daa 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -5,7 +5,6 @@ builds:
+     main: ./cmd/glyph
+     binary: glyph
+     env: [CGO_ENABLED=0]
+-    flags: [-trimpath]
+     # Every time a release artifact carries is the tagged commit's committer
+     # time, never the wall clock, so a rebuild of one commit is the same bytes
+     # (measured 2026-11-15, GoReleaser v2.20.2: two runs 75s apart, each in a

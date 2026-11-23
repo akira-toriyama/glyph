@@ -32,13 +32,16 @@ builds:
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    # A tar header records each member's owner and time, and GoReleaser copies
-    # both from the file on disk: the account the job runs as, and for
-    # README.md the second the checkout wrote it. Stated here, the headers are
-    # the same on every host and in every run. builds_info states no mtime:
-    # the binary's is mod_timestamp's, above. `files` names the two files
-    # GoReleaser's default globs select here, because `info` is given per
-    # entry.
+    # A tar header records each member's owner, time and mode, and GoReleaser
+    # copies all three from the file on disk: the account the job runs as, for
+    # README.md the second the checkout wrote it, and for LICENSE and README.md
+    # the mode the checkout's umask left (measured 2026-11-23, v2.20.2: a clone
+    # and build under umask 077 changed all four archives, checksums.txt and
+    # the cask). Stated here, the headers are the same on every host and in
+    # every run. builds_info states no mtime — the binary's is mod_timestamp's,
+    # above — and no mode: GoReleaser forces 0755 on a binary. `files` names
+    # the two files GoReleaser's default globs select here, because `info` is
+    # given per entry.
     # https://goreleaser.com/customization/archive/ (builds_info, files[].info)
     builds_info:
       owner: root
@@ -49,11 +52,13 @@ archives:
           owner: root
           group: root
           mtime: "{{ .CommitDate }}"
+          mode: 0644
       - src: README.md
         info:
           owner: root
           group: root
           mtime: "{{ .CommitDate }}"
+          mode: 0644
 
 checksum:
   name_template: checksums.txt

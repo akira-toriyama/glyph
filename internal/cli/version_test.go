@@ -123,9 +123,15 @@ func TestVersionHelpAndReadmeSayWhatTheDateIs(t *testing.T) {
 		if strings.Contains(text, "build date") {
 			t.Errorf("%s says \"build date\"; no build stamps the time it ran", where)
 		}
-		if !strings.Contains(text, "module-mode `go install …@vX.Y.Z` build reports the") {
-			t.Errorf("%s does not say what a module-mode `go install …@vX.Y.Z` build reports: the tag alone, "+
-				"no commit and no date, because Go embeds no VCS data there", where)
+		if !goInstallReportsTheTagAlone.MatchString(text) {
+			t.Errorf("%s does not say that a module-mode `go install …@vX.Y.Z` build reports the tag alone — no "+
+				"commit, no date — because Go embeds no VCS data there", where)
 		}
 	}
 }
+
+// goInstallReportsTheTagAlone matches the statement, not its lead-in: a text
+// that says a module-mode build reports a commit and a date is as wrong as
+// one that says nothing.
+var goInstallReportsTheTagAlone = regexp.MustCompile("module-mode `go install …@vX\\.Y\\.Z` build reports the " +
+	"(?:release )?tag alone[^.]*\\bno commit\\b[^.]*\\bno date\\b")
