@@ -1,8 +1,8 @@
 diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
-index dad5bae..e9cb5b5 100644
+index f841809..7fd6974 100644
 --- a/internal/doctor/callerinputs.go
 +++ b/internal/doctor/callerinputs.go
-@@ -258,7 +258,7 @@ func flowEntries(s string) (entries []string, flow bool) {
+@@ -285,7 +285,7 @@ func flowSyntax(s string, at func(i int, c byte) bool) bool {
  			}
  		case c == '"' || c == '\'':
  			if begins {
@@ -10,4 +10,4 @@ index dad5bae..e9cb5b5 100644
 +				_ = c
  			}
  			begins = false
- 		case strings.IndexByte("{}[]", c) >= 0:
+ 		case strings.IndexByte(",:{}[]", c) >= 0:

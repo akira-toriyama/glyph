@@ -326,6 +326,51 @@ func TestCallerArtifactOutcomes(t *testing.T) {
 			cfg: packages, want: StatusFail, wantDetail: "with a with: doctor does not read: job j, line 7 `with: *w`",
 		},
 		{
+			name:  "a flow sequence closing at the job's indent is that key's value",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [\n      a,\n      b\n    ]\n    with:\n      install-notes: x\n")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "the job-level reading resumes behind the closing bracket",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [\n      a,\n      b\n    ]\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a flow mapping closing at the job's indent is that key's value",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    permissions: {\n      contents: write\n    }\n    with:\n      install-notes: x\n")},
+			cfg:   packages, want: StatusPass,
+		},
+		{
+			name:  "a flow mapping closing at the job's indent, an artifact after it",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    permissions: {\n      contents: write\n    }\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a closing bracket behind which a comment sits",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [\n      a\n    ]  # c\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a continuation line at the job's indent inside the open collection",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [\n    a,\n    ]\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a nested sequence spanning lines",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [[a],\n    [b, c],\n      d]\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a bracket inside quotes in the open collection closes nothing",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    needs: [\"a ] b\",\n    c\n    ]\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a bracket inside a quoted value opens nothing",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    name: \"a [ b\"\n    with:\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
 			name: "glyph.toml not loaded is could-not-run, never a verdict",
 			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
 				"    with:\n      binary: probe\n")},
