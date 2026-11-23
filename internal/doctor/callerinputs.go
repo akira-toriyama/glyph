@@ -56,6 +56,12 @@ func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile,
 		file: func(f workflowFile) func(reusableCall, inputRow) ([]string, string) {
 			lines := strings.Split(f.Body, "\n")
 			return func(call reusableCall, row inputRow) ([]string, string) {
+				if len(row.Required) == 0 {
+					// Nothing to ask of with:, so nothing it holds is unread: a
+					// caller at a pin that requires no input is never
+					// could-not-run over its with: (exit 4 where 0 is right).
+					return nil, ""
+				}
 				var missing []string
 				keys, unread := jobWithKeys(lines, call.Line)
 				if unread != "" {
@@ -147,8 +153,13 @@ func withUnreadLine(file string, call reusableCall, unread string) string {
 // contentLines: an install-notes heredoc's content must not read as keys.
 //
 // The reader names the forms it reads, and a form it does not positively
-// recognise is unread, never a key set either way: unread, when not "", names
-// the job, the line and its text, and the map is nil. The forms read: the
+// recognise is unread, never a key set either way in a file that is valid
+// YAML (a tab-indented key line, or one between the job's indent and the
+// keys', reads as no key — GitHub refuses either file outright): unread, when
+// not "", names the job, the line and its text, and the map is nil. The job's
+// own key lines are withEntry's too, so `with  :` and `"with":` are with, a
+// job-level line it does not read could be with and is unread, and a `-` line
+// there is a sequence entry under the key above. The forms read: the
 // `with:` line's rest, its comment cut, is empty (block form) or a flow
 // mapping closing on that line, split by flowEntries; each block-form line at
 // the key indent is one withEntry. An alias, an anchor or a tag on `with:`, a
@@ -190,7 +201,11 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
 			break // the job block closed
 		}
 		if ind == jobIndent {
-			rest, isWith := strings.CutPrefix(trimmed, "with:")
+			k, rest, ok := withEntry(trimmed)
+			if !ok && !strings.HasPrefix(trimmed, "-") {
+				return notRead(i, line)
+			}
+			isWith := ok && k == "with"
 			inWith = isWith
 			if isWith {
 				// Flow form: with: { a: 1, b: 2 } — the keys sit on this line.

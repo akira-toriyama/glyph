@@ -258,8 +258,28 @@ func TestCallerArtifactOutcomes(t *testing.T) {
 			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
 		},
 		{
-			name:  "an anchored literal is named",
+			name:  "an anchored literal is a value this reader does not resolve",
 			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      binary: &b probe\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "with binary: &b probe",
+		},
+		{
+			name:  "an anchored empty value is unread, not named (YAML reads empty)",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      binary: &b \"\"\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "with binary: &b \"\"",
+		},
+		{
+			name:  "a tagged null is unread, not named (YAML reads empty)",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with:\n      binary: !!null\n")},
+			cfg:   packages, want: StatusUnknown, wantDetail: "with binary: !!null",
+		},
+		{
+			name:  "a job key spelled `with  :` is with",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with  :\n      binary: probe\n")},
+			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
+		},
+		{
+			name:  "a quoted job key \"with\" is with, in the flow form",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    \"with\": { binary: probe }")},
 			cfg:   packages, want: StatusFail, wantDetail: "with binary,",
 		},
 		{

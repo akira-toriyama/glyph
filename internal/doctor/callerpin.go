@@ -123,7 +123,7 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
 		c.Fix = spec.failFix
 		return c
 	}
-	if unverifiedCallers(&c, skipped, remedies, unreadWith, unreadable, spec.death) {
+	if unverifiedCallers(&c, skipped, remedies, unreadWith, unreadable, spec.death, "no judged caller is short") {
 		return c
 	}
 	c.Status = StatusPass
@@ -206,8 +206,9 @@ func unknownReusable(file string) *notJudged {
 // no defect: callers it could not judge at their pin (skipped, one Details
 // line each, with remedies), callers whose with: it does not read (unreadWith,
 // withUnreadLine's) and files it could not read. It reports false when there
-// is none, and the check passes. death names what goes unverified.
-func unverifiedCallers(c *Check, skipped, remedies, unreadWith, unreadable []string, death string) bool {
+// is none, and the check passes. death names what goes unverified, and clean
+// is the check's own word for what the judged callers showed.
+func unverifiedCallers(c *Check, skipped, remedies, unreadWith, unreadable []string, death, clean string) bool {
 	if len(skipped) == 0 && len(unreadWith) == 0 && len(unreadable) == 0 {
 		return false
 	}
@@ -229,7 +230,7 @@ func unverifiedCallers(c *Check, skipped, remedies, unreadWith, unreadable []str
 		why = append(why, "a file doctor cannot read could hold any caller")
 		fixes = append(fixes, "fix the file permissions and re-run")
 	}
-	c.Observed = strings.Join(gaps, "; ") + "; no judged caller is short"
+	c.Observed = strings.Join(gaps, "; ") + "; " + clean
 	c.Message = strings.Join(why, ", and ") + " — " + death + " is unverified here, not verified"
 	c.Fix = strings.Join(fixes, "; ")
 	c.Details = slices.Concat(skipped, unreadWith, unreadable)

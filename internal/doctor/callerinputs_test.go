@@ -274,10 +274,17 @@ func TestUnreadWithIsCouldNotRunInBothCallerChecks(t *testing.T) {
 		"workflow-caller-inputs":   inputsAt(checkoutAt(t, files), true, "dev"),
 		"workflow-caller-artifact": artifactAt(checkoutAt(t, files), true, loaded(t, packagesConfig("camp"))),
 	}
+	observed := map[string]string{
+		"workflow-caller-inputs":   "1 caller(s) whose with: doctor does not read; no judged caller is short",
+		"workflow-caller-artifact": "1 caller(s) whose with: doctor does not read; no judged caller names an artifact input",
+	}
 	for id, c := range checks {
 		if c.Status != StatusUnknown {
 			t.Errorf("%s: status = %s, want unknown (observed %q, details %v)", id, c.Status, c.Observed, c.Details)
 			continue
+		}
+		if c.Observed != observed[id] {
+			t.Errorf("%s: observed = %q, want %q — each check's own word for what it judged", id, c.Observed, observed[id])
 		}
 		want := ".github/workflows/release.yml calls release.yml@v4.2.0 with a with: doctor does not read: job j, line 8 `with: *w`"
 		if !slices.Contains(c.Details, want) {
@@ -289,6 +296,24 @@ func TestUnreadWithIsCouldNotRunInBothCallerChecks(t *testing.T) {
 		if c.Fix != withUnreadFix {
 			t.Errorf("%s: fix = %q, want %q", id, c.Fix, withUnreadFix)
 		}
+	}
+}
+
+// TestCallerInputsAsksNothingOfWithWhereNothingIsRequired holds the inputs
+// check to its question: at a pin that requires no input nothing can be
+// missing, so a with: it does not read is no gap — read first, `with: *w` on
+// a single-line repository made doctor exit 4 where 0 is right. The artifact
+// check asks of the same with: and stays could-not-run.
+func TestCallerInputsAsksNothingOfWithWhereNothingIsRequired(t *testing.T) {
+	shipped := reusableRequiredInputs
+	reusableRequiredInputs = map[string]inputRow{"release.yml": {After: "v0.7.0"}}
+	t.Cleanup(func() { reusableRequiredInputs = shipped })
+	files := map[string]string{".github/workflows/release.yml": callerWith("release.yml", "    with: *w\n")}
+	if c := inputsAt(checkoutAt(t, files), true, "dev"); c.Status != StatusPass {
+		t.Errorf("workflow-caller-inputs: status = %s, want pass — nothing is required (observed %q, details %v)", c.Status, c.Observed, c.Details)
+	}
+	if c := artifactAt(checkoutAt(t, files), true, loaded(t, packagesConfig("camp"))); c.Status != StatusUnknown {
+		t.Errorf("workflow-caller-artifact: status = %s, want unknown — it asks of with: (observed %q)", c.Status, c.Observed)
 	}
 }
 
@@ -308,6 +333,13 @@ func TestJobWithReadsTheFormsItNamesAndNoOther(t *testing.T) {
 		{"an apostrophe in a plain flow value", "    with: { a: don't, binary: probe }", map[string]string{"a": "don't", "binary": "probe"}},
 		{"an alias value is kept for the grade", "    with:\n      binary: *e\n", map[string]string{"binary": "*e"}},
 		{"with: behind a comment, the block form under it", "    with: # c\n      binary: probe\n", map[string]string{"binary": "probe"}},
+		{"a job key spelled `with  :`", "    with  :\n      binary: probe\n", map[string]string{"binary": "probe"}},
+		{"a quoted job key \"with\"", "    \"with\":\n      binary: probe\n", map[string]string{"binary": "probe"}},
+		{"`with  :` in the flow form", "    with  : { binary: probe }", map[string]string{"binary": "probe"}},
+		{"a quoted 'with' in the flow form", "    'with': { binary: probe }", map[string]string{"binary": "probe"}},
+		{"a sequence entry at the job's indent", "    needs:\n    - build\n    with:\n      binary: probe\n", map[string]string{"binary": "probe"}},
+		{"a quoted job key \"with\" over an alias", "    \"with\": *w\n", nil},
+		{"a merge key at the job's indent", "    <<: *job\n", nil},
 		{"an alias for with:", "    with: *w\n", nil},
 		{"an anchored flow with:", "    with: &w { binary: probe }\n", nil},
 		{"a tagged flow with:", "    with: !!map { binary: probe }\n", nil},

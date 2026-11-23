@@ -4624,14 +4624,18 @@ The severities are the argued part:
   binary), and a flow mapping that opens and closes on the `with:` line, split
   on the commas outside quotes. Anything else — an alias, an anchor or a tag
   on `with:`, a `{` closing on a later line, a nested collection, a merge key,
-  a `?` key — is `unknown` in both checks that read `with:`, never a key set
-  either way: read as text, a quoted key and `with: *w` passed callers that
-  name `binary` as YAML reads them (`TestJobWithReadsTheFormsItNamesAndNoOther`).
+  a `?` key — is `unknown` here and in the inputs check wherever the pinned
+  release requires an input (where it requires none, `with:` is not read), and
+  in a file that is valid YAML never a key set either way: read as text, a
+  quoted key and `with: *w` passed callers that name `binary` as YAML reads
+  them (`TestJobWithReadsTheFormsItNamesAndNoOther`). The job's own keys are
+  read the same way, so `with  :` and `"with":` are `with`.
   Each line's comment is cut before a continuation line joins: under
   `binary: # which tool` the next line is the value, and read behind the
   comment it passed a caller the reusable refused (run 43689423925,
   `TestJobWithDropsEachLinesCommentBeforeTheFold`). A value the checkout
-  does not hold — a `${{ }}` expression, a block scalar, an alias — is
+  does not hold — a `${{ }}` expression, a block scalar, an alias, a value
+  carrying an anchor or a tag (`&b ""` and `!!null` are empty) — is
   `unknown`, the grade both other caller checks give what they cannot
   read, with a non-empty literal beside it still failing. No pin rule: one artifact has no line to attach to at
   any release, so the pair is wrong at every pin — which is also why the

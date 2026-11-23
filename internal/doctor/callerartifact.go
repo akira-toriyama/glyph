@@ -44,8 +44,9 @@ const (
 	valueNamed
 	// valueUnread is a value a checkout does not hold: an expression GitHub
 	// evaluates at run time, a block scalar, whose text this reader does not
-	// read, or an alias, whose anchor it does not follow (`*e` over `&e ""`
-	// is no value; PyYAML).
+	// read, an alias, whose anchor it does not follow (`*e` over `&e ""` is
+	// no value; PyYAML), or a value carrying an anchor or a tag, which this
+	// reader does not resolve (`&b ""` and `!!null` are no value).
 	valueUnread
 )
 
@@ -60,7 +61,7 @@ func gradeInput(v string) inputValue {
 		return valueUnread
 	case v == "", v == `""`, v == `''`, slices.Contains(nullSpellings, v):
 		return valueEmpty
-	case v[0] == '|', v[0] == '>', v[0] == '*':
+	case v[0] == '|', v[0] == '>', v[0] == '*', v[0] == '&', v[0] == '!':
 		return valueUnread
 	}
 	return valueNamed
@@ -169,7 +170,7 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 		c.Details = slices.Concat(unevaluated, unreadWith, unreadable)
 		return c
 	}
-	if unverifiedCallers(&c, nil, nil, unreadWith, unreadable, death) {
+	if unverifiedCallers(&c, nil, nil, unreadWith, unreadable, death, "no judged caller names an artifact input") {
 		return c
 	}
 	c.Status = StatusPass

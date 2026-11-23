@@ -1,8 +1,8 @@
 diff --git a/internal/doctor/callerartifact.go b/internal/doctor/callerartifact.go
-index 70fa5b1..c5e28de 100644
+index ca7c201..3958747 100644
 --- a/internal/doctor/callerartifact.go
 +++ b/internal/doctor/callerartifact.go
-@@ -57,7 +57,7 @@ var nullSpellings = []string{"~", "null", "Null", "NULL"}
+@@ -58,7 +58,7 @@ var nullSpellings = []string{"~", "null", "Null", "NULL"}
  func gradeInput(v string) inputValue {
  	switch {
  	case strings.Contains(v, "${{"):
@@ -10,4 +10,4 @@ index 70fa5b1..c5e28de 100644
 +		return valueNamed
  	case v == "", v == `""`, v == `''`, slices.Contains(nullSpellings, v):
  		return valueEmpty
- 	case v[0] == '|', v[0] == '>', v[0] == '*':
+ 	case v[0] == '|', v[0] == '>', v[0] == '*', v[0] == '&', v[0] == '!':

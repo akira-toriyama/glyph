@@ -1,0 +1,17 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 5799249..6ea02e1 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -56,12 +56,6 @@ func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile,
+ 		file: func(f workflowFile) func(reusableCall, inputRow) ([]string, string) {
+ 			lines := strings.Split(f.Body, "\n")
+ 			return func(call reusableCall, row inputRow) ([]string, string) {
+-				if len(row.Required) == 0 {
+-					// Nothing to ask of with:, so nothing it holds is unread: a
+-					// caller at a pin that requires no input is never
+-					// could-not-run over its with: (exit 4 where 0 is right).
+-					return nil, ""
+-				}
+ 				var missing []string
+ 				keys, unread := jobWithKeys(lines, call.Line)
+ 				if unread != "" {
