@@ -107,7 +107,7 @@ func TestCommitPullsPaginates(t *testing.T) {
 
 // TestPullCommitsSinglePage parses inner commits, flattening commit.author.name
 // into Author, the top-level author.login into Login, and the parents array
-// into a count.
+// into its shas.
 func TestPullCommitsSinglePage(t *testing.T) {
 	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Path; got != "/repos/akira-toriyama/glyph/pulls/7/commits" {
@@ -132,16 +132,16 @@ func TestPullCommitsSinglePage(t *testing.T) {
 	// Recorded is the API's text too: GitHub hands commit.message over without
 	// the closing newline git recorded, and no field says whether the object
 	// has one (DESIGN §3, the one API-arm shape).
-	want0 := Commit{SHA: "aaa", Author: "Saleh", Login: "larrasket", Parents: 1, Message: ":sparkles: add a thing", Recorded: ":sparkles: add a thing"}
-	if commits[0] != want0 {
+	want0 := Commit{SHA: "aaa", Author: "Saleh", Login: "larrasket", Parents: []string{"p1"}, Message: ":sparkles: add a thing", Recorded: ":sparkles: add a thing"}
+	if !reflect.DeepEqual(commits[0], want0) {
 		t.Fatalf("commit 0 = %+v, want %+v", commits[0], want0)
 	}
 	// The bot author name (not a login) is what an exclude_authors entry
 	// matches downstream, and the two-parent shape is what the walk reads as
-	// a merge (Parents >= 2).
+	// a merge (two or more Parents).
 	// author: null — GitHub mapped no account — is an empty login, not an error.
-	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Parents: 2, Message: ":robot: chore(fleet): sync", Recorded: ":robot: chore(fleet): sync"}
-	if commits[1] != want1 {
+	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Parents: []string{"p1", "p2"}, Message: ":robot: chore(fleet): sync", Recorded: ":robot: chore(fleet): sync"}
+	if !reflect.DeepEqual(commits[1], want1) {
 		t.Fatalf("commit 1 = %+v, want %+v", commits[1], want1)
 	}
 }

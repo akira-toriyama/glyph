@@ -452,8 +452,7 @@ func checkSquashEnabled(in Input) Check {
 		"intact; a multi-commit squash is the style that loses there. What squash removes is the PARTIAL window, which only a " +
 		"multi-commit landing has. GitHub indexes a merge commit AFTER the commits it merges, so a release run seconds behind " +
 		"the button sees the branch commits stand aside for a merge point it cannot resolve yet and the whole pull request " +
-		"counts none. The same shape is PERMANENT when an automation authors the merge commit: the author gate skips it " +
-		"before the API, so nothing ever resolves the pull. A rebase writes new shas that appear in no pull request's commit " +
+		"counts none. A rebase writes new shas that appear in no pull request's commit " +
 		"listing, so it depends on the walk aligning that listing against the run of commits ending at the canonical one; " +
 		"where the alignment cannot be verified — a rebase that dropped a commit it was asked to replay, one already " +
 		"upstream or one that rebased empty — a replayed commit classified during the lag is folded in a second time and " +
@@ -490,10 +489,8 @@ func checkMergeCommit(in Input) Check {
 		"even with the API fully dark the merged branch's commits are in the range and carry their own sigils, so the " +
 		"verdict comes out the same. What is left is a window and a convention. The window: a " +
 		"merge-merged pull's branch commits stand aside for its merge point, so if that merge point alone is unresolved — " +
-		"GitHub indexes it after the commits it merges, or an automation authored it and the author gate skipped it before " +
-		"the API — the whole pull counts none. The walk names the lost pull, and the release refuses the incomplete walk " +
-		"at exit 4, so this is a re-run (or a " +
-		"human merge) rather than a silent wrong version; for an automation-driven merge button it repeats every release. The " +
+		"GitHub indexes it after the commits it merges — the whole pull counts none. The walk names the lost pull, and the " +
+		"release refuses the incomplete walk at exit 4, so this is a re-run rather than a silent wrong version. The " +
 		"convention: squash-only keeps main at one commit per PR and the walk at one API round-trip per PR"
 	c.Fix = fmt.Sprintf("gh api -X PATCH repos/%s -F allow_merge_commit=false (optional — this is a convention, not a defect)", in.Repo)
 	return c

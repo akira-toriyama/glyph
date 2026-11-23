@@ -46,9 +46,7 @@ func TestSinceTagRawRevertDirectPushIsAPatch(t *testing.T) {
 // the pull, but its merge_commit_sha is the merge commit, not them), so they
 // skip themselves in favour of the merge point — and then the merge point does
 // not resolve. A release job runs seconds after the merge, so GitHub routinely
-// knows the branch commits' association before it knows the merge commit at all;
-// the merge commit is also unresolvable when an automation pressed the button
-// (the author gate skips it before the API).
+// knows the branch commits' association before it knows the merge commit at all.
 //
 // Every commit of the pull then skipped itself: exit 1, "no release", with no
 // warning and no notice. The "all N commit(s) unknown" guard cannot catch it

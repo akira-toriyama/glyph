@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 3495905..826289e 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -189,7 +189,7 @@ func (w Walker) OpenPull(ctx context.Context, cfg *config.Config, owner, repo st
+ 	}
+ 	wk := newWalk(w, cfg, owner, repo, "", nil, false, lineRanges{})
+ 	wk.readBackTop = "HEAD"
+-	wk.readBackCap = walkCap
++	wk.readBackCap = 0
+ 	if err := wk.readBack(ctx, number, listing); err != nil {
+ 		return nil, err
+ 	}

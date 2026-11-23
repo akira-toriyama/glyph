@@ -1,0 +1,16 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index e58ad77..1d32781 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -902,10 +902,7 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+ // point, and the merge point itself for what the footprint leaves, a squash's
+ // one commit on the branch.
+ func (w *walk) landListing(ctx context.Context, m *merged, mergePoint string) error {
+-	landed, err := w.mainFootprint(ctx, mergePoint, m.listing, mergePoint)
+-	if err != nil {
+-		return err
+-	}
++	landed := make([]string, len(m.listing))
+ 	for i, r := range m.listing {
+ 		if landed[i] == "" {
+ 			landed[i] = mergePoint

@@ -1,0 +1,18 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index e58ad77..cd6d94f 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -269,13 +269,6 @@ func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
+ 		// --first-parent). Counting this one too would double it; if the
+ 		// canonical commit never resolves, reconcile names the pull.
+ 		return nil
+-	case m != nil:
+-		// The pull is the excluded author's own: nothing of it folds, and its
+-		// listing still says what this merge point landed, which a pull
+-		// stacked on it lists again (landListing).
+-		if err := w.landListing(ctx, m, raw.SHA); err != nil {
+-			return err
+-		}
+ 	}
+ 	w.fallback(raw, lag)
+ 	return nil

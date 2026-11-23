@@ -66,7 +66,7 @@ func newDoctorCmd() *cobra.Command {
 			"    resolves and expands both (a merge commit from itself, a rebase from its\n" +
 			"    last replayed commit — each what GitHub names merge_commit_sha). What is\n" +
 			"    left is a house convention plus one named, LOUD window per style — a merge\n" +
-			"    point GitHub has not indexed yet (or an automation authored) drops its pull\n" +
+			"    point GitHub has not indexed yet drops its pull\n" +
 			"    with two warnings (release refuses the incomplete walk at exit 4;\n" +
 			"    bump/notes hand down their verdict without it); a rebase whose listing the\n" +
 			"    walk cannot align — one that dropped a commit it was asked to replay,\n" +

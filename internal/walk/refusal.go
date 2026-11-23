@@ -35,7 +35,10 @@ func unclaimed(cfg *config.Config, c gitsource.RawCommit) (row bump.Refusal, ok 
 // direct push) is cleared by a base at or past itself, the nearest escape;
 // a squash-merged pull's inner commit exists only over the API, so only a
 // base at or past its merge point stops the walk re-reading the listing. A
-// commit two pulls list has one escape per pull.
+// commit two pulls list has one escape per pull the read-back cannot clear:
+// a stacked pull whose listing forks at a held commit below an escape named
+// already clears with that escape, and names none of its own (expand,
+// readsBackTo).
 type wedge struct {
 	row     bump.Refusal
 	where   string

@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index e58ad77..f4e2846 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -910,7 +910,7 @@ func (w *walk) landListing(ctx context.Context, m *merged, mergePoint string) er
+ 		if landed[i] == "" {
+ 			landed[i] = mergePoint
+ 		}
+-		w.land(r.SHA, landed[i], m.number)
++		_ = r
+ 	}
+ 	return nil
+ }

@@ -1,12 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 368b196..ae31985 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -251,7 +251,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+@@ -310,7 +310,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
  		}
  		c := Commit{Raw: r, Pull: number, Landed: landed[i] != "", mergePoint: canonical}
  		judged := w.judges(c.governing())
 -		if i, refused := w.wedged[r.SHA]; refused {
 +		if i, refused := w.wedged[r.SHA]; false && refused {
  			// A refused commit a second pull lists (a stacked pull carries
- 			// its base pull's commits) is one row with one more escape:
- 			// this pull's merge point wedges too, and a base that clears
+ 			// its base pull's commits) is one row, and one more escape only
+ 			// when the escapes named so far do not clear this sighting: a

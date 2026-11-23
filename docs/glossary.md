@@ -55,7 +55,9 @@ pull into its individual (pre-squash) commits. Nothing is persisted, so a releas
 is idempotent and self-healing. Distinguish from the other two input sources,
 which are not walks in this sense: `--range` classifies commit *messages* out of
 git and never calls the API, and `--pr` reads one pull request's commits over the
-API and knows nothing of any range. "Exactly one of the three" is `bump` and
+API, then reads back out of local git the pulls merged between the listing's
+fork and `HEAD` to drop what another pull landed (DESIGN §4, "A stacked pull
+lists what its base landed") — it has no range of its own. "Exactly one of the three" is `bump` and
 `notes` only — they are the two commands that carry all three flags and mark them
 mutually exclusive. `release` has just the walk (bare `release` walks from the
 highest v* tag HEAD contains, so no flag is required at all), and `preview` takes
@@ -98,7 +100,7 @@ as a usage error rather than walking the wrong range.
 "the highest other tag". README "Getting started" has its use (the tag-push
 job, where the new tag is itself the highest) and the first-release fallback;
 both forms are bounded by the release-floor cap: past `walk.walkCap`
-walk-visible commits the walk is refused (fail-loud 4) with the escape in the
+commits the walk is refused (fail-loud 4) with the escape in the
 message, because it pays one API round-trip per visited commit and nothing
 else bounds it. The bound must itself be version-shaped (usage error
 otherwise), and the sentinel cannot collide with a real tag: git forbids `:`
@@ -163,7 +165,11 @@ an ancestor of HEAD landed as itself); a rebase rewrote them all but preserved
 their messages and order and named the last as `merge_commit_sha`, so the N
 first-parent commits ending there align positionally — an alignment **verified
 message by message and abandoned whole** if any differs; a squash left no
-footprint at all, and the pull alone governs. This is what lets the walk's
+footprint at all, and the pull alone governs, unless the listed sha is one another
+pull landed, which the walk asks next over the API — for what the footprint left,
+and for a sha in the range under its own sha, which a merge commit's second parent
+brings in whatever an earlier squash or rebase of it released (`walk.placeStacked`,
+DESIGN §4, "A stacked pull lists what its base landed"). This is what lets the walk's
 *range* (a git fact) govern a listing that knows nothing about it; without it a
 tag cut inside a landed pull's footprint folds already-shipped commits into the
 next release (DESIGN §4 has the incident). `internal/walk/expand.go:
@@ -200,15 +206,14 @@ merged into another base branch is associated with commits that reached main
 another way. `internal/walk/expand.go: mergedPullFor` (`covering`, `inRange`)
 
 **lost pull** — a covered pull that was never expanded, because its canonical
-commit never resolved (GitHub had not indexed the merge commit yet, or an
-automation authored it and the author gate skipped it before the API). The walk
+commit never resolved (GitHub had not indexed the merge commit yet). The walk
 **warns and deliberately does not expand it**: a listing carries nothing about
 the range, so recovering it would be guessing, and the guess was measured wrong
 (DESIGN §4 has both ways). The walk is then *incomplete*: `bump` and `notes`
 warn, `release` refuses at exit 4 before it reads the releases listing (DESIGN
-§4, the incomplete-walk refusal). API lag clears itself on a re-run; a
-repository whose merge button an **automation** presses meets the refusal on
-every release until a tag is cut past that merge point.
+§4, the incomplete-walk refusal). API lag clears itself on a re-run, and it is
+the one cause: a merge commit an automation pressed resolves like any other
+(DESIGN §4, "The author excludes a message, never a merge point").
 `internal/walk/expand.go: walk.reconcile` (the `coveredOrder` ledger),
 `Facts.lostPulls`
 
@@ -338,7 +343,12 @@ or a bare one, leaves the others wedged. The error message names
 where the commit sits, the base and why that base is the one; with several
 refused commits it names the first, counts the rest, lists every one in
 `details` and names every wedge's escape (a pull's merge point is in no
-details row). `internal/walk/refusal.go: wedge, walkRefusal, onMain`
+details row). A commit two pulls list has an escape per pull the walk cannot
+read back from: a stacked pull whose listing forks at a held commit below an
+escape named already clears with that one, and the sentence names it alone
+(DESIGN §4, "A stacked pull lists what its base landed").
+`internal/walk/refusal.go: wedge, walkRefusal, onMain`; `internal/walk/expand.go:
+readsBackTo`
 
 **package** — a declared subtree of the repository with a version line of its
 own: its own tags (`<prefix>vX.Y.Z`), its own walk base, its own rolling draft.
@@ -654,8 +664,11 @@ a commit appears in the notes at all is the sections' decision alone.
 
 **excluded author** — an `exclude_authors` entry: its commits leave lint and
 the fold before matching (the key exists for bots, whose messages the
-patterns do not describe) and skip release-walk resolution, but still reach
-the notes machinery — the sections decide. Distinguish from *skip*, which
+patterns do not describe), but still reach the notes machinery — the sections
+decide. The exclusion is of the message: on the release walk an excluded
+author's commit is still asked about, and expands the pull it merged when
+someone else committed to that pull (DESIGN §4, "The author excludes a
+message, never a merge point"). Distinguish from *skip*, which
 is total. `internal/bump/fold.go: Fold`
 
 **cleanup** — the reduction of a raw commit-message **file** (what git hands a

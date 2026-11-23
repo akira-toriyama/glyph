@@ -82,7 +82,7 @@ type LineWalk struct {
 // over is decided by the subset.
 func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string, scope *Scope) ([]Line, string, error) {
 	if len(cfg.Packages) == 0 {
-		revRange, baseTag, base, err := w.sinceTagRange(ctx, cfg, tagFlag)
+		revRange, baseTag, base, err := w.sinceTagRange(ctx, tagFlag)
 		if err != nil {
 			return nil, "", err
 		}
@@ -277,7 +277,7 @@ func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line
 		if escape != nil {
 			out = escape(baselines, unbaselined)
 		}
-		revRange, _, err := w.wholeHistory(ctx, cfg, strings.Join(causes, "; "), remedy, out)
+		revRange, _, err := w.wholeHistory(ctx, strings.Join(causes, "; "), remedy, out)
 		return revRange, err
 	}
 	mb, err := w.Git.MergeBase(ctx, bases)

@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 3495905..df70e79 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -666,7 +666,7 @@ func (w *walk) placeStacked(ctx context.Context, number int, canonical string, l
+ // are the footprint's whole answer, and a merge commit alone is no question
+ // (TestSinceTagLeftoverMergeCommitReadsNothingBack).
+ func (w *walk) open(r gitsource.RawCommit, on string) bool {
+-	return replayable(r, on) || w.ownInRange(r, on)
++	return replayable(r, on)
+ }
+ 
+ // yields reports whether the footprint's placement of a listing entry at on

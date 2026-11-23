@@ -1,0 +1,13 @@
+diff --git a/internal/walk/facts.go b/internal/walk/facts.go
+index afa4310..4a6c39a 100644
+--- a/internal/walk/facts.go
++++ b/internal/walk/facts.go
+@@ -172,7 +172,7 @@ func (f Facts) Remedy() string {
+ 	if len(f.filesCapped) > 0 {
+ 		steps = append(steps, "cut the tags the capped file listings name")
+ 	}
+-	if f.allUnknown || f.shallow || len(f.lostPulls) > 0 || len(f.dropped) > 0 || len(f.filesUnknown) > 0 {
++	if len(f.truncated) > 0 || f.allUnknown || f.shallow || len(f.lostPulls) > 0 || len(f.dropped) > 0 || len(f.filesUnknown) > 0 {
+ 		steps = append(steps, "re-run the release once the walk can read the range")
+ 	}
+ 	return strings.Join(steps, "; then ")
