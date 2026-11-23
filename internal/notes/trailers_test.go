@@ -919,9 +919,8 @@ func gitTrailersBatch(t *testing.T, msgs []string) [][]trailer {
 		cmd.Stdin = strings.NewReader(stdin)
 		out, err := cmd.Output()
 		if err != nil {
-			var exit *exec.ExitError
 			stderr := ""
-			if errors.As(err, &exit) {
+			if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 				stderr = string(exit.Stderr)
 			}
 			t.Fatalf("git %v: %v\n%s", args, err, stderr)
