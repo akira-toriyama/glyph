@@ -271,7 +271,7 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
 // none), and calls at with each flow indicator outside quotes — , : { } [ ] —
 // up to a comment. It returns the quote the line leaves open. A quote opens
 // only where a scalar begins, so the apostrophe in a plain `don't` is text,
-// and `''` inside single quotes is a quote, not the close.
+// and a doubled apostrophe inside single quotes is a quote, not the close.
 func flowSyntax(s string, quote byte, at func(i int, c byte)) byte {
 	begins := true
 	for i := 0; i < len(s); i++ {
