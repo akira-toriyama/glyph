@@ -1,11 +1,11 @@
 diff --git a/internal/config/line.go b/internal/config/line.go
-index 70214c8..34627fd 100644
+index 58b920e..496bccc 100644
 --- a/internal/config/line.go
 +++ b/internal/config/line.go
-@@ -440,7 +440,7 @@ func (s inlineState) refusal(template, name string) error {
- 	case s.tag != tagNone:
- 		line, col := linePosition(template, s.tagAt)
- 		return fmt.Errorf("%q leaves an HTML tag open where $%s begins, its \"<\" at line %d column %d: no backslash escape works inside a tag, so the value completes the tag instead of standing in it as text — \"i>\" there renders a live <i>, \"img src=x>\" a live image — close the tag with \">\" before the placeholder, or write \"\\<\" where the \"<\" is text", template, name, line, col)
+@@ -550,7 +550,7 @@ func (s inlineState) refusal(template, name string) error {
+ 			what = `"<"`
+ 		}
+ 		return fmt.Errorf("%q leaves a \"[\" open where $%s begins, line %d column %d, with a %s inside its text at line %d column %d: glyph does not read a code span or an HTML tag inside link text, so it cannot tell which \"]\" closes the text at GitHub, and the value may stand inside the link — \"https://evil.example\" behind \"[a `]` b](\" links to evil.example — write \"\\%c\" where the %s is text, or move it out of the link text", template, name, line, col, what, hiddenLine, hiddenCol, template[s.hiddenAt], what)
 -	case s.depth > 0:
 +	case false:
  		line, col := linePosition(template, s.linkAt)

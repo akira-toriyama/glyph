@@ -248,6 +248,10 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 	open := func(name, at string) string {
 		return `leaves a "[" open where $` + name + " begins, " + at + ": "
 	}
+	hidden := func(name, at, what, whatAt string) string {
+		return `leaves a "[" open where $` + name + " begins, " + at + ", with a " + what + " inside its text at " + whatAt +
+			`: glyph does not read a code span or an HTML tag inside link text, so it cannot tell which "]" closes the text at GitHub`
+	}
 	closed := func(name, at string) string {
 		return "puts $" + name + ` right behind the "]" at ` + at + `, which closes a "[": `
 	}
@@ -293,6 +297,13 @@ func TestLoadRefusesAConstructOpenAtAPlaceholder(t *testing.T) {
 		{"the value right behind the closing bracket", "- [x]$subject", closed("subject", "line 1 column 5")},
 		{"behind the closing bracket once a span drops", "- [x]$[ ($pr)]$subject", closed("subject", "line 1 column 5")},
 		{"behind a reference link's second pair", "- [x][y]$subject", closed("subject", "line 1 column 8")},
+		{"a ] a code span hides, then the value in the destination", "- [a `]` b](/$subject)", hidden("subject", "line 1 column 3", "backtick", "line 1 column 6")},
+		{"a ] a tag's attribute hides, then the value in the destination", `- [a <b title="]"> c](/$subject)`, hidden("subject", "line 1 column 3", `"<"`, "line 1 column 6")},
+		{"a ] a code span hides, then the value as the destination", "- [a `]` b]($subject)", hidden("subject", "line 1 column 3", "backtick", "line 1 column 6")},
+		{"a ] a code span hides in an image", "- ![a `]` b]($subject)", hidden("subject", "line 1 column 4", "backtick", "line 1 column 7")},
+		{"a ] an angle autolink hides", "- [a <https://x.example/]> c]($subject)", hidden("subject", "line 1 column 3", `"<"`, "line 1 column 6")},
+		{"a ] a code span hides, then the value in the text", "- [a `]` $subject](https://example.com)", hidden("subject", "line 1 column 3", "backtick", "line 1 column 6")},
+		{"a ] a tag's attribute hides, then the value in the text", `- [a <b title="]"> $subject](https://example.com)`, hidden("subject", "line 1 column 3", `"<"`, "line 1 column 6")},
 
 		{"the value is the destination", "- [x]($subject)", dest("subject", "line 1 column 6")},
 		{"the value ends the destination", "- [x](https://example.com/$subject)", dest("subject", "line 1 column 6")},
@@ -397,6 +408,10 @@ func TestLoadAcceptsAConstructClosedBeforeAPlaceholder(t *testing.T) {
 		{"a ] that closes nothing", "- x]$subject"},
 		{"an escaped [", `- \[$subject]`},
 		{"escaped brackets inside an optional span", `- $subject$[ \[$pr\]]`},
+		{"a backtick inside link text behind the last placeholder", "- $subject [a `]` b](https://example.com)"},
+		{"a tag inside link text behind the last placeholder", "- $subject [a <b>c</b>](https://example.com)"},
+		{"an escaped backtick inside closed link text", "- [a \\` b](https://example.com) $subject"},
+		{"an escaped < inside closed link text", `- [a \< b](https://example.com) $subject`},
 
 		{"a reference and a blank", "- &amp; $subject"},
 		{"an at-sign reference and a blank", "- &#64; $subject"},

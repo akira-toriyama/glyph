@@ -1162,7 +1162,16 @@ inside it. Five constructs, each measured through `glyph notes --range` and
   `(https://evil.example) y`, and from `: /url` a link reference definition, so
   `[x]` linked to /url. Link text is open while a `[` has no `]` of its own, and
   the `]` that closes one refuses a placeholder right behind it; an image, a
-  footnote and a reference link are the same brackets.
+  footnote and a reference link are the same brackets. A backtick or a `<` no
+  backslash escapes inside open link text leaves the text open: no later `]`
+  closes it. `` - [a `]` b](/$subject) `` loaded and, with
+  `` x) @octocat ` ``, rendered a live @octocat, and `` - [a `]` b]($subject) ``
+  with `https://evil.example` a link there (measured 2026-11-23): GitHub
+  reads the `]` inside the code span as text and closes at the second, while
+  the walk had closed at the first. What hides a `]` inside link text — a code
+  span, a tag, a comment, an angle autolink — starts with one of those two
+  bytes, so the rule is complete without reading any of them; a template that
+  means either as text there writes `` \` `` or `\<`, or moves it out of the text.
 - **A link destination.** `- [x]($subject)` with `https://evil.example`
   rendered a link there, `- ![x]($subject)` an image proxied from the value's
   host, and `- [x]: $subject` a link reference definition.
@@ -1203,7 +1212,8 @@ inside it. Five constructs, each measured through `glyph notes --range` and
 The walk never ends a construct before GitHub does. Each test is blunter than
 the grammar it stands for, on the refusing side, as the block-start rule is:
 whether the bytes of a tag are a valid one is not asked, a template's own code
-span or line ending closes nothing, and no table says which references decode
+span or line ending closes nothing (inside link text a code span's backtick
+keeps the text open, the brackets above), and no table says which references decode
 to an at-sign (that would owe the boundary to GitHub's table, the reasoning
 `markdown.entityAt` gives for its shape). Where two readings of the template's
 bytes end a construct at different bytes — a comment against a tag, a title
