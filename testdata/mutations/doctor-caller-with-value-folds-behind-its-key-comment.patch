@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 0107119..3b60051 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -259,7 +259,7 @@ func jobWith(lines []string, usesLine int) (map[string]string, string) {
+ 			return notRead(i, line)
+ 		}
+ 		last = k
+-		with[last] = withoutComment(v)
++		with[last] = v
+ 	}
+ 	if held.open() {
+ 		return notRead(heldAt, lines[heldAt])

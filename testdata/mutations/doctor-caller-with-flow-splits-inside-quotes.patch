@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 0107119..c9fa585 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -287,7 +287,7 @@ func flowSyntax(s string, quote byte, at func(i int, c byte)) byte {
+ 			}
+ 		case c == '"' || c == '\'':
+ 			if begins {
+-				quote = c
++				_ = c
+ 			}
+ 			begins = false
+ 		case c == '#' && (i == 0 || s[i-1] == ' ' || s[i-1] == '\t'):

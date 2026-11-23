@@ -64,10 +64,11 @@ func TestReleaseBuildStepsAreToldWhichTagTheyBuild(t *testing.T) {
 // TestReleaseRefusesArtifactInputsBeforeEitherBuildStep: RELEASE_TAG is "" on
 // a packages repository — the envelope has no scalar tag — so the value the
 // build steps now receive is only safe because neither step can run there.
-// The refusal is what makes that true, and only its position relative to
-// `Build app + zip` was pinned (TestReleaseRefusesArtifactInputsOnAPackages-
-// Repository); the binary arm had no such assertion, and a step reordered
-// below it would hand an empty string down as a version.
+// The refusal is what makes that true. TestReleaseRefusesArtifactInputsOnA-
+// PackagesRepository holds it between the install and the verdict; this test
+// holds it above each build step by name, so a build step reordered above it
+// — handed an empty string as the version it stamps — fails here whichever
+// arm it is.
 //
 // bite-exempt: pins current behaviour, not a fix — the refusal already sits
 // above both build steps, and what changed is that RELEASE_TAG now depends on

@@ -64,24 +64,19 @@ func TestLintGateAlsoJudgesTheSquashTitle(t *testing.T) {
 			"whatever it lints now, it is not this pull request's title")
 	}
 
-	// The read needs a token permission the range lint never did, in BOTH
-	// halves of this file — and the two halves fail differently (measured in
-	// .github#186): drop it from the executable grant and the squash-title
-	// read 403s at runtime, because a reusable can only downgrade the
-	// caller's token; drop it from the commented caller stub and every caller
-	// written from it dies as startup_failure before any job starts, because
-	// the reusable now declares more than the caller grants.
+	// The read needs a token permission the range lint never did, on BOTH
+	// sides of the call — and the two sides fail differently (measured in
+	// .github#186): drop it from this file's grant and the squash-title read
+	// 403s at runtime, because a reusable can only downgrade the caller's
+	// token; drop it from the caller and the run dies as startup_failure
+	// before any job starts, because the reusable declares more than the
+	// caller grants. The caller's side is README's, held by
+	// TestReadmeCallersGrantWhatTheReusablesDeclare.
 	if !strings.Contains(body, "pull-requests: read") {
 		t.Errorf("lint.yml's permissions no longer include pull-requests: read — a reusable can " +
 			"only downgrade the caller's token, so the squash-title read 403s at runtime " +
 			"(exit 4, a loud infra failure on every pull request) even from a caller that " +
 			"still grants the permission")
-	}
-	if !strings.Contains(raw, "#     pull-requests: read") {
-		t.Errorf("the commented caller stub no longer grants pull-requests: read — the stub is " +
-			"what the fleet's canonical caller is written from, and a caller granting less " +
-			"than this reusable declares never reaches the title step: the run dies as " +
-			"startup_failure before any job starts (measured in .github#186)")
 	}
 }
 
@@ -154,8 +149,8 @@ var pullRequestTypes = regexp.MustCompile(`(?m)^\s*pull_request:\s*(?:#.*\n\s*)*
 // `edited` fired on all three retitles. Declared, the check follows the title on
 // one head: #10 went red, green, red across two retitles (runs 41816405170,
 // 41816778876, 41816884433). DESIGN §4's API-lag fallback reads the title as a
-// linted subject only as far as this holds. README and the stub are what a caller
-// is written from; commit-lint.yml is the fleet's, kept by fleet-sync.
+// linted subject only as far as this holds. README's caller is what a caller is
+// written from; commit-lint.yml is the fleet's, kept by fleet-sync.
 //
 // version-preview.yml keeps its shorter list on purpose: the preview never reads
 // the title. Only `lint --pr` does (internal/cli/cmd_lint.go), and the sticky
@@ -175,7 +170,6 @@ func TestLintCallersRefireOnARetitle(t *testing.T) {
 	want := []string{"opened", "synchronize", "reopened", "edited"}
 	for _, caller := range []struct{ name, text string }{
 		{"README's lint caller", readme},
-		{"lint.yml's commented stub", commentYAML(repoFile(t, filepath.FromSlash(lintWorkflow))).text},
 		{"commit-lint.yml", code(repoFile(t, filepath.Join(".github", "workflows", "commit-lint.yml")))},
 	} {
 		m := pullRequestTypes.FindStringSubmatch(caller.text)

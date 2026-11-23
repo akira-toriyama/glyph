@@ -1,0 +1,14 @@
+diff --git a/internal/doctor/callerpin.go b/internal/doctor/callerpin.go
+index f23be6d..21686f6 100644
+--- a/internal/doctor/callerpin.go
++++ b/internal/doctor/callerpin.go
+@@ -32,8 +32,7 @@ func (r inputRow) bound() string { return r.After }
+ // of each reusable lives: README holds the lint.yml caller under Install and
+ // the other two under Getting started, and a fix that names one section for
+ // all three sends a lint.yml caller to a step that only refers back to it.
+-const readmeCallers = "glyph's README holds the known-good callers: lint.yml's under Install (\"GitHub Actions\"), " +
+-	"pr-verdict.yml's and release.yml's under Getting started, step 3"
++const readmeCallers = "the callers in glyph's README (Getting started, step 3) are the known-good copies"
+ 
+ // callerSpec is what one caller check judges with; judgeCallers holds the
+ // rest. The fail and pass Observed strings are formats: failObserved takes
