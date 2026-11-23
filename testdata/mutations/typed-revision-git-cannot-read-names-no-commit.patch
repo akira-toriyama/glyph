@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 14b52d0..d7c40f3 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -349,7 +349,7 @@ func resolveCommit(ctx context.Context, dir, rev string) (Named, error) {
+ 	}
+ 	isCommit, err := namesCommit(ctx, dir, sha)
+ 	switch {
+-	case err != nil:
++	case core.IsInterrupted(err):
+ 		return Named{}, err
+ 	case isCommit:
+ 		return Named{Kind: "commit"}, nil

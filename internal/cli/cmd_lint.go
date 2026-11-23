@@ -27,10 +27,11 @@ const (
 )
 
 // lintOptions is what one lint run was asked, snapshotted at RunE: which of
-// the four input modes was given — exactly one is required (cobra-enforced) —
-// and the values the modes read; repo rides alongside --pr the way --repo
-// rides alongside bump's. Nothing below RunE reads a flag — lintRun is a
-// function of these alone (TestLintRunsFromOptionsWithoutCobra).
+// the four input modes was given — at least one (cobra-enforced) and at most
+// one selecting (checkExclusive) — and the values the modes read; repo rides
+// alongside --pr the way --repo rides alongside bump's. Nothing below RunE
+// reads a flag — lintRun is a function of these alone
+// (TestLintRunsFromOptionsWithoutCobra).
 type lintOptions struct {
 	mode    lintMode
 	rng     string
@@ -41,8 +42,9 @@ type lintOptions struct {
 
 func newLintCmd() *cobra.Command {
 	var o lintOptions
-	// --stdin's value is judged at RunE alone (--stdin=false is refused
-	// there); below it the mode carries all there is to know.
+	// --stdin's value is judged at RunE alone (--stdin=false selects no
+	// mode, and is refused there when it is the only mode flag given); below
+	// it the mode carries all there is to know.
 	var stdin bool
 	cmd := &cobra.Command{
 		Use:   "lint",
@@ -81,11 +83,21 @@ func newLintCmd() *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			// EVERY arm asks whether the flag was GIVEN, never its value — the
-			// question MarkFlagsOneRequired answers — so the group check and the
-			// dispatch cannot disagree: on value, --stdin=false would satisfy the
-			// group and match no arm.
-			// The invocation is judged before the environment: every arm
+			// The group is judged on what SELECTS (checkExclusive): a valued
+			// flag that was given, --stdin when true. cobra's grouping judges
+			// on Changed and called `--stdin=false --message=…` a conflict in
+			// which both "were all set" — a false statement in the envelope
+			// other repositories parse (t-0b93); here --stdin=false selects
+			// nothing, as hook install's --print=false does.
+			if err := checkExclusive(cmd, "range", "pr", "message", "stdin"); err != nil {
+				return err
+			}
+			// Every valued arm asks whether its flag was GIVEN — the question
+			// MarkFlagsOneRequired answers — and --stdin, asked LAST, is the
+			// one arm that reads a value: a --stdin=false that satisfied the
+			// group alone selected no mode. So the group check and the dispatch
+			// cannot disagree: every flag that satisfies the group reaches an
+			// arm. The invocation is judged before the environment: every arm
 			// validates its own input shape FIRST and loads glyph.toml after,
 			// so `--stdin=false` in a directory with no config is still
 			// answered as the usage error it is, never as "not initialized".
@@ -94,11 +106,6 @@ func newLintCmd() *cobra.Command {
 				o.mode = lintByRange
 			case cmd.Flags().Changed("pr"):
 				o.mode = lintByPull
-			case cmd.Flags().Changed("stdin"):
-				if !stdin {
-					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range, --pr or --message instead")
-				}
-				o.mode = lintByStdin
 			case cmd.Flags().Changed("message"):
 				// An empty --message is the caller naming no message, which is
 				// usage — not a message that violates the convention.
@@ -107,6 +114,19 @@ func newLintCmd() *cobra.Command {
 					return err
 				}
 				o.mode = lintByMessage
+			case cmd.Flags().Changed("stdin"):
+				if !stdin {
+					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range, --pr or --message instead")
+				}
+				o.mode = lintByStdin
+			}
+			// --repo feeds the one API-backed mode. Combined with a local mode
+			// it would be silently ignored, and glyph does not ignore input
+			// silently — the grammar markInputSourceFlags gives bump and notes,
+			// judged here against the mode selected rather than the flags
+			// mentioned, for --stdin=false's sake.
+			if cmd.Flags().Changed("repo") && o.mode != lintByPull {
+				return core.Usagef("--repo rides only with --pr, the one mode that reads the API — drop it, or lint a pull request's title with --pr N")
 			}
 			return lintRun(cmd.Context(), o)
 		},
@@ -116,14 +136,7 @@ func newLintCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.repo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&o.message, "message", "", "lint one message given inline")
 	cmd.Flags().BoolVar(&stdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
-	cmd.MarkFlagsMutuallyExclusive("range", "pr", "message", "stdin")
 	cmd.MarkFlagsOneRequired("range", "pr", "message", "stdin")
-	// --repo feeds the one API-backed mode. Combined with any local mode it
-	// would be silently ignored, and glyph does not ignore input silently —
-	// the same grammar markInputSourceFlags gives bump and notes.
-	cmd.MarkFlagsMutuallyExclusive("repo", "range")
-	cmd.MarkFlagsMutuallyExclusive("repo", "message")
-	cmd.MarkFlagsMutuallyExclusive("repo", "stdin")
 	return cmd
 }
 

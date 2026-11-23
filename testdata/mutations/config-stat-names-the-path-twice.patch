@@ -1,13 +1,13 @@
 diff --git a/internal/config/config.go b/internal/config/config.go
-index cd52ab4..aed5ee3 100644
+index 2b77002..4fd7bec 100644
 --- a/internal/config/config.go
 +++ b/internal/config/config.go
-@@ -355,7 +355,7 @@ func StatFile(path string) error {
- 	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&fs.ModeSymlink != 0 && linksOwnFault(err) {
+@@ -378,7 +378,7 @@ func statAs(path string, reads func(fs.FileMode) bool) error {
+ 	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&fs.ModeSymlink != 0 && PathsOwnFault(err) {
  		return &NotAFileError{path: path, mode: fs.ModeSymlink}
  	}
 -	return err
 +	return fmt.Errorf("stat %s: %w", path, err)
  }
  
- // linksOwnFault reports whether os.Stat's failure on a path that is a link is
+ // PathsOwnFault reports whether os.Stat's failure is the path's own — nothing

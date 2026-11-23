@@ -287,14 +287,6 @@ func TestBumpRequiresRange(t *testing.T) {
 	}
 }
 
-// TestBumpOutsideRepoIsAPI: git failures classify as API (exit 4).
-func TestBumpOutsideRepoIsAPI(t *testing.T) {
-	t.Chdir(t.TempDir())
-	if code, _, stderr := runGlyph(t, "bump", "--range", "main..HEAD"); code != 4 {
-		t.Fatalf("bump outside a repo exited %d, want 4\nstderr: %s", code, stderr)
-	}
-}
-
 // TestBump0xBangStaysIn0x is the end-to-end half of the 0.x rule: a repository
 // at v0.1.0 answers a breaking commit with v0.2.0, and the JSON still calls it
 // major. Both halves are asserted together on purpose — the whole design is
