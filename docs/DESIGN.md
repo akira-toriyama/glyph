@@ -1222,7 +1222,10 @@ bytes end a construct at different bytes — a comment against a tag, a title
 against an address — the walk does not pick one: it stops ending the construct,
 so `- x <!-- c --> $subject` and `- [x](https://example.com "t") $subject`,
 which GitHub renders with the value as text, do not load, and such a construct
-goes behind the last placeholder. A backslash makes the opener behind it text,
+goes behind the last placeholder. A link whose text holds a backtick, a `<` or a
+`[` is the same cost: code-styled text, `- [`x`](https://example.com) $subject`,
+and a badge, `- [![b](https://img.example/b.png)](https://example.com) $subject`,
+do not load, and go behind the last placeholder too. A backslash makes the opener behind it text,
 as at GitHub, and inside an open tag it does not, as in HTML. The loader sees
 no commit, so it reads an optional span as rendered and as dropped and an
 earlier placeholder as a value and as empty, and nothing may be open under any
