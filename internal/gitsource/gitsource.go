@@ -335,13 +335,16 @@ var objectID = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 // directory git cannot open, and over a store whose alternates directory is
 // gone a spelling that walks past the root, and on 2.56 any name git does
 // not know (measured on git 2.54 and 2.56; 2.39.5 answers 128 for the first,
-// and for the fan-out directory behind `^0` exit 1 with no line — the limit
+// and where a resolution crosses a fan-out directory it cannot open, exits 1
+// with no line for some spellings, `^0` and `^^` among them — the limit
 // DESIGN §4 states). Read as a NO, each sent the
 // caller to `git tag` for a tag `git tag` lists
 // (TestResolveCommitFailsOnAHeldObjectGitCannotRead). The line is read as
-// severity, as everywhere, so the one error: line git writes over a store it
-// reads in full fails too: a peel the caller typed onto an object of another
-// type (`<tag-on-a-tree>^{commit}`, `^0`), where git's line names both types.
+// severity, as everywhere, so both error: lines git writes over a store it
+// reads in full fail too: a peel the caller typed onto an object of another
+// type (`<tag-on-a-tree>^{commit}`, `^0`), where git's line names both types,
+// and an abbreviation two objects share with a suffix after it (`<prefix>^0`,
+// "short object ID … is ambiguous"; the bare prefix writes no line, a NO).
 // Whether the resolved object is a commit this repository can read is
 // namesCommit's question and only namesCommit's: `rev-parse --verify --quiet
 // <sha>^{commit}` exits 1 as well for an empty object file on git 2.54 and

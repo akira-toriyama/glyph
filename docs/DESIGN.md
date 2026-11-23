@@ -2105,15 +2105,27 @@ abbreviated sha under a fan-out directory git cannot open exit 1 with the
 line on git 2.54 and 2.56, and over a store whose alternates directory is
 gone so does `HEAD~99` on 2.39.5, 2.54 and 2.56 and any name git does not
 know on 2.56 (measured 2026-11-15; the same two tests, mutation row
-`revision-resolved-through-an-unreadable-object-names-no-commit`). Two
-consequences are stated, not guarded. Under git 2.39 and earlier the fan-out
-directory behind `v0.1.0^0` exits 1 with no line and reads as naming no
-commit, the limit above. And the line is read as severity, never as message,
-so the one `error:` line `rev-parse --verify --quiet` writes at exit 1 over a
-store it reads in full is 4 as well: a peel typed onto an object of another
-type (`<tag-on-a-tree>^{commit}`, `^0`), where git's line names both types
-and the bare tag is the spelling refused by what it names
-(`TestResolveCommitResolvesThenPeels`). A tag on a tree or a blob
+`revision-resolved-through-an-unreadable-object-names-no-commit`). Three
+consequences follow, one of them guarded. Under git 2.39 and earlier a typed
+revision whose resolution crosses a fan-out directory git cannot open (mode
+000) is 2, naming no commit, wherever that git exits 1 without a line, the
+limit above: `v0.1.0^0` over the tagged commit's directory, and `HEAD^^`
+over the one behind `HEAD~1`, where `HEAD~2` over the same store writes
+`error: Could not read <sha>` and is 4 (measured 2026-11-23, git 2.39.5;
+stated, not guarded). And the line is read as severity, never as message, so
+the two `error:` lines `rev-parse --verify --quiet` writes at exit 1 over a
+store it reads in full are 4 as well. One is a peel typed onto an object of
+another type (`<tag-on-a-tree>^{commit}`, `^0`, `<tag-on-a-blob>^{commit}`),
+where git's line names both types and the bare tag answers 2 with its type,
+the spelling refused by what it names (guarded:
+`TestResolveCommitResolvesThenPeels` asserts all three at 4). The other is an
+abbreviated object name two objects share with a suffix after it: `<prefix>^`,
+`<prefix>~1` and `<prefix>^0` make git write `error: short object ID <prefix>
+is ambiguous` and are 4 with that line, while the bare `<prefix>` and
+`<prefix>^{commit}` exit 1 with no line and are 2, "names no commit this
+checkout holds", for two commits and for two blobs alike (measured
+2026-11-23, git 2.39.5 and 2.54; stated, not guarded: no test builds two
+objects that share a prefix). A tag on a tree or a blob
 resolves to no commit, and is refused by what it names — `git tag` lists
 it, so "`git tag` lists the tags here" would be a sentence `git tag` refutes
 — and a negated revision (`^v0.1.0`), which `rev-parse --verify` accepts and
