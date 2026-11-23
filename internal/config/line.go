@@ -358,12 +358,13 @@ type inlineState struct {
 	dest   destState
 	destAt int // the "(" or the ":" behind the "]" of a destination that is not destNone
 
-	slashes uint8  // 1 behind a ":" no backslash escaped, 2 behind ":/": one more "/" writes "://"
-	colonAt int    // that ":"
-	ws      uint8  // how many "w" the last bytes are, up to three: a "." then writes "www."
-	wsAt    [3]int // the last ws of those "w", oldest first
-	auto    bool   // inside a bare URL the template began, and no blank since
-	autoAt  int    // the ":" of its "://" or the first "w" of its "www."
+	slashes uint8 // 1 behind a ":" no backslash escaped, 2 behind ":/": one more "/" writes "://"
+	colonAt int   // that ":"
+	ws      uint8 // how many "w" the last bytes are, up to three: a "." then writes "www."
+	auto    bool  // inside a bare URL the template began, and no blank since
+	autoAt  int   // the ":" of its "://" or the first "w" of its "www."
+
+	wsAt [3]int // the last ws of those "w", oldest first
 
 	ref   refState
 	refAt int // the "&" of a reference that is not refNone

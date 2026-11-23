@@ -1,11 +1,13 @@
 diff --git a/internal/config/line.go b/internal/config/line.go
-index 0e39f49..12e2e0e 100644
+index f15a688..f49fbec 100644
 --- a/internal/config/line.go
 +++ b/internal/config/line.go
-@@ -483,5 +483,5 @@ func (s inlineState) step(c byte, at int) inlineState {
- 	case c == 'w' || c == 'W':
- 		s.ws = min(ws+1, 3)
+@@ -500,7 +500,7 @@ func (s inlineState) step(c byte, at int) inlineState {
+ 			wsAt = [3]int{wsAt[1], wsAt[2], at}
+ 		}
+ 		s.ws, s.wsAt = min(ws+1, 3), wsAt
 -	case c == '.' && ws == 3 && !s.auto:
 +	case false:
- 		s.auto, s.autoAt = true, at
+ 		s.auto, s.autoAt = true, wsAt[0]
  	}
+ 	digit := c >= '0' && c <= '9'
