@@ -506,9 +506,9 @@ func TestGoreleaserGrantsStayInTheJobThatUsesThem(t *testing.T) {
 // TestCaskGoesOutOnlyAfterThePublish: the tap names the release's assets, so
 // the push is its own job, after the release job (`needs:`), over the cask
 // file that job uploaded onto the release (.goreleaser.yaml `extra_files` —
-// a rebuild would stamp a new build date and a regenerated cask would carry
-// the wrong sha256; a run artifact belongs to one run, where the release is
-// reachable from a re-run attempt and a fresh run alike). Dropping `needs:`
+// a regenerated cask is held to the published bytes only under the
+// GoReleaser that wrote them; a run artifact belongs to one run, where the
+// release is reachable from a re-run attempt and a fresh run alike). Dropping `needs:`
 // runs the two jobs side by side and reopens the brew-404 window a draft once
 // held open for 17 days (cifail v0.1.1). The fetch step is executed over a
 // stub gh: one `gh release download` naming the tag, the repository (the job

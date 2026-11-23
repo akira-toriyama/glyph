@@ -8,9 +8,10 @@ import (
 
 // TestGoreleaserIsToldWhichTagItReleases: goreleaser.yml's release step must
 // carry GORELEASER_CURRENT_TAG from the ref that triggered the run. Left
-// unset, GoReleaser infers the tag with `git describe`, and a commit that
-// carries two tags — a release cut on the same tree as its last rc, which is
-// the ordinary shape here — makes that a coin toss. Measured 2026-09-10: the
+// unset, GoReleaser takes the first tag pointing at HEAD in -version:refname
+// order (README has the mechanism), and on a commit that carries two tags — a
+// release cut on the same tree as its last rc, which is the ordinary shape
+// here — that is the rc, deterministically. Measured 2026-09-10: the
 // v3.3.0 push built 3.3.0-rc.2 artifacts and tried to upload them onto the
 // rc.2 release (422 already_exists); v3.3.0 had no release while every pin
 // site was about to move to it. Positive control: the step exists and has an
@@ -30,6 +31,6 @@ func TestGoreleaserIsToldWhichTagItReleases(t *testing.T) {
 	}
 	if !strings.Contains(step, "GORELEASER_CURRENT_TAG: ${{ github.ref_name }}") {
 		t.Errorf("the GoReleaser step does not pass GORELEASER_CURRENT_TAG from github.ref_name — on a commit "+
-			"carrying two tags GoReleaser guesses with git describe and can release the wrong one:\n%s", step)
+			"carrying two tags GoReleaser takes the first by -version:refname, the rc, and releases the wrong one:\n%s", step)
 	}
 }

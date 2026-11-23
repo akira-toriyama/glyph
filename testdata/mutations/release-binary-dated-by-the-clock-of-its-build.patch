@@ -1,0 +1,13 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index a56c72b..29621c0 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -25,7 +25,7 @@ builds:
+       # below keeps {{ .Version }}: the install action derives it as ${ver#v}.
+       - -X github.com/akira-toriyama/glyph/v6/internal/version.Version={{.Tag}}
+       - -X github.com/akira-toriyama/glyph/v6/internal/version.Commit={{.Commit}}
+-      - -X github.com/akira-toriyama/glyph/v6/internal/version.Date={{.CommitDate}}
++      - -X github.com/akira-toriyama/glyph/v6/internal/version.Date={{.Date}}
+     goos: [linux, darwin]
+     goarch: [amd64, arm64]
+ 

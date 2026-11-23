@@ -1,0 +1,12 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index 169f78d..48fa6db 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -57,7 +57,6 @@ archives:
+         info:
+           owner: root
+           group: root
+-          mtime: "{{ .CommitDate }}"
+           mode: 0644
+ 
+ checksum:

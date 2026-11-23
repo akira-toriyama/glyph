@@ -1,0 +1,15 @@
+diff --git a/internal/cli/cmd_version.go b/internal/cli/cmd_version.go
+index 99ad018..93925f6 100644
+--- a/internal/cli/cmd_version.go
++++ b/internal/cli/cmd_version.go
+@@ -27,8 +27,8 @@ func newVersionCmd() *cobra.Command {
+ 			"binary was built, so a rebuild answers the same. A release binary and a\n" +
+ 			"build.sh build carry all three, stamped in by ldflags; a `go build` in a\n" +
+ 			"checkout recovers them from the VCS data the Go toolchain embeds. A\n" +
+-			"module-mode `go install …@vX.Y.Z` build reports the release tag alone — no\n" +
+-			"commit, no date — because Go embeds no VCS data in module mode. Like\n" +
++			"module-mode `go install …@vX.Y.Z` build reports the release tag, the\n" +
++			"commit and the date like any other build. Like\n" +
+ 			"`emoji`, it reaches nothing — no git, no API, no repository — so it answers\n" +
+ 			"anywhere.\n\n" +
+ 			"The rules are NOT in the binary: the repository's glyph.toml decides the\n" +

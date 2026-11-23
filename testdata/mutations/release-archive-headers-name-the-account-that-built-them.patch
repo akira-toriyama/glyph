@@ -1,0 +1,12 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index 169f78d..6a87b9b 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -44,7 +44,6 @@ archives:
+     # given per entry.
+     # https://goreleaser.com/customization/archive/ (builds_info, files[].info)
+     builds_info:
+-      owner: root
+       group: root
+     files:
+       - src: LICENSE
