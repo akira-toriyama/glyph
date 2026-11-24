@@ -1,28 +1,30 @@
 diff --git a/internal/hook/hook.go b/internal/hook/hook.go
-index e1264b2..a0f2e6d 100644
+index b92b99a..7956c83 100644
 --- a/internal/hook/hook.go
 +++ b/internal/hook/hook.go
-@@ -326,12 +326,12 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
- 		if pe, ok := errors.AsType[*fs.PathError](mkErr); ok && pe.Path != hooksDir {
- 			return Report{}, core.APIf("%v — so the hooks directory %s could not be created", mkErr, hooksDir)
- 		}
--		return Report{}, core.APIf("%v — the hooks directory could not be created", mkErr)
-+		return Report{}, core.APIf("creating %s: %v", hooksDir, mkErr)
- 	}
- 	for _, k := range plans {
- 		path := filepath.Join(hooksDir, k.Name)
- 		if wErr := os.WriteFile(path, []byte(k.Script), 0o755); wErr != nil { //nolint:gosec // a hook must be executable
--			return Report{}, core.APIf("%v — the %s hook could not be written", wErr, k.Name)
-+			return Report{}, core.APIf("writing %s: %v", path, wErr)
+@@ -341,14 +341,14 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
+ 			if pe, ok := errors.AsType[*fs.PathError](mkErr); ok && pe.Path != hooksDir {
+ 				return rep, core.APIf("%v — so the hooks directory %s could not be created, and nothing was written", mkErr, hooksDir).WithDetails(rep.Hooks)
+ 			}
+-			return rep, core.APIf("%v — the hooks directory could not be created, so nothing was written", mkErr).WithDetails(rep.Hooks)
++			return rep, core.APIf("creating %s: %v", hooksDir, mkErr).WithDetails(rep.Hooks)
  		}
  	}
- 	return rep, chmodAll(hooksDir, kinds)
-@@ -343,7 +343,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, bool, error) {
- 	in, err := k.Read(hooksDir)
+ 	for _, w := range writes {
+ 		path := filepath.Join(hooksDir, w.kind.Name)
+ 		if wErr := os.WriteFile(path, []byte(w.kind.Script), 0o755); wErr != nil { //nolint:gosec // a hook must be executable
+ 			rep.Hooks[w.at].Action = "failed"
+-			return rep, core.APIf("%v — the %s hook could not be written", wErr, w.kind.Name).WithDetails(rep.Hooks)
++			return rep, core.APIf("writing %s: %v", path, wErr).WithDetails(rep.Hooks)
+ 		}
+ 		rep.Hooks[w.at].Action = w.earns
+ 	}
+@@ -369,7 +369,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
  	res := Result{Kind: k.Name, Path: in.Path}
  	if err != nil {
--		return res, false, core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
-+		return res, false, core.APIf("reading %s: %v", in.Path, err)
+ 		res.Action = "failed"
+-		return res, "", core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
++		return res, "", core.APIf("reading %s: %v", in.Path, err)
  	}
  	res.Existed = in.State != Absent
  	switch {

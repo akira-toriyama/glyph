@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -280,6 +281,78 @@ func TestInstallWritesNothingWhenALaterKindRefuses(t *testing.T) {
 	}
 }
 
+// refusalDetails is the report a refusal of Install carries as its details.
+func refusalDetails(t *testing.T, err error) []Result {
+	t.Helper()
+	ce, ok := errors.AsType[*core.Error](err)
+	if !ok {
+		t.Fatalf("Install = %v, want a *core.Error refusal", err)
+	}
+	d, ok := ce.Details.([]Result)
+	if !ok {
+		t.Fatalf("refusal details = %#v, want the report, one Result per kind", ce.Details)
+	}
+	return d
+}
+
+// TestARefusalCarriesTheReport: a refusal's details are the report, one entry
+// per kind saying what happened to its file before the run stopped. The
+// absent commit-msg hook is planned before the foreign pre-push one refuses,
+// and nothing is written, so its entry is "skipped" — an "installed" there
+// (the plan's Action, set before the write) claims a write that never
+// happened — and no summary line renders an entry the run did not write, or
+// an empty Action, as installed.
+func TestARefusalCarriesTheReport(t *testing.T) {
+	dir := t.TempDir()
+	foreign := "#!/bin/sh\n# hand-written house rules\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(dir, "pre-push"), []byte(foreign), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("seeding the foreign pre-push hook: %v", err)
+	}
+
+	_, err := Install(dir, false, Kinds()...)
+	got := refusalDetails(t, err)
+	want := []Result{
+		{Kind: "commit-msg", Path: filepath.Join(dir, "commit-msg"), Action: "skipped", Existed: false},
+		{Kind: "pre-push", Path: filepath.Join(dir, "pre-push"), Action: "refused", Existed: true},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("refusal details = %+v, want %+v", got, want)
+	}
+	if !strings.Contains(err.Error(), "the pre-push hook") || !strings.Contains(err.Error(), "nothing was written") {
+		t.Errorf("refusal = %q, want it naming the pre-push hook and saying nothing was written", err)
+	}
+	for _, r := range append(got, Result{Kind: "commit-msg", Path: "p"}) {
+		if s := r.summary(); strings.Contains(s, "installed") {
+			t.Errorf("summary of %+v = %q, a write that did not happen", r, s)
+		}
+	}
+}
+
+// TestAFailedWriteMidwayCarriesTheReport: a write that fails after another
+// succeeded reports through the same details — the written kind as written,
+// the failed one as failed — instead of an empty report over a tree that
+// changed.
+func TestAFailedWriteMidwayCarriesTheReport(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where file modes do not stop a write")
+	}
+	dir := t.TempDir()
+	stale := "#!/bin/sh\n# glyph pre-push hook — " + Marker + "\nexec glyph hook pre-push --old-flag\n"
+	if err := os.WriteFile(filepath.Join(dir, "pre-push"), []byte(stale), 0o444); err != nil { //nolint:gosec
+		t.Fatalf("seeding the read-only pre-push hook: %v", err)
+	}
+
+	_, err := Install(dir, false, Kinds()...)
+	got := refusalDetails(t, err)
+	want := []Result{
+		{Kind: "commit-msg", Path: filepath.Join(dir, "commit-msg"), Action: "installed", Existed: false},
+		{Kind: "pre-push", Path: filepath.Join(dir, "pre-push"), Action: "failed", Existed: true},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("refusal details = %+v, want %+v", got, want)
+	}
+}
+
 func TestInstallForceReplacesAForeignHook(t *testing.T) {
 	dir := t.TempDir()
 	writeHook(t, dir, "#!/bin/sh\n# hand-written house rules\nexit 0\n")
@@ -423,12 +496,15 @@ func TestSetHeadRemedyRunsPasted(t *testing.T) {
 
 // TestInstallNamesARefusedPathOnce: a read or a write the filesystem refuses
 // hands its *fs.PathError over as it is — it already names the operation and
-// the path — behind what did not happen, as a no-answer refusal (DESIGN §5).
+// the path — behind what did not happen, as a no-answer refusal (DESIGN §5),
+// and carries the report through the details every refusal does: the mkdir
+// failures write nothing and say so, and each kind's entry says which of its
+// file's read, write or creation failed or never ran.
 func TestInstallNamesARefusedPathOnce(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("running as root, where file modes do not stop a read or a write")
 	}
-	check := func(t *testing.T, err error, path string) {
+	check := func(t *testing.T, err error, path, action string) {
 		t.Helper()
 		var ce *core.Error
 		if !errors.As(err, &ce) || ce.Code != core.CodeAPI {
@@ -436,6 +512,12 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		}
 		if n := strings.Count(err.Error(), path); n != 1 || !strings.Contains(err.Error(), "permission denied") {
 			t.Errorf("Install = %q, want the refusal naming %s once (got %d)", err, path, n)
+		}
+		if got := refusalDetails(t, err); len(got) != 1 || got[0].Action != action {
+			t.Errorf("refusal details = %+v, want one entry, action %q", got, action)
+		}
+		if action == "skipped" && !strings.Contains(err.Error(), "nothing was written") {
+			t.Errorf("Install = %q, want it saying nothing was written", err)
 		}
 	}
 	t.Run("an unreadable hook", func(t *testing.T) {
@@ -445,7 +527,7 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := Install(dir, false, Kinds()[0])
-		check(t, err, path)
+		check(t, err, path, "failed")
 	})
 	t.Run("an unwritable hooks directory", func(t *testing.T) {
 		dir := t.TempDir()
@@ -454,7 +536,7 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 		_, err := Install(dir, false, Kinds()[0])
-		check(t, err, filepath.Join(dir, "commit-msg"))
+		check(t, err, filepath.Join(dir, "commit-msg"), "failed")
 	})
 	t.Run("an uncreatable hooks directory", func(t *testing.T) {
 		parent := t.TempDir()
@@ -464,7 +546,7 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
 		hooksDir := filepath.Join(parent, "hooks")
 		_, err := Install(hooksDir, false, Kinds()[0])
-		check(t, err, hooksDir)
+		check(t, err, hooksDir, "skipped")
 	})
 	t.Run("a hooks directory under an ancestor that cannot be made", func(t *testing.T) {
 		parent := t.TempDir()
@@ -475,7 +557,7 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		ancestor := filepath.Join(parent, "a")
 		hooksDir := filepath.Join(ancestor, "hooks")
 		_, err := Install(hooksDir, false, Kinds()[0])
-		check(t, err, hooksDir)
+		check(t, err, hooksDir, "skipped")
 		if !strings.Contains(err.Error(), "mkdir "+ancestor+":") {
 			t.Errorf("Install = %q, want the ancestor's refused mkdir beside the hooks directory", err)
 		}

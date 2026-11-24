@@ -2,10 +2,12 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -72,6 +74,55 @@ func TestHookInstallRefusesAForeignHookWithUsageCode(t *testing.T) {
 
 	if code, _, stderr := runGlyph(t, "hook", "install", "--force"); code != int(core.CodeOK) {
 		t.Fatalf("--force exit = %d, want 0\nstderr: %s", code, stderr)
+	}
+}
+
+// TestHookInstallRefusalCarriesTheReport: the refusal's envelope carries the
+// report as its details — one entry per kind, saying what happened to its
+// file — with --json and without, and --json writes nothing to stdout, as
+// every other refusal does. The CLI once returned the refusal alone, so the
+// caller learned which hook refused only from prose.
+func TestHookInstallRefusalCarriesTheReport(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	writeExecutable(t, filepath.Join(dir, ".git", "hooks", "pre-push"), "#!/bin/sh\necho foreign\n")
+	t.Chdir(dir)
+
+	for _, args := range [][]string{{"hook", "install", "--json"}, {"hook", "install"}} {
+		code, stdout, stderr := runGlyph(t, args...)
+		if code != int(core.CodeUsage) {
+			t.Fatalf("%v exit = %d, want %d\nstderr: %s", args, code, core.CodeUsage, stderr)
+		}
+		if stdout != "" {
+			t.Errorf("%v stdout = %q, want nothing beside the refusal's envelope", args, stdout)
+		}
+		env := decodeErrorEnvelope(t, stderr)
+		var got []hook.Result
+		if err := json.Unmarshal(env.Details, &got); err != nil {
+			t.Fatalf("%v details are not the report (%v):\n%s", args, err, stderr)
+		}
+		want := []hook.Result{
+			{Kind: "commit-msg", Path: filepath.Join(".git", "hooks", "commit-msg"), Action: "skipped", Existed: false},
+			{Kind: "pre-push", Path: filepath.Join(".git", "hooks", "pre-push"), Action: "refused", Existed: true},
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%v details = %+v, want %+v", args, got, want)
+		}
+	}
+}
+
+// TestHookInstallWritesARepeatedKindOnce: a kind named twice is one kind, so
+// it is written and reported once.
+func TestHookInstallWritesARepeatedKindOnce(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "hook", "install", "--json", "commit-msg", "commit-msg")
+	if code != int(core.CodeOK) {
+		t.Fatalf("exit = %d, want 0\nstderr: %s", code, stderr)
+	}
+	rep := decodeJSON[hook.Report](t, stdout)
+	if len(rep.Hooks) != 1 || rep.Hooks[0].Kind != "commit-msg" || rep.Hooks[0].Action != "installed" {
+		t.Errorf("report = %+v, want commit-msg installed, once", rep.Hooks)
 	}
 }
 
