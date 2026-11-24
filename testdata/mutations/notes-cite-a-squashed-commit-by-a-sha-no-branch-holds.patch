@@ -1,0 +1,14 @@
+diff --git a/internal/walk/walk.go b/internal/walk/walk.go
+index 5d5f971..7afd316 100644
+--- a/internal/walk/walk.go
++++ b/internal/walk/walk.go
+@@ -245,9 +245,6 @@ func NoteCommits(ws []Commit) []notes.Commit {
+ 	out := make([]notes.Commit, 0, len(ws))
+ 	for _, w := range ws {
+ 		sha := w.Raw.SHA
+-		if w.Pull > 0 && !w.Landed {
+-			sha = ""
+-		}
+ 		out = append(out, notes.Commit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: w.Raw.Login, Message: w.Raw.Message, Recorded: w.Raw.Recorded})
+ 	}
+ 	return out
