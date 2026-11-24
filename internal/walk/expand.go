@@ -95,6 +95,10 @@ type walk struct {
 	coveredPulls map[int]bool
 	coveredOrder []int
 	expanded     map[int]bool
+	// truncatedAt is, per line under [[packages]], the merge points of the
+	// truncated pulls that line's range holds — what facts.truncatedTags
+	// names; nil on the single line.
+	truncatedAt lineBases
 	// visited counts the commits the walk asked GitHub about, unknown the ones
 	// GitHub did not know; reconcile reads the all-unknown shape off them.
 	visited, unknown int
@@ -357,6 +361,13 @@ func (w *walk) expand(ctx context.Context, m *merged, canonical string) error {
 	if m.capped {
 		w.warnCapped(number, len(listing))
 		w.facts.truncated = append(w.facts.truncated, number)
+		if w.ranges.holds != nil {
+			if w.truncatedAt == nil {
+				w.truncatedAt = make(lineBases, len(w.ranges.lines))
+			}
+			w.truncatedAt.add(canonical, w.ranges.reach(canonical))
+			w.facts.truncatedTags = lineTags(w.ranges.lines, w.truncatedAt)
+		}
 	}
 	// Where did each listed commit LAND on the released branch? That is the
 	// only question that lets the walk RANGE — a git fact — govern a listing
