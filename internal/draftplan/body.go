@@ -16,7 +16,7 @@ import "strings"
 const handMarker = "<!-- glyph: notes written ABOVE this line survive every push; glyph rewrites everything BELOW it -->"
 
 // ComposeBody assembles the draft body the upsert writes: the hand region of
-// the kept draft's body (everything above the marker, byte-for-byte —
+// the kept draft's body (everything above the marker line, byte-for-byte —
 // including the CRLF line endings a web edit stores), the marker, then the
 // freshly generated machine region. keep is the plan's Keep, nil when the
 // plan creates a draft, which has no hand region. A body with no marker — a
@@ -24,14 +24,27 @@ const handMarker = "<!-- glyph: notes written ABOVE this line survive every push
 // contributes no hand region: glyph cannot tell that body's hand-written
 // lines from its own stale output, and guessing would resurrect old machine
 // text as if a human had written it.
+//
+// The marker counts only as a whole line (a CR before its newline included):
+// the notes render a commit subject that quotes the marker inside a bullet, and
+// a substring match there would read that machine line as the boundary (t-cjck).
 func ComposeBody(keep *Draft, generated string) string {
-	var existing string
+	var hand string
 	if keep != nil {
-		existing = keep.Body
-	}
-	hand, _, found := strings.Cut(existing, handMarker)
-	if !found {
-		hand = ""
+		hand = handRegion(keep.Body)
 	}
 	return hand + handMarker + "\n\n" + generated
+}
+
+// handRegion returns everything above body's first line that is the marker
+// alone, and nothing when no line is.
+func handRegion(body string) string {
+	at := 0
+	for line := range strings.Lines(body) {
+		if strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r") == handMarker {
+			return body[:at]
+		}
+		at += len(line)
+	}
+	return ""
 }

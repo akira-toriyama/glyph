@@ -2454,12 +2454,17 @@ glyph's and is rewritten every time. The contract is printed where the human
 is typing, instead of being an unwritten rule learned by losing work. A body
 with no marker contributes no hand region — glyph cannot tell such a body's
 hand-written lines from its own stale output, and guessing would resurrect
-old machine text as if a human had written it. `checkReleaseBody` sizes the
+old machine text as if a human had written it. The marker counts only as a
+whole line of its own, a CR before the newline included (t-cjck): the notes
+render a commit subject that quotes it inside a bullet, and a substring match
+read that machine line as the boundary once a human deleted the real one.
+`checkReleaseBody` sizes the
 FINAL body, hand region included. Rejected: a `RELEASE-NOTE:` commit footer
 (v2 removed footer parsing, and prose does not belong in commit messages
 addressed to the version fold); diffing the body against a re-render to
 detect edits (the base moves between pushes, so staleness and hand edits are
-indistinguishable). (Mutation row `draft-hand-region-discarded.patch`.)
+indistinguishable). (Mutation rows `draft-hand-region-discarded.patch`,
+`draft-hand-marker-matched-inside-a-line.patch`.)
 
 **The compare link** (t-v7f7): per-commit shas and `#N` citations give every
 line an address, and nothing gave the range one — glyph's own v4.2.0 page ended
