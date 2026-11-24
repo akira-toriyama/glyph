@@ -1,0 +1,14 @@
+diff --git a/internal/config/match.go b/internal/config/match.go
+index bed0e75..cb6b1f0 100644
+--- a/internal/config/match.go
++++ b/internal/config/match.go
+@@ -122,9 +122,6 @@ func submatch(message string, loc []int, gi int) string {
+ 		return ""
+ 	}
+ 	start, end := loc[2*gi], loc[2*gi+1]
+-	if end > start && message[end-1] == '\r' && (end == len(message) || message[end] == '\n') {
+-		end--
+-	}
+ 	return message[start:end]
+ }
+ 
