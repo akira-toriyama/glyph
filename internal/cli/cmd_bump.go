@@ -179,7 +179,7 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 	// commit — on no line — still appears in what the walk read. On the bare
 	// line the union is the line, and these rows are its rows. A message no
 	// pattern claims never reaches the fold: the walk refused it at its
-	// sighting, and Pending, for --range and --pr, in one refusal with
+	// sighting and Pending, for --range and --pr, each in one refusal with
 	// attribution's (readSource) — so the error return is the fold's
 	// contract, not a path any source takes.
 	rows, _, cerr := bump.Fold(walk.BumpCommits(w.All), cfg)

@@ -242,8 +242,8 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	}
 	// The union rows are what the verdict reports as the commits it read. On
 	// the bare line the union is the line. A message no pattern claims never
-	// reaches the fold: the walk refused it at its sighting, before any line
-	// was placed.
+	// reaches the fold: the walk refused it at its sighting, and a walk that
+	// refused one hands down no commits.
 	rows, _, cerr := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if cerr != nil {
 		return cerr

@@ -1752,6 +1752,66 @@ func TestBumpRangePackagesRefusesGrammarAndTreeAtOnce(t *testing.T) {
 	}
 }
 
+// TestSinceTagPackagesRefusesGrammarAndTreeAtOnce: a --since-tag walk over a
+// message no pattern claims and a commit attribution refuses is one refusal
+// in stage order — the grammar's rows, refused at their sighting, then
+// attribution's — whichever commit came first, and its sentence names every
+// escape, so the tags it names clear the range in one step. Refused alone,
+// the grammar's wedge left attribution's refusal to the next red run, after
+// the operator had cut the tag it named (DESIGN §4.1, rule 3; mutation row
+// walk-wedge-hides-the-attribution-refusal).
+func TestSinceTagPackagesRefusesGrammarAndTreeAtOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		unclaimedFirst bool
+	}{
+		{"the unclaimed message first", true},
+		{"the attribution refusal first", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, _ := packagesRepo(t)
+			var u, r string
+			if tc.unclaimedFirst {
+				u = testutil.Touch(t, dir, "akira-toriyama", "oops no gemoji", "haiku/z.go")
+				r = testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix the readme", "README.md")
+			} else {
+				r = testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix the readme", "README.md")
+				u = testutil.Touch(t, dir, "akira-toriyama", "oops no gemoji", "haiku/z.go")
+			}
+			usePR(t, walkServer(t, map[string]string{commitPullsPath(u): `[]`, commitPullsPath(r): `[]`}))
+			t.Chdir(dir)
+
+			code, _, stderr := runGlyph(t, "bump", "--since-tag")
+			if code != 3 {
+				t.Fatalf("bump --since-tag exited %d, want 3\nstderr: %s", code, stderr)
+			}
+			env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+			assertWedgeDetails(t, env, u, r)
+			both := "all of " + u[:7] + ", " + r[:7]
+			for _, want := range []string{
+				"commit " + u[:7] + ": ",
+				" (+1 more refused commit(s), all in details) — pushed straight to the released branch",
+				"The walk must start AT OR PAST " + u[:7] + " (commit " + u[:7] + ") — the commit is on the released branch itself, and AT OR PAST " + r[:7] + " (commit " + r[:7] + ") — the commit is on the released branch itself.",
+				"Cut a haiku/ tag at or past " + both + " / a curry/ tag at or past " + both + " by hand",
+			} {
+				if !strings.Contains(env.Message, want) {
+					t.Errorf("the refusal is missing %q:\n%s", want, env.Message)
+				}
+			}
+			if !strings.HasPrefix(env.Message, "commit "+u[:7]+": ") {
+				t.Errorf("the grammar's row must head the refusal:\n%s", env.Message)
+			}
+
+			head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.1", head)
+			testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.1", head)
+			if code, _, stderr := runGlyph(t, "bump", "--since-tag"); code != 1 {
+				t.Fatalf("the tags the refusal named exited %d, want 1: one red run, and both refused commits are behind both walks\nstderr: %s", code, stderr)
+			}
+		})
+	}
+}
+
 // TestSinceTagPackagesAttributionRefusalOutranksALaterAPIFailure: collecting
 // every attribution refusal means reading past the first, so a read that then
 // fails must not hide the refusal already found — the walk's own rule

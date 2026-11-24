@@ -3037,7 +3037,20 @@ asked:
    source a wrong grammar cannot be hidden by a wrong tree. The `--since-tag`
    walk refuses a message no pattern claims at its sighting, before
    attribution runs (§4), so attribution reads only what the grammar
-   accepted; `bump --range`, `notes --range`, `--pr` and `preview` load both
+   accepted, and then runs attribution over what it walked: one refusal
+   carries both stages in stage order — the walk's rows, then
+   attribution's, each in walk order, the first the headline — worded as
+   the walk's own, its sentence naming every escape of both, so the tags
+   it names clear the range in one step. Refused alone, the walk's refusal
+   left attribution's to the next red run, past the tag it had named
+   (measured 2026-11-04 on 2f9428a over a stand-in API and again on
+   7a24e2c: `oops no gemoji` on `haiku/` and `:bug:~ fix the readme` on
+   `README.md` alone, `--since-tag` named the first row where
+   `bump --range` named both, and with both lines tagged at the named
+   escape `--since-tag` refused the readme;
+   `TestSinceTagPackagesRefusesGrammarAndTreeAtOnce`, mutation row
+   `walk-wedge-hides-the-attribution-refusal`). `bump --range`,
+   `notes --range`, `--pr` and `preview` load both
    stages' rows — every message the pattern file refuses (`bump.Judge`, the
    one grammar judge) and every commit attribution refuses — into one
    refusal in range order (listing order for a pull), the first row the
@@ -3680,8 +3693,9 @@ release base) and each line stepping from its own highest tag.
 the commits that joined that package's line, so §3 is unchanged per line: max-fold,
 `%` promotes that line, the 0.x rule reads that line's current version, and a
 commit no pattern claims still refuses the whole walk (it is refused before
-attribution, so a wrong grammar cannot be hidden by a wrong tree; over
-`--range` its row joins attribution's in one refusal — rule 3). Its
+attribution, so a wrong grammar cannot be hidden by a wrong tree; its row
+joins attribution's in one refusal, over `--range` in range order and over
+the walk ahead of them — rule 3). Its
 refusal names the escape per line, as rule 3's does: such a commit wedges
 every line whose range holds it, so what clears it is a tag on each of those
 lines at or past its governing identity — `a haiku/ tag at or past X / a
