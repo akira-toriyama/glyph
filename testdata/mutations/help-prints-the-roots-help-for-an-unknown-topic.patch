@@ -1,0 +1,13 @@
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index c146d00..514ae00 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -135,7 +135,7 @@ func newRootCmd() *cobra.Command {
+ 				if err != nil {
+ 					return err
+ 				}
+-				return noArgs(topic, rest)
++				return noArgs(topic, rest[:0])
+ 			}
+ 		}
+ 	}

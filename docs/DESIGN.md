@@ -4199,7 +4199,9 @@ rejects `/v6@v6.0.0` and serves v5.1.0 for `/v5/@latest`) — since
 is the one place that holds both the tag and the tree. Rejected: a `doctor`
 check (t-nag8, 2026-09-15 — glyph reads no manifest, §4.1, and no workflow in
 the fleet runs `doctor`). Subcommands: everything `glyph --help` prints except
-cobra's own `completion` and `help` — not retyped here, because the retyped
+cobra's own `completion` and `help`, which glyph keeps but guards with its own
+`noArgs` (`glyph completion zshh` and `glyph help nosuch` are usage, 2, as
+`glyph nosuch` is) — not retyped here, because the retyped
 list rotted once (t-0cqs, §8); the tree below is held to `internal/` by
 `TestDesignTreeNamesEveryInternalPackage`.
 

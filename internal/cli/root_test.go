@@ -87,6 +87,41 @@ func TestStrayPositionalNamesItsRemedy(t *testing.T) {
 	}
 }
 
+// TestHelpRefusesWhatItCannotResolve: cobra's `help` resolved its topic with
+// Find, which returns the deepest command and the leftover words without
+// error, so `glyph help nosuch` printed the root's help at 0. A leftover word
+// is now the topic's own stray positional — the refusal the same words give
+// without `help` — while a topic that resolves whole still prints the bytes
+// its --help prints, at 0.
+func TestHelpRefusesWhatItCannotResolve(t *testing.T) {
+	for name, tc := range map[string]struct {
+		args []string
+		want string
+	}{
+		"an unknown topic":          {[]string{"help", "nosuch"}, `unknown command "nosuch" for "glyph" — run 'glyph --help' for the command list`},
+		"a word past a leaf":        {[]string{"help", "lint", "extra"}, `glyph lint takes no arguments (got "extra")`},
+		"an unknown sub of a group": {[]string{"help", "hook", "nosuch"}, `unknown command "nosuch" for "glyph hook" — run 'glyph hook --help' for the command list`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			code, stdout, stderr := runGlyph(t, tc.args...)
+			if code != int(core.CodeUsage) || stdout != "" {
+				t.Fatalf("glyph %v = %d stdout %q, want exactly %d and nothing on stdout\nstderr: %s", tc.args, code, stdout, core.CodeUsage, stderr)
+			}
+			if env := decodeErrorEnvelope(t, stderr); env.Code != int(core.CodeUsage) || env.Message != tc.want {
+				t.Errorf("glyph %v envelope = %+v, want code %d and message\n%s", tc.args, env, core.CodeUsage, tc.want)
+			}
+		})
+	}
+	// runGlyph sends cobra's help to its stderr buffer (root.SetOut(errBuf)).
+	for _, topic := range [][]string{{}, {"lint"}, {"hook", "install"}} {
+		code, _, got := runGlyph(t, append([]string{"help"}, topic...)...)
+		_, _, want := runGlyph(t, append(topic, "--help")...)
+		if code != 0 || got != want || want == "" {
+			t.Errorf("glyph help %v = %d, want 0 and the bytes --help prints (%d bytes, got %d)", topic, code, len(want), len(got))
+		}
+	}
+}
+
 // TestCompletionRejectsAnUnknownShell pins the exit code on the one
 // invalid-argument path in this CLI that was not usage(2).
 //
