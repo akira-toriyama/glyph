@@ -13,7 +13,9 @@ import (
 )
 
 // bumpResult is the machine verdict: {current, level, next, commits, reason}
-// — plus packages when the repository declares [[packages]].
+// — plus packages when the repository declares [[packages]], and unknown
+// when the walk met commits GitHub had not indexed (walk.Facts.Unknown;
+// absent otherwise, and always from --range and --pr).
 // next is omitted on a none verdict — there is no next version to act on.
 //
 // With packages declared current / level are EMPTY, next is absent, and
@@ -30,6 +32,8 @@ type bumpResult struct {
 	Commits  []bump.Row       `json:"commits"`
 	Packages []packageVerdict `json:"packages,omitempty"`
 	Reason   string           `json:"reason"`
+
+	Unknown []walk.UnknownCommit `json:"unknown,omitempty"`
 }
 
 // packageVerdict is one line's verdict inside bumpResult.packages: the
@@ -187,10 +191,10 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 		}
 		pkgs = append(pkgs, pv)
 	}
-	res := bumpResult{Commits: rows, Packages: pkgs, Reason: packagesReason(pkgs, len(tags))}
+	res := bumpResult{Commits: rows, Packages: pkgs, Unknown: w.Facts.Unknown, Reason: packagesReason(pkgs, len(tags))}
 	if len(cfg.Packages) == 0 {
 		one := pkgs[0]
-		res = bumpResult{Current: one.Current, Level: one.Level, Next: one.Next, Commits: rows, Reason: one.Reason}
+		res = bumpResult{Current: one.Current, Level: one.Level, Next: one.Next, Commits: rows, Unknown: w.Facts.Unknown, Reason: one.Reason}
 	}
 	if len(tags) == 0 {
 		if o.json {

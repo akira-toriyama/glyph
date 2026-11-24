@@ -1,7 +1,10 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 4022762..b3db194 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -402,9 +402,10 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
+@@ -454,13 +454,14 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
+ 	if err != nil {
+ 		return nil, "", nil, false, false, err
  	}
 -	warnBumpRows(rows)
 +	_ = rows
@@ -10,7 +13,9 @@ diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
 -		_, dec, err := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
 +		lineRows, dec, err := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
  		if err != nil {
- 			return nil, "", false, false, err
+ 			return nil, "", nil, false, false, err
  		}
 +		warnBumpRows(lineRows)
  		pending[lw.Package.Path] = dec
+ 	}
+ 	return pending, short, w.Facts.Unknown, true, shallow, nil

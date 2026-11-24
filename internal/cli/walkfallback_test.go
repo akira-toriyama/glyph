@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/walk"
 )
 
 // This file pins the walk's fallback arm (DESIGN §4; internal/walk/expand.go:
@@ -362,6 +364,83 @@ func TestSinceTagUnknownShaFallsBack(t *testing.T) {
 	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, sha[:7]) {
 		t.Fatalf("the fallback must announce itself with a ::warning:: naming the commit:\n%s", stderr)
 	}
+}
+
+// TestJSONCarriesTheCommitsGitHubHadNotIndexed: each lag ::warning:: names a
+// commit on stderr only, so a --json reader saw a v0.1.1 with nothing to say
+// that GitHub had not indexed what it was read from (t-xr9d). unknown carries
+// exactly the commits those lines name, by full sha and with the arm each
+// took, on every verdict that walks and says them: bump and notes over all
+// three single-parent arms, release and preview over the two that leave the
+// walk complete (an unclaimed one is dropped, and release refuses on it).
+// A walk that met no lag carries no unknown key.
+func TestJSONCarriesTheCommitsGitHubHadNotIndexed(t *testing.T) {
+	type verdict struct {
+		Unknown *[]walk.UnknownCommit `json:"unknown"`
+	}
+	lagRepo := func(t *testing.T, unclaimed bool) (string, map[string]string, []walk.UnknownCommit) {
+		dir, _ := testutil.NewTaggedRepo(t)
+		routes := map[string]string{}
+		var want []walk.UnknownCommit
+		// One commit GitHub knows, so the walk is not the all-unknown shape
+		// a wrong --repo makes, which release refuses.
+		testutil.Commit(t, dir, "akira-toriyama", ":memo:= say so")
+		routes[commitPullsPath(headSHA(t, dir))] = `[]`
+		lag := func(author, message, arm string) {
+			testutil.Commit(t, dir, author, message)
+			sha := headSHA(t, dir)
+			routes[commitPullsPath(sha)] = apiUnknownSHA
+			want = append(want, walk.UnknownCommit{SHA: sha, Arm: arm})
+		}
+		lag("dependabot[bot]", "Bump foo (#5)", walk.ArmExcluded)
+		lag("akira-toriyama", ":bug:~ fix a crash, pushed moments ago", walk.ArmMessage)
+		if unclaimed {
+			lag("akira-toriyama", "no pattern claims this", walk.ArmUnclaimed)
+		}
+		t.Chdir(dir)
+		return dir, routes, want
+	}
+	check := func(t *testing.T, want []walk.UnknownCommit, args ...string) {
+		t.Helper()
+		code, stdout, stderr := runGlyph(t, args...)
+		if code != 0 {
+			t.Fatalf("%v exited %d, want 0\nstderr: %s", args, code, stderr)
+		}
+		got := decodeJSON[verdict](t, stdout)
+		if got.Unknown == nil || !slices.Equal(*got.Unknown, want) {
+			t.Fatalf("%v: unknown = %+v, want %+v\nstdout: %s", args, got.Unknown, want, stdout)
+		}
+		if n := strings.Count(stderr, "is not known to GitHub yet (API lag)"); n != len(want) {
+			t.Fatalf("%v: stderr names %d lagging commit(s), unknown %d — they must be the same commits:\n%s", args, n, len(want), stderr)
+		}
+	}
+	for _, cmd := range []string{"bump", "notes"} {
+		t.Run(cmd, func(t *testing.T) {
+			_, routes, want := lagRepo(t, true)
+			usePR(t, walkServer(t, routes))
+			check(t, want, cmd, "--since-tag", "--json")
+		})
+	}
+	t.Run("release", func(t *testing.T) {
+		_, routes, want := lagRepo(t, false)
+		usePR(t, dryServer(t, routes))
+		check(t, want, "release", "--dry-run", "--json", "--target", goldenTarget)
+	})
+	t.Run("preview", func(t *testing.T) {
+		_, routes, want := lagRepo(t, false)
+		routes[pullCommitsPath(7)] = `[` + apiCommit("aaa1111", "akira-toriyama", ":bug:~ fix a crash") + `]`
+		usePR(t, walkServer(t, routes))
+		check(t, want, "preview", "--pr", "7", "--json")
+	})
+	t.Run("no lag, no key", func(t *testing.T) {
+		dir, base := testutil.NewTaggedRepo(t)
+		testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+		t.Chdir(dir)
+		code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
+		if code != 0 || strings.Contains(stdout, `"unknown"`) {
+			t.Fatalf("bump --range = exit %d, want 0 and no unknown key\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+	})
 }
 
 // TestSinceTagFreePrefixBangFallbackIsMajor: no code table classifies the
