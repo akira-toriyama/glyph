@@ -12,6 +12,10 @@ import (
 // byte-for-byte (CRLF included — a web edit stores CRLF) and everything below
 // is regenerated; a body without the marker contributes nothing; a draft the
 // plan creates opens with the marker (mutation row draft-hand-region-discarded).
+// The marker counts only as a whole line: a machine line quoting it — a
+// commit subject the notes rendered, t-cjck — is no boundary, so a body whose
+// marker line a human deleted still contributes nothing (mutation row
+// draft-hand-marker-matched-inside-a-line).
 func TestComposeBodyCarriesTheHandRegion(t *testing.T) {
 	const generated = "## Fixes\n\n- fix a crash\n"
 	hand := "the exit codes changed, fix your gates\r\n\r\n"
@@ -22,6 +26,11 @@ func TestComposeBodyCarriesTheHandRegion(t *testing.T) {
 	}{
 		{"kept, with a hand region", &Draft{ID: 11, TagName: "v0.1.1", Draft: true, Body: hand + handMarker + "\n\n## Fixes\n\n- stale machine text\n"}, hand + handMarker + "\n\n" + generated},
 		{"kept, no marker", &Draft{ID: 11, TagName: "v0.1.1", Draft: true, Body: "## Fixes\n\n- old body with no marker\n"}, handMarker + "\n\n" + generated},
+		{"kept, marker as the first line", &Draft{ID: 11, TagName: "v0.1.1", Draft: true, Body: handMarker + "\n\n## Fixes\n\n- stale machine text\n"}, handMarker + "\n\n" + generated},
+		{"kept, marker as the last line", &Draft{ID: 11, TagName: "v0.1.1", Draft: true, Body: hand + handMarker}, hand + handMarker + "\n\n" + generated},
+		{"kept, marker line ending in CRLF", &Draft{ID: 11, TagName: "v0.1.1", Draft: true, Body: hand + handMarker + "\r\n\r\n## Fixes\r\n"}, hand + handMarker + "\n\n" + generated},
+		{"kept, marker line deleted, a subject quoting it", &Draft{ID: 11, TagName: "v0.1.1", Draft: true, Body: "## Fixes\n\n- :bug:~ stop the notes from printing \\" + handMarker + " twice\n"}, handMarker + "\n\n" + generated},
+		{"kept, a hand line quoting it above the marker line", &Draft{ID: 11, TagName: "v0.1.1", Draft: true, Body: "keep " + handMarker + " above\n" + handMarker + "\n\nold"}, "keep " + handMarker + " above\n" + handMarker + "\n\n" + generated},
 		{"created", nil, handMarker + "\n\n" + generated},
 	}
 	for _, c := range cases {
