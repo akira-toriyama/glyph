@@ -51,7 +51,8 @@ jobs:
     # One runner over the whole ledger, measured 2026-11-24 at 771–779 patches:
     # 1793 s, 1832 s, 1937 s, 2320 s and 2630 s on five heads, and one head
     # cancelled at 2718 s under a 45-minute limit. Four shards split the rows
-    # between them (scripts/mutations.sh, MUTATIONS_SHARD).
+    # between them (scripts/mutations.sh, MUTATIONS_SHARD); their first run, at
+    # 774 patches, took 495 s, 706 s, 636 s and 720 s (run 45354892438).
     timeout-minutes: 30
     strategy:
       fail-fast: false
