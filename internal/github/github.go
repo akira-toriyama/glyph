@@ -326,18 +326,38 @@ func getAll[T any](ctx context.Context, c *Client, u string) ([]T, error) {
 // (t-esm5, TestPullCommitsFollowsALinkHeaderSplitAcrossLines). api.github.com
 // sends one line (measured 2026-09-29); the join costs nothing when it does.
 func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return "", core.APIf("github: malformed request url %q: %v", u, err)
-	}
-	body, header, err := c.send(req)
+	header, err := c.fetch(ctx, u, into)
 	if err != nil {
 		return "", err
 	}
-	if err := json.Unmarshal(body, into); err != nil {
-		return "", core.APIf("github: decoding %s: %v", req.URL.Path, err)
-	}
 	return c.nextPage(strings.Join(header.Values("Link"), ", "))
+}
+
+// getOne is the read of ONE object (Repository, PullRequest): get without the
+// Link header. A single object has no next page, so a Link on its answer —
+// relative, foreign or unparseable, each of which nextPage refuses — is not
+// read, and cannot fail a read whose answer already decoded. GitHub sends none
+// there; a listing must use get, which is where the origin gate sits.
+func (c *Client) getOne(ctx context.Context, u string, into any) error {
+	_, err := c.fetch(ctx, u, into)
+	return err
+}
+
+// fetch performs one GET via send and decodes the 2xx body into into,
+// returning the response header for get to read pagination from.
+func (c *Client) fetch(ctx context.Context, u string, into any) (http.Header, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, core.APIf("github: malformed request url %q: %v", u, err)
+	}
+	body, header, err := c.send(req)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(body, into); err != nil {
+		return nil, core.APIf("github: decoding %s: %v", req.URL.Path, err)
+	}
+	return header, nil
 }
 
 // nextPage reads the next-page URL out of a response's Link header and admits
@@ -370,9 +390,14 @@ func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 // a page walk would hand internal/bump a short commit list and turn a wrong
 // release verdict loose, which is far worse than failing the job. The message
 // names both origins, because the realistic cause is a misconfigured
-// Enterprise host and a CI log is all the operator gets.
+// Enterprise host and a CI log is all the operator gets. A header nextLink
+// cannot parse is refused for the same reason: it does not say whether a next
+// page exists, and reading it as "none" is the quiet truncation.
 func (c *Client) nextPage(header string) (string, error) {
-	next := nextLink(header)
+	next, err := nextLink(header)
+	if err != nil {
+		return "", core.APIf("github: unparseable Link header %q: %v — the page walk cannot tell whether a next page exists", clamp(header), err)
+	}
 	if next == "" {
 		return "", nil
 	}
@@ -701,24 +726,121 @@ func distill(body []byte) string {
 	return clamp(strings.TrimSpace(string(body)))
 }
 
-// nextLink extracts the rel="next" target from a GitHub Link header, or "" when
-// there is no next page. Link entries look like `<url>; rel="next", <url>;
-// rel="last"`.
-func nextLink(header string) string {
-	for entry := range strings.SplitSeq(header, ",") {
-		segs := strings.Split(entry, ";")
-		if len(segs) < 2 {
+// nextLink returns the target of the first link-value whose rel names "next"
+// in a Link header, "" when none does, and an error when the header does not
+// follow RFC 8288 §3's grammar:
+//
+//	link-value = "<" URI-Reference ">" *( OWS ";" OWS link-param )
+//	link-param = token BWS [ "=" BWS ( token / quoted-string ) ]
+//
+// The parameter name and each relation type compare case-insensitively, the
+// value may be a token or a quoted string, one rel may carry several
+// space-separated types, and a rel after a link-value's first is ignored (§3.3).
+// The header is tokenized rather than split on commas, because a target and a
+// quoted value may both carry one. Empty list elements are skipped (RFC 9110
+// §5.6.1). The whole header is parsed before it answers: a malformed link-value
+// after the next one still fails, since a header that is wrong in one place is
+// not trusted in another.
+func nextLink(header string) (string, error) {
+	next := ""
+	s := header
+	for {
+		s = trimOWS(s)
+		if s == "" {
+			return next, nil
+		}
+		if s[0] == ',' {
+			s = s[1:]
 			continue
 		}
-		target := strings.TrimSpace(segs[0])
-		if !strings.HasPrefix(target, "<") || !strings.HasSuffix(target, ">") {
-			continue
+		if s[0] != '<' {
+			return "", fmt.Errorf("a link-value must open with <, found %q", clamp(s))
 		}
-		for _, param := range segs[1:] {
-			if strings.TrimSpace(param) == `rel="next"` {
-				return target[1 : len(target)-1]
+		end := strings.IndexByte(s, '>')
+		if end < 0 {
+			return "", fmt.Errorf("the link target %q never closes with >", clamp(s))
+		}
+		target := s[1:end]
+		s = s[end+1:]
+		rel, relSeen := "", false
+		for {
+			s = trimOWS(s)
+			if s == "" || s[0] == ',' {
+				break
+			}
+			if s[0] != ';' {
+				return "", fmt.Errorf("want ; or , after the link target %q, found %q", target, clamp(s))
+			}
+			name, rest := cutToken(trimOWS(s[1:]))
+			if name == "" {
+				return "", fmt.Errorf("a link-param of %q has no name", target)
+			}
+			s = trimOWS(rest)
+			value := ""
+			if s != "" && s[0] == '=' {
+				s = trimOWS(s[1:])
+				if s != "" && s[0] == '"' {
+					v, rest, ok := cutQuoted(s)
+					if !ok {
+						return "", fmt.Errorf("the %s value of %q never closes its quote", name, target)
+					}
+					value, s = v, rest
+				} else if value, s = cutToken(s); value == "" {
+					return "", fmt.Errorf("the %s parameter of %q has = and no value", name, target)
+				}
+			}
+			if strings.EqualFold(name, "rel") && !relSeen {
+				rel, relSeen = value, true
+			}
+		}
+		if next == "" {
+			for _, typ := range strings.Fields(rel) {
+				if strings.EqualFold(typ, "next") {
+					next = target
+					break
+				}
 			}
 		}
 	}
-	return ""
+}
+
+// trimOWS drops leading optional whitespace (RFC 9110 §5.6.3: space and tab).
+func trimOWS(s string) string { return strings.TrimLeft(s, " \t") }
+
+// cutToken splits s after its leading RFC 9110 §5.6.2 token ("" when s does not
+// open with a token character).
+func cutToken(s string) (token, rest string) {
+	i := 0
+	for i < len(s) && isTokenChar(s[i]) {
+		i++
+	}
+	return s[:i], s[i:]
+}
+
+func isTokenChar(b byte) bool {
+	switch {
+	case 'a' <= b && b <= 'z', 'A' <= b && b <= 'Z', '0' <= b && b <= '9':
+		return true
+	}
+	return strings.IndexByte("!#$%&'*+-.^_`|~", b) >= 0
+}
+
+// cutQuoted reads the RFC 9110 §5.6.4 quoted-string s opens with, returning its
+// unescaped content and what follows the closing quote; ok is false when the
+// quote never closes.
+func cutQuoted(s string) (value, rest string, ok bool) {
+	var b strings.Builder
+	for i := 1; i < len(s); i++ {
+		switch s[i] {
+		case '"':
+			return b.String(), s[i+1:], true
+		case '\\':
+			i++
+			if i == len(s) {
+				return "", "", false
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return "", "", false
 }

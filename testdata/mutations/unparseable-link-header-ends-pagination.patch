@@ -1,0 +1,13 @@
+diff --git a/internal/github/github.go b/internal/github/github.go
+index d1e45cf..89ed984 100644
+--- a/internal/github/github.go
++++ b/internal/github/github.go
+@@ -396,7 +396,7 @@ func (c *Client) fetch(ctx context.Context, u string, into any) (http.Header, er
+ func (c *Client) nextPage(header string) (string, error) {
+ 	next, err := nextLink(header)
+ 	if err != nil {
+-		return "", core.APIf("github: unparseable Link header %q: %v — the page walk cannot tell whether a next page exists", clamp(header), err)
++		return "", nil
+ 	}
+ 	if next == "" {
+ 		return "", nil

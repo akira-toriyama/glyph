@@ -401,9 +401,11 @@ func isGlyphRef(spec string) bool {
 }
 
 // pinProblem judges one ref, returning "" when it is a concrete release tag.
-// The two failing shapes are worth distinguishing in the report because the fix
-// differs: a moving ref must be replaced, while a SHA pin is already immutable
-// and only breaks glyph's version derivation.
+// The failing shapes are worth distinguishing in the report because the fix
+// differs: a moving ref must be replaced, a SHA pin is already immutable and
+// only breaks glyph's version derivation, and a release candidate is a tag
+// glyph does cut (DESIGN §4 names v3.0.0-rc.3 and v3.3.0-rc.2) that is still
+// not a release.
 func pinProblem(ref string, hasRef bool) string {
 	if !hasRef || ref == "" {
 		return "it names no ref at all, so GitHub resolves the repository's default branch — the workflow changes under you"
@@ -415,8 +417,19 @@ func pinProblem(ref string, hasRef bool) string {
 		return "@" + ref + " is a commit SHA: immutable, but a glyph reusable derives the binary version from the TAG it was " +
 			"pinned to (job.workflow_ref) and hard-errors on a non-tag ref unless glyph-version is passed"
 	}
+	if isPreRelease(ref) {
+		return "@" + ref + " is a pre-release tag, not a release: glyph cuts release candidates (v3.0.0-rc.3 and v3.3.0-rc.2 " +
+			"among them) ahead of the release they precede, and a pin must name a full vX.Y.Z release"
+	}
 	return "@" + ref + " is a moving ref (a branch, or a major/minor alias): it can change under the caller between two runs, " +
-		"and glyph's tag space holds only full vX.Y.Z releases — no v1 or v0.10 alias exists to resolve"
+		"and glyph publishes no major/minor alias — no v1 or v0.10 exists to resolve"
+}
+
+// isPreRelease reports whether ref is a bare-line vX.Y.Z carrying a semver
+// pre-release suffix (v3.0.0-rc.3).
+func isPreRelease(ref string) bool {
+	_, v, err := bump.ParseBaseTag(ref)
+	return err == nil && strings.HasPrefix(ref, v.String()+"-")
 }
 
 // isReleaseTag reports whether ref is a house release tag on glyph's own bare

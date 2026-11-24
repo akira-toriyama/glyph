@@ -985,6 +985,136 @@ func FuzzNextPageOrigin(f *testing.F) {
 	})
 }
 
+// TestPullCommitsFollowsEveryRFC8288SpellingOfNext: RFC 8288 reads the rel
+// parameter's name and its relation types case-insensitively, takes the value
+// quoted or bare, lets one rel carry several space-separated types, and lets
+// whitespace sit around the equals sign. GitHub's docs show only the exact
+// rel="next", so the other spellings arrive from an Enterprise host or a proxy,
+// where a parser matching those exact bytes ended the walk at page 1 with no
+// error (measured at 161efd9: each of the first five spellings returned 1 of 2
+// commits, err nil).
+func TestPullCommitsFollowsEveryRFC8288SpellingOfNext(t *testing.T) {
+	for _, rel := range []string{`rel=next`, `rel="next last"`, `REL="next"`, `rel="NEXT"`, `rel = "next"`, `rel="prev next"`} {
+		t.Run(rel, func(t *testing.T) {
+			var srvURL string
+			c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Query().Get("page") {
+				case "":
+					w.Header().Set("Link", fmt.Sprintf(`<%s/x?page=2>; %s`, srvURL, rel))
+					fmt.Fprint(w, `[{"sha":"a","commit":{"message":"m1","author":{"name":"x"}}}]`)
+				case "2":
+					fmt.Fprint(w, `[{"sha":"b","commit":{"message":"m2","author":{"name":"y"}}}]`)
+				default:
+					t.Errorf("unexpected page %q", r.URL.Query().Get("page"))
+				}
+			})
+			srvURL = c.baseURL
+
+			commits, err := c.PullCommits(context.Background(), "o", "r", 1)
+			if err != nil {
+				t.Fatalf("PullCommits: %v", err)
+			}
+			if len(commits) != 2 || commits[0].SHA != "a" || commits[1].SHA != "b" {
+				t.Fatalf("Link %q: pagination = %+v, want commits a then b", rel, commits)
+			}
+		})
+	}
+}
+
+// TestAnUnparseableLinkHeaderFailsThePageWalk: a Link header the RFC 8288
+// grammar cannot read says nothing about whether a next page exists, so the
+// walk fails at exit 4 instead of stopping — a quiet stop hands bump a short
+// commit list (mutation row unparseable-link-header-ends-pagination).
+func TestAnUnparseableLinkHeaderFailsThePageWalk(t *testing.T) {
+	for _, link := range []string{
+		`<%s/x?page=2; rel="next"`, // the target never closes
+		`%s/x?page=2; rel="next"`,  // no target brackets at all
+		`<%s/x?page=2>; rel="next`, // the quoted value never closes
+		`<%s/x?page=2> rel="next"`, // a parameter with no semicolon before it
+	} {
+		t.Run(link, func(t *testing.T) {
+			var srvURL string
+			c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+				if page := r.URL.Query().Get("page"); page != "" {
+					t.Errorf("an unparseable header was followed to page %q", page)
+				}
+				w.Header().Set("Link", fmt.Sprintf(link, srvURL))
+				fmt.Fprint(w, `[{"sha":"a","commit":{"message":"m1","author":{"name":"x"}}}]`)
+			})
+			srvURL = c.baseURL
+
+			commits, err := c.PullCommits(context.Background(), "o", "r", 1)
+			if code := core.ExitCode(err); code != 4 {
+				t.Fatalf("Link %q: exit %d (commits %+v, err %v), want 4", link, code, commits, err)
+			}
+			wantAPIError(t, err, "Link header")
+		})
+	}
+}
+
+// TestSingleObjectReadsIgnoreLink: a read of ONE object has no next page, so
+// the Link header on its answer is not read. A relative or foreign one failed
+// Repository and PullRequest at exit 4 with the object already decoded
+// (measured at 161efd9); GitHub sends no Link on a single object, and a server
+// that does has still answered the question asked.
+func TestSingleObjectReadsIgnoreLink(t *testing.T) {
+	for _, link := range []string{
+		`</repos/o/r?page=2>; rel="next"`,
+		`<https://elsewhere.example/repos/o/r?page=2>; rel="next"`,
+		`garbage`,
+	} {
+		t.Run(link, func(t *testing.T) {
+			c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Link", link)
+				if strings.HasSuffix(r.URL.Path, "/pulls/7") {
+					fmt.Fprint(w, `{"title":"t","user":{"login":"u"}}`)
+					return
+				}
+				fmt.Fprint(w, `{}`)
+			})
+			if _, err := c.Repository(context.Background(), "o", "r"); err != nil {
+				t.Errorf("Repository with Link %q: %v", link, err)
+			}
+			p, err := c.PullRequest(context.Background(), "o", "r", 7)
+			if err != nil || p.Title != "t" || p.Author != "u" {
+				t.Errorf("PullRequest with Link %q = %+v, %v; want t by u", link, p, err)
+			}
+		})
+	}
+}
+
+// TestNextLinkReadsTheRFC8288Grammar pins the parser's answers the page-walk
+// tests above cannot tell apart: which link-value wins, what is not "next",
+// and that a comma inside a target or a quoted value does not split an entry.
+func TestNextLinkReadsTheRFC8288Grammar(t *testing.T) {
+	tests := []struct {
+		header, want string
+		wantErr      bool
+	}{
+		{header: ``},
+		{header: ` , ,`},
+		{header: `<a>; rel="prev", <b>; rel=next, <c>; rel="next"`, want: "b"},
+		{header: "<a>\t;\tRel\t=\tnext", want: "a"},
+		{header: `<a>; rel="nextpage"`},
+		{header: `<a>; rel="last"; rel="next"`},
+		{header: `<a>; title="x; rel=next"`},
+		{header: `<a?p=1,2>; title="a, b"; rel="next"`, want: "a?p=1,2"},
+		{header: `<a>; rel="ne\xt"`, want: "a"},
+		{header: `<a>; anchor; rel=next`, want: "a"},
+		{header: `<a>; rel=next, garbage`, wantErr: true},
+		{header: `<a>;`, wantErr: true},
+		{header: `<a>; rel=`, wantErr: true},
+		{header: `<a>; rel="next\`, wantErr: true},
+		{header: `<a>; rel=next last`, wantErr: true},
+	}
+	for _, tt := range tests {
+		got, err := nextLink(tt.header)
+		if (err != nil) != tt.wantErr || got != tt.want {
+			t.Errorf("nextLink(%q) = %q, %v; want %q, error %v", tt.header, got, err, tt.want, tt.wantErr)
+		}
+	}
+}
+
 // FuzzNextLink: the Link-header parser is the one hand-rolled header parser in
 // the package — it must never panic, and anything it returns must be a
 // substring of the header it was given (it extracts, never fabricates).
@@ -994,8 +1124,12 @@ func FuzzNextLink(f *testing.F) {
 	f.Add(``)
 	f.Add(`<>; rel="next"`)
 	f.Add(`garbage; ; ;, <a`)
+	f.Add(`<u>; REL = "prev NEXT", <v>; title="a, b"; rel=next`)
 	f.Fuzz(func(t *testing.T, header string) {
-		got := nextLink(header)
+		got, err := nextLink(header)
+		if err != nil && got != "" {
+			t.Fatalf("nextLink(%q) = %q with error %v — a refusal carries no target", header, got, err)
+		}
 		if got == "" {
 			return
 		}

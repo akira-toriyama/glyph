@@ -293,6 +293,27 @@ func TestPinProblemNamesTheShape(t *testing.T) {
 	}
 }
 
+// TestPinProblemCallsAReleaseCandidateWhatItIs: glyph cuts release candidates
+// (DESIGN §4 names v3.0.0-rc.3 and v3.3.0-rc.2), so a pin to one still fails,
+// but the report called it a moving ref and said glyph's tag space held only
+// full vX.Y.Z releases (measured at 161efd9 for @v3.0.0-rc.3), both false.
+func TestPinProblemCallsAReleaseCandidateWhatItIs(t *testing.T) {
+	for _, ref := range []string{"v3.0.0-rc.3", "v3.3.0-rc.2"} {
+		got := pinProblem(ref, true)
+		if got == "" {
+			t.Errorf("@%s passed; a pin to a release candidate must still fail", ref)
+		}
+		if !strings.Contains(got, "release candidate") || strings.Contains(got, "moving ref") || strings.Contains(got, "holds only") {
+			t.Errorf("@%s must be explained as a release candidate, not a moving ref, got %q", ref, got)
+		}
+	}
+	for _, ref := range []string{"main", "v1"} {
+		if got := pinProblem(ref, true); strings.Contains(got, "holds only") {
+			t.Errorf("@%s: the report must not claim glyph's tags hold only full releases, got %q", ref, got)
+		}
+	}
+}
+
 // TestCheckWorkflowPinsOutcomes walks the check's outcomes over a real
 // directory: clean, drifted, and nothing to check — an empty workflows
 // directory among them. An absent one is TestAbsentWorkflowsDirSplitsOnRootProvenance's.
