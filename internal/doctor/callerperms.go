@@ -141,7 +141,8 @@ type reusableCall struct {
 // reusable" — both caller checks read it.
 func reusablesCalled(file, body string) []reusableCall {
 	var calls []reusableCall
-	for _, ref := range scanUses(file, body) {
+	refs, _ := scanUses(file, body) // an unread reference is workflow-glyph-pins' could-not-run
+	for _, ref := range refs {
 		spec, _, _ := strings.Cut(ref.Uses, "@")
 		if !strings.Contains(strings.ToLower(spec), "/.github/workflows/") {
 			continue

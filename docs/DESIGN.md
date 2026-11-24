@@ -4937,7 +4937,11 @@ The severities are the argued part:
   step *writes* stubs from a `run: |` heredoc, so the
   scan must skip block scalars whole or it fails a repository over text it emits
   rather than runs. Whole-line comments are dropped, block scalars are skipped by
-  indentation, `uses:` is only recognised as the line's own YAML key, and the
+  indentation, `uses:` is only recognised as a YAML key — the line's own, or an
+  entry of a one-line flow mapping — and its value is read in every spelling
+  GitHub Actions runs (block scalar, flow mapping, quoted key, at step and at job
+  level: glyph-test-2 PR #32, 2026-11-24); a glyph reference in a block or flow
+  value read any other way is could-not-run, never zero references. The
   owner/repo match is case-insensitive because GitHub's resolution is —
   `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
   repository clean.

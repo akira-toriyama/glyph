@@ -39,7 +39,7 @@ jobs:
 // at once: the stale commented v0.9.0 must not appear as a reference at all,
 // and the one reference found must be the executable line's v4.2.0.
 func TestScanUsesReadsTheRealLineNotTheCommentedStub(t *testing.T) {
-	refs := scanUses("commit-lint.yml", commentedStub)
+	refs, _ := scanUses("commit-lint.yml", commentedStub)
 	if len(refs) != 1 {
 		t.Fatalf("scanUses found %d reference(s), want exactly 1 (the commented stub is documentation): %+v", len(refs), refs)
 	}
@@ -115,7 +115,7 @@ func TestScanUsesSkipsBlockScalars(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			refs := scanUses("w.yml", tt.body)
+			refs, _ := scanUses("w.yml", tt.body)
 			if len(refs) != len(tt.want) {
 				t.Fatalf("scanUses found %d reference(s), want %d: %+v", len(refs), len(tt.want), refs)
 			}
@@ -128,6 +128,76 @@ func TestScanUsesSkipsBlockScalars(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestScanUsesReadsEverySpellingActionsRuns holds the ten spellings GitHub
+// Actions accepts and runs — folded and literal block scalar, flow mapping,
+// double- and single-quoted key, each at step and at job level (glyph-test-2
+// PR #32, 2026-11-24). Before it, each read as zero references, so a moving
+// ref spelled any of these ways passed workflow-glyph-pins.
+func TestScanUsesReadsEverySpellingActionsRuns(t *testing.T) {
+	const step = "akira-toriyama/glyph/.github/actions/install@main"
+	const job = "akira-toriyama/glyph/.github/workflows/lint.yml@main"
+	steps := "jobs:\n  a:\n    runs-on: x\n    steps:\n"
+	jobs := "jobs:\n"
+	tests := []struct {
+		name, body string
+		line       int
+	}{
+		{"step, folded block", steps + "      - uses: >-\n          " + step + "\n", 5},
+		{"step, literal block", steps + "      - uses: |\n          " + step + "\n", 5},
+		{"step, flow mapping", steps + "      - {uses: " + step + "}\n", 5},
+		{"step, double-quoted key", steps + "      - \"uses\": " + step + "\n", 5},
+		{"step, single-quoted key", steps + "      - 'uses': " + step + "\n", 5},
+		{"job, folded block", jobs + "  call:\n    uses: >-\n      " + job + "\n", 3},
+		{"job, literal block", jobs + "  call:\n    uses: |\n      " + job + "\n", 3},
+		{"job, flow mapping", jobs + "  call: {uses: " + job + "}\n", 2},
+		{"job, double-quoted key", jobs + "  call:\n    \"uses\": " + job + "\n", 3},
+		{"job, single-quoted key", jobs + "  call:\n    'uses': " + job + "\n", 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			refs, unread := scanUses("w.yml", tt.body)
+			if len(refs) != 1 || len(unread) != 0 {
+				t.Fatalf("scanUses = %+v, unread %q; want the one reference on line %d", refs, unread, tt.line)
+			}
+			if r := refs[0]; r.Line != tt.line || r.Ref != "main" || r.Problem == "" {
+				t.Errorf("reference = %+v, want @main on line %d, judged a moving ref", r, tt.line)
+			}
+		})
+	}
+}
+
+// TestScanUsesSaysWhatItCannotRead holds the could-not-run side: a glyph
+// reference in a block or flow value the reader does not read with certainty
+// is one unread line, never a silent zero references — and a flow value that
+// only lists glyph paths is not a reference at all.
+func TestScanUsesSaysWhatItCannotRead(t *testing.T) {
+	const ref = "akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.1"
+	tests := []struct {
+		name, body string
+		unread     int
+	}{
+		{"a block value over two lines", "jobs:\n  c:\n    uses: >-\n      akira-toriyama/glyph/.github/workflows/\n      lint.yml@v0.10.1\n", 1},
+		{"keep chomping", "jobs:\n  c:\n    uses: |+\n      " + ref + "\n\n", 1},
+		{"a nested flow mapping", "jobs:\n  c: {uses: " + ref + ", with: {a: 1}}\n", 1},
+		{"a flow mapping over two lines", "jobs:\n  c: {name: x,\n    uses: " + ref + "}\n", 1},
+		{"a flow sequence of steps", "jobs:\n  a:\n    steps: [{uses: " + ref + "}]\n", 1},
+		{"a flow value naming glyph paths, no uses", "on:\n  push:\n    paths: ['akira-toriyama/glyph/**']\n", 0},
+		{"a block value of another repository", "jobs:\n  c:\n    uses: >-\n      actions/checkout@v4\n      x\n", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			refs, unread := scanUses("w.yml", tt.body)
+			if len(refs) != 0 || len(unread) != tt.unread {
+				t.Errorf("scanUses = %+v, unread %q; want no reference and %d unread line(s)", refs, unread, tt.unread)
+			}
+		})
+	}
+	c := checkWorkflowPins("/r", true, []workflowFile{{Name: "w.yml", Body: tests[0].body}}, nil, nil, nil)
+	if c.Status != StatusUnknown {
+		t.Errorf("workflow-glyph-pins over an unread reference: status = %s, want unknown: %q", c.Status, c.Observed)
 	}
 }
 
@@ -166,7 +236,7 @@ const commentClosesWith = `jobs:
 // all, so it names that line unread rather than read the text as keys or as
 // none.
 func TestScannersAgreeACommentClosesABlockScalar(t *testing.T) {
-	refs := scanUses("w.yml", commentClosesHeredoc)
+	refs, _ := scanUses("w.yml", commentClosesHeredoc)
 	if len(refs) != 1 || refs[0].Line != 8 || refs[0].Ref != "v6.0.0" {
 		t.Errorf("scanUses = %+v, want the one reference on line 8 — the comment closed the heredoc", refs)
 	}
@@ -217,7 +287,7 @@ func TestScanUsesShapes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			refs := scanUses("w.yml", tt.line)
+			refs, _ := scanUses("w.yml", tt.line)
 			if tt.wantRef == "" && !tt.wantBad {
 				if len(refs) != 0 {
 					t.Fatalf("line %q produced %+v, want no reference", tt.line, refs)
@@ -258,7 +328,7 @@ func FuzzScanUsesCitesOnlyRealUsesLines(f *testing.F) {
 	f.Add("if: >0.5\nuses: AKIRA-TORIYAMA/GLYPH/w.yml\n")
 	f.Add("- uses:\n#\n\nuses: akira-toriyama/glyph/w.yml@\n")
 	f.Fuzz(func(t *testing.T, body string) {
-		refs := scanUses("w.yml", body)
+		refs, _ := scanUses("w.yml", body)
 		lines := strings.Split(body, "\n")
 		for _, r := range refs {
 			if r.Line < 1 || r.Line > len(lines) {
