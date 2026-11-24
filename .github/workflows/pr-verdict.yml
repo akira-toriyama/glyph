@@ -1,0 +1,363 @@
+name: glyph-pr-verdict
+
+# Reusable workflow — the merge PREVIEW of the release verdict, posted as one
+# sticky PR comment. Where release.yml reacts to a merge, this file answers
+# the question a reviewer actually has BEFORE merging: what does this PR do
+# to the version?
+#
+# `glyph preview --pr` does all of it: the verdict comes from the PR's
+# INDIVIDUAL commits (pure API — squash-safe by the same mechanism as the
+# release walk), never from the PR title, which a multi-commit PR's squash
+# subject would have replaced; it folds in what is already merged but
+# unreleased so the comment can distinguish "this PR escalates the next
+# release to vX.Y.Z" from "it stays vX.Y.Z — a same-or-higher bump is already
+# pending"; it skips that second walk on a repo with no v* tag (the walk is
+# the only unbounded input here, and skipping it is what makes fleet-wide
+# distribution safe); and it renders the body, marker included.
+#
+# This workflow is therefore two steps: run it, post it. That is deliberate —
+# the fold is a VERSION decision internal/bump owns, and a jq fold here would
+# be a second opinion about which level wins, living where nobody can
+# unit-test it or run it on a laptop. The same is true of the prose: "the
+# next release", never "the rolling draft", because only a repo wired to
+# release.yml keeps one and naming it elsewhere would be false, not merely
+# noisy — a claim that load-bearing belongs in a package with tests
+# (internal/preview), not in a heredoc. `glyph preview --pr N` prints these
+# exact bytes locally.
+#
+# The comment is advisory, refreshed on every push — a red one included — and
+# this workflow is NOT meant to be a required check: DESIGN §6 holds its
+# division of labour with lint.yml and what the comment says at a head whose
+# verdict does not compute.
+#
+# This is glyph's OFFICIAL PR-preview integration: the workflow and the
+# binary it runs ship from the same repo and the same release, so a caller
+# pins ONE concrete tag and can never mix workflow and binary revisions
+# (GoReleaser owns the vX.Y.Z tag space — never pin a moving ref).
+#
+# THE CALLER MUST NOT BE NAMED pr-verdict.yml. This file — the reusable
+# DEFINITION — occupies that name in glyph's own .github/workflows, and glyph
+# is inside the fleet the caller is distributed to, so a caller synced to this
+# path overwrites this file with its own 25-line stub. That is not
+# hypothetical: it happened on 2026-07-17, and only the pinned tags (which
+# callers resolve from, never main) kept the fleet running. The fleet caller
+# is therefore version-preview.yml, mirroring the split that has always kept
+# lint.yml (this repo's reusable) clear of commit-lint.yml (the distributed
+# caller). Same rule for any future reusable: the DEFINITION and the CALLER
+# never share a filename.
+#
+# The caller is README's (Getting started, step 3): a few lines around
+#
+#   uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@vX.Y.Z  # pin a release tag
+#
+# @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
+# https://github.com/akira-toriyama/glyph/releases. No live version is written
+# here because none can be: a tag is cut on a commit that ALREADY EXISTS, so any
+# version typed into this file names the PREVIOUS release the moment it ships.
+# For a pin that is provably current, read .github/workflows/version-preview.yml
+# in THIS repo — glyph is inside the fleet it distributes to, so fleet-sync holds
+# that caller at the canonical version. (This is also why a naive grep for glyph
+# pins must skip comments: internal/workflows guards both halves.)
+#
+# Gating on the verdict (the caller's policy, not this workflow's — see the
+# outputs block below).
+#
+# TWO lines are load-bearing here, and the `if:` is the one that is easy to omit:
+#
+#   * `if: ${{ !cancelled() }}` — WITHOUT it the gate FAILS OPEN on exactly the
+#     PRs it exists to catch. A fork PR skips the verdict job, and Actions skips
+#     any job whose `needs:` was skipped, so a bare `needs: verdict` means the
+#     empty check below never executes at all: the gate reports skipped, branch
+#     protection sees no failure, and the uninspected PR merges. The same happens
+#     whenever the verdict job fails (an unclassifiable commit makes it red by
+#     design). `!cancelled()` runs the gate in both cases while still honouring a
+#     cancelled workflow run.
+#   * the empty check — a skipped verdict yields "" for every output, which means
+#     NOT COMPUTED. Reading it as `none` is the same fail-open by another route.
+#
+# @vX.Y.Z below is the same PLACEHOLDER as above — pin the one concrete tag
+# both jobs share.
+#
+#   jobs:
+#     verdict:
+#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@vX.Y.Z
+#     api-guard:
+#       needs: verdict
+#       if: ${{ !cancelled() }}          # ← without this the gate is skipped, not enforced
+#       runs-on: ubuntu-latest
+#       steps:
+#         - run: |
+#             if [ -z "${{ needs.verdict.outputs.level }}" ]; then
+#               echo "::error::verdict unavailable (fork PR, a failed verdict job, or a [[packages]] repository, whose verdict is per line) — refusing to pass the gate"
+#               exit 1
+#             fi
+#             # ...then compare ${{ needs.verdict.outputs.breaking }} against
+#             # whatever the repo knows about its own API surface.
+
+on:
+  workflow_call:
+    inputs:
+      glyph-version:
+        description: >-
+          Override the glyph release whose binary computes the verdict (vX.Y.Z).
+          Leave empty (the default) and the version is derived from the tag the
+          caller pinned this reusable to (job.workflow_ref), so @vX.Y.Z runs
+          binary vX.Y.Z automatically. Set it only when pinning a non-tag ref (a
+          branch or SHA), which has no release binary to derive.
+        type: string
+        default: ""
+      runner:
+        description: >-
+          The `runs-on` label of this job: one label, or one runner group name.
+          The default keeps a caller that passes nothing on the GitHub-hosted
+          image. A repository that keeps its own runner passes its label,
+          usually by forwarding a repository variable — an unset variable
+          arrives as the empty string, which this job reads as the default.
+          No expression is spelled out here: GitHub evaluates one even inside
+          a description, and refuses the whole workflow file. The runner must
+          carry what this job and the install action call — `gh` and `jq`
+          among them — and be runner 2.336.0 or newer, the first that resolves
+          the `$/` reference the install step is written with; the
+          GitHub-hosted image does both.
+        type: string
+        default: ubuntu-latest
+    outputs:
+      # The verdict, machine-readable, so a caller can GATE on what this job
+      # already computes. Without these a caller wanting to act on the level
+      # has three bad choices: install glyph itself, re-implement the
+      # convention in grep, or parse the comment prose. All three fork the
+      # rules; this forks nothing.
+      #
+      # SKIPPED JOB => EVERY OUTPUT IS THE EMPTY STRING. The fork guard below
+      # skips this job on a fork PR, and GitHub gives a skipped job's outputs as
+      # "". Empty therefore means NOT COMPUTED, never "no change" — a caller
+      # gating on these MUST fail safe on empty rather than read it as `none`.
+      #
+      # A REPOSITORY DECLARING [[packages]] (glyph DESIGN §4.1) => EVERY OUTPUT
+      # IS "" TOO: its verdict is per line — one headline per touched line in
+      # the comment — and no scalar describes one line, so a caller written
+      # for the single line fails safe exactly as it does on a skipped job.
+      #
+      # This job stays ADVISORY: it is not a required check, and adding outputs
+      # does not change that. Whether a verdict blocks a merge is the caller's
+      # policy, expressed in the caller's own `if:` — the reusable computes, the
+      # caller decides.
+      level:
+        description: >-
+          The fold of this PR's verdict and what is already merged but
+          unreleased: none | patch | minor | major. Empty when the job was
+          skipped (fork PR).
+        value: ${{ jobs.verdict.outputs.level }}
+      next:
+        description: >-
+          The version the next release becomes (vX.Y.Z). Empty on a none
+          verdict, and empty when the job was skipped.
+        value: ${{ jobs.verdict.outputs.next }}
+      current:
+        description: >-
+          The version being stepped from — the highest parseable v* tag the
+          base branch's history holds, or v0.0.0 when it holds none. Empty
+          when the job was skipped.
+        value: ${{ jobs.verdict.outputs.current }}
+      breaking:
+        description: >-
+          "true" when level is major, "false" when it is another level — the
+          readable alias for a caller's `if:` — and empty whenever level is
+          (the job was skipped, or the repository declares [[packages]]),
+          which is NOT "false".
+        value: ${{ jobs.verdict.outputs.breaking }}
+
+permissions:
+  contents: read
+
+jobs:
+  verdict:
+    # Fork guard: a fork PR's GITHUB_TOKEN is read-only no matter what
+    # `permissions:` asks for, so the comment POST would 403 — skip instead
+    # of failing. Fork contributors still get the lint gate; the preview is
+    # a same-repo convenience. An event with no pull request in its payload
+    # fails the same comparison, so a push-triggered caller reports this job
+    # skipped with no step run (glyph-test-2 run 41809789871), and nothing
+    # inside the job can guard against that event.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    # The fallback is for a PASSED empty string — a caller forwarding an unset
+    # repository variable — which would otherwise leave the job with no runner.
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    # Two API-backed walks and one comment write; bound it so a hung step
+    # can't idle a runner for hours.
+    timeout-minutes: 10
+    outputs:
+      level: ${{ steps.verdict.outputs.level }}
+      next: ${{ steps.verdict.outputs.next }}
+      current: ${{ steps.verdict.outputs.current }}
+      breaking: ${{ steps.verdict.outputs.breaking }}
+    permissions:
+      contents: read
+      # The sticky comment (create + update), granted to this job only.
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The BASE branch, not the PR ref: `--since-tag` walks main's
+          # squash commits out of LOCAL git, `--pr` reads the pull's listing
+          # over the API and then reads back, out of the same local history,
+          # the pulls merged between the listing's fork and HEAD, and both
+          # walks resolve their step base from the highest v* tag the
+          # checked-out history holds — so the full base history and its
+          # tags must be here.
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0
+          # This job never pushes; don't leave the checkout token in
+          # .git/config (zizmor artipacked).
+          persist-credentials: false
+
+      # Resolve the binary version from the tag the caller pinned this reusable
+      # to (job.workflow_ref = …@refs/tags/vX.Y.Z), so the tag IS the version —
+      # no hand-bumped default to drift. The override input covers a branch/SHA
+      # pin, which has no release binary to derive from.
+      - name: Resolve the pinned glyph version
+        id: glyph
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+          OVERRIDE: ${{ inputs.glyph-version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${OVERRIDE:-}" ]; then
+            echo "version=$OVERRIDE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ref="${WORKFLOW_REF##*@}"
+          case "$ref" in
+            refs/tags/*) echo "version=${ref#refs/tags/}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::glyph-pr-verdict is pinned to a non-tag ref ($ref); pass glyph-version to pick a release binary."; exit 1 ;;
+          esac
+
+      # `$/` is GitHub's self-repository reference: inside a reusable workflow
+      # it names this FILE's own repository — glyph, at the commit the caller
+      # pinned — with no checkout (runner 2.336.0+). A workspace-relative `./…`
+      # names the CALLER's checkout instead (DESIGN §5).
+      - name: Install glyph (pinned release binary, checksum + provenance verified)
+        uses: $/.github/actions/install
+        with:
+          version: ${{ steps.glyph.outputs.version }}
+          token: ${{ github.token }}
+
+      # ONE call composes the whole comment: glyph folds its own two verdicts
+      # (this PR's individual commits, and what is already merged but
+      # unreleased), skips the pending walk on a repo with no v* tag, and
+      # renders the body — marker included. None of that is shell's business:
+      # the fold is a version decision internal/bump owns, and the prose makes
+      # claims (it must never name a rolling draft a repo does not keep) that
+      # belong somewhere unit-testable rather than in a jq heredoc nobody can
+      # run locally. `glyph preview --pr N` prints the same bytes on a laptop.
+      #
+      # A none verdict is a normal answer here and exits 0 — "this PR moves
+      # nothing" is exactly what the reviewer asked, so there is no soft
+      # no-release code to fold away.
+      - name: Compose the verdict comment
+        id: verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          status=0
+          # --json carries the rendered body AND the machine verdict in ONE
+          # payload, so exposing outputs costs no extra API walk: the comment
+          # and the gate values are the same computation, not two opinions.
+          glyph preview --pr "$PR_NUMBER" --notes --json \
+            > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/preview.err" || status=$?
+          cat "$RUNNER_TEMP/preview.err" >&2
+          if [ "$status" -ne 0 ]; then
+            # Best-effort headline from the structured envelope; the preserved
+            # glyph exit code is the verdict either way (a commit the lint
+            # would reject fails here too — commit-lint owns that signal).
+            #
+            # SIEVE FIRST. glyph's stderr carries ::warning:: annotations AND
+            # the envelope, and jq over the two together is a parse error — the
+            # `|| true` then dropped this heading in silence, which is exactly
+            # what happened (t-sws7: measured, zero output). The envelope is the
+            # last thing written, so everything from the first line opening with
+            # `{` is the whole document. `[{]` rather than a bare `{` because an
+            # unmatched brace in a BRE is POSIX-undefined; sed, not grep,
+            # because a grep that matches nothing exits 1 and would kill the
+            # step under `set -o pipefail` on every Silent error.
+            sed -n '/^[{]/,$p' "$RUNNER_TEMP/preview.err" \
+              | jq -r '"::error::glyph preview: \(.error.message)"' || true
+            exit "$status"
+          fi
+
+          # Body to a FILE, never through the shell: it carries author-supplied
+          # commit subjects.
+          jq -r '.body' "$RUNNER_TEMP/verdict.json" > "$RUNNER_TEMP/body.md"
+
+          # The verdict fields are a closed vocabulary glyph produces (a level
+          # word and vX.Y.Z), so none of them can smuggle a newline into
+          # $GITHUB_OUTPUT and split it into an attacker-chosen key.
+          level="$(jq -r '.level' "$RUNNER_TEMP/verdict.json")"
+          next="$(jq -r '.next // ""' "$RUNNER_TEMP/verdict.json")"
+          current="$(jq -r '.current // ""' "$RUNNER_TEMP/verdict.json")"
+          # `breaking` is level's alias, so it is empty exactly when level is —
+          # on a repository declaring [[packages]], where no one line has a
+          # level to describe. Derived as `[ "$level" = "major" ]` it published
+          # "false" there: a definite "no" for a pull that breaks a line
+          # (t-xbk0, measured on glyph-monorepo-test #30).
+          case "$level" in
+            "") breaking="" ;;
+            major) breaking=true ;;
+            *) breaking=false ;;
+          esac
+          {
+            echo "level=$level"
+            echo "next=$next"
+            echo "current=$current"
+            echo "breaking=$breaking"
+          } >> "$GITHUB_OUTPUT"
+          echo "verdict: level=$level current=$current next=$next breaking=$breaking"
+
+      # ONE sticky comment per PR, found by the marker glyph puts at the top of
+      # the body — never `gh pr comment --edit-last`, whose "the bot's last
+      # comment is mine" assumption breaks the day any other workflow comments
+      # as github-actions[bot]. The body reaches the API as a FILE: it carries
+      # author-supplied commit subjects and must never be expanded by a shell.
+      #
+      # The lookup answers one id at most, and a bot's. Anyone who can comment
+      # can type the marker, and this job's token overwrites what they wrote
+      # (glyph-test-2 run 41816989920). --paginate --jq runs its filter once per
+      # page, so markers on two pages answer two lines, and gh refuses the PATCH
+      # URL they make (run 41817273095). gh refuses --slurp beside --jq, hence the
+      # pipe, whose pipefail keeps a failed lookup from reading as "no comment yet".
+      #
+      # It runs after a failed compose too (DESIGN §6): skipped with it, the
+      # comment an earlier push posted kept that push's verdict beside a red
+      # head (glyph-test run 37306205001). With no computed verdict the body
+      # is this step's own — the outcome decides, not whether body.md exists,
+      # since the compose step writes it before it can still fail — and it
+      # carries nothing author-supplied: the head sha and this run's URL.
+      - name: Upsert the sticky comment
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO_SLUG: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMPOSE_OUTCOME: ${{ steps.verdict.outcome }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$COMPOSE_OUTCOME" != success ]; then
+            {
+              echo '<!-- glyph-pr-verdict -->'
+              echo "⚠️ glyph could not compute a release verdict at \`${HEAD_SHA:0:7}\`."
+              echo
+              echo "A commit the convention rejects is the usual cause, and the **commit-lint** check names it; otherwise [this run's log]($GITHUB_SERVER_URL/$GH_REPO_SLUG/actions/runs/$GITHUB_RUN_ID) carries glyph's error. The next push whose verdict computes replaces this comment."
+            } > "$RUNNER_TEMP/body.md"
+          fi
+          cid="$(gh api "repos/$GH_REPO_SLUG/issues/$PR_NUMBER/comments" --paginate --slurp \
+            | jq -r 'first(.[][] | select(.user.type == "Bot" and (.body | startswith("<!-- glyph-pr-verdict -->")))) | .id')"
+          if [ -n "$cid" ]; then
+            gh api --method PATCH "repos/$GH_REPO_SLUG/issues/comments/$cid" \
+              -F "body=@$RUNNER_TEMP/body.md" --silent
+          else
+            gh api --method POST "repos/$GH_REPO_SLUG/issues/$PR_NUMBER/comments" \
+              -F "body=@$RUNNER_TEMP/body.md" --silent
+          fi
