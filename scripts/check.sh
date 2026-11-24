@@ -32,7 +32,9 @@
 #   govulncheck     govulncheck.yml `scan` → go-vuln.yml source + `-mode binary`
 #   bite            build.yml `bite`             the hub's go-bite.sh at the tag, on
 #                                                the merge commit CI tests
-#   mutations       build.yml `mutations`        `scripts/mutations.sh`
+#   mutations       build.yml `mutations-shard`  `MUTATIONS_SHARD= scripts/mutations.sh`,
+#                   build.yml `mutations`        the whole ledger in one run: CI's four
+#                                                shards and the job that gathers them
 #   fuzz-smoke      build.yml `extras`           `scripts/fuzz-smoke.sh`
 #   release-history build.yml `extras`           the caller-check bounds against
 #                                                glyph's release tags
@@ -339,8 +341,10 @@ ran release-history
 # breaks one argued decision and the ledger names the test that must then fail.
 # One snapshot copy, patch and build per row, so it sits after the fast gates
 # but ahead of the binary smoke.
+# MUTATIONS_SHARD is emptied so an exported shard cannot shrink the local gate
+# to a part of the ledger.
 echo "→ mutation ledger (does the suite bite?)"
-sh scripts/mutations.sh
+MUTATIONS_SHARD= sh scripts/mutations.sh
 ran mutations
 
 # Do the tests this branch ADDS bite? The ledger above asks it of a standing list

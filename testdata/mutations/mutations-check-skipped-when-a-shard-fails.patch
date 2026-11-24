@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index c431924..5be4379 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -76,7 +76,6 @@ jobs:
+   # always() and fails itself unless every shard succeeded.
+   mutations:
+     needs: mutations-shard
+-    if: ${{ always() }}
+     runs-on: ubuntu-latest
+     timeout-minutes: 5
+     steps:
