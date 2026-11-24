@@ -77,6 +77,44 @@ func TestMatchGemojiGrammar(t *testing.T) {
 	}
 }
 
+// TestMatchCaptureLeavesTheLineEndCRBehind asserts that a capture ending at a
+// line end comes back without that line's CR, by bump.FirstLine's rule: a
+// `--cleanup=verbatim` CRLF commit rendered `- :bug:~ fix crlf  @author` in
+// the notes (the CR as a second blank) while bump --json said
+// `:bug:~ fix crlf`. A CR inside the line is the message's own byte and stays.
+func TestMatchCaptureLeavesTheLineEndCRBehind(t *testing.T) {
+	gemoji := loadGemoji(t)
+	inner := mustLoad(t, `schema = 1
+[[patterns]]
+pattern = '^(?P<subject>[^b]+)b'
+semver_sigil = '~'
+`)
+	cases := []struct {
+		name    string
+		cfg     *Config
+		message string
+		subject string
+	}{
+		{"CRLF subject line", gemoji, ":bug:~ fix crlf\r\n\r\nbody\r\n", ":bug:~ fix crlf"},
+		{"CR at the message end", gemoji, ":bug:~ fix crlf\r", ":bug:~ fix crlf"},
+		{"CR inside the line", inner, "a\rb", "a\r"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m, err := c.cfg.Match(c.message)
+			if err != nil {
+				t.Fatalf("Match(%q): %v", c.message, err)
+			}
+			if !m.Matched {
+				t.Fatalf("Match(%q) did not match", c.message)
+			}
+			if got := m.Groups["subject"]; got != c.subject {
+				t.Errorf("subject = %q, want %q", got, c.subject)
+			}
+		})
+	}
+}
+
 // TestMatchFixedSigil asserts the pattern-level semver_sigil key: a raw git
 // revert carries no sigil in its message, and the fixed value supplies one.
 //
