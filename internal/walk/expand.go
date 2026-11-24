@@ -107,21 +107,23 @@ type walk struct {
 const ShallowWarning = "this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing"
 
 // walkSince is the walk over revRange: the log, the shallow question asked
-// once, one visit per commit, reconcile, and the verdict — the walked list
-// with its facts, or the refusal naming every wedge. An error out of a visit is
-// the API's or git's as received; Outranks decides whether the wedges
-// already found are the verdict over it.
-func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, revRange string, ranges lineRanges) ([]Commit, Facts, error) {
+// once, one visit per commit, and reconcile — the walked list with its facts,
+// and the walk itself, whose wedges are the grammar's refusals for Since to
+// word beside attribution's (walkRefusal), so one red run names both. An
+// error out of a visit is the API's or git's as received; Outranks decides
+// whether the wedges already found are the verdict over it, and then the
+// error is their refusal: the walk never finished, so nothing is attributed.
+func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, revRange string, ranges lineRanges) ([]Commit, Facts, *walk, error) {
 	raws, err := w.Git.Log(ctx, revRange)
 	if err != nil {
-		return nil, Facts{}, err
+		return nil, Facts{}, nil, err
 	}
 	// Asked once per WALK, before any expansion, never lazily on the first
 	// pull that expands: a walk where no pull resolves is still a walk over a
 	// truncated history, and it was the one that never asked (DESIGN §4).
 	shallow, serr := w.Git.IsShallow(ctx)
 	if serr != nil {
-		return nil, Facts{}, serr
+		return nil, Facts{}, nil, serr
 	}
 	if shallow {
 		w.Report.Warnf("%s", ShallowWarning)
@@ -130,16 +132,13 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	for _, raw := range raws {
 		if err := wk.visit(ctx, raw); err != nil {
 			if w.Outranks("the rest of the range", len(wk.wedges) > 0, err) {
-				return nil, Facts{}, wk.walkRefusal()
+				return nil, Facts{}, nil, wk.walkRefusal(nil)
 			}
-			return nil, Facts{}, err
+			return nil, Facts{}, nil, err
 		}
 	}
 	wk.reconcile()
-	if len(wk.wedges) > 0 {
-		return nil, Facts{}, wk.walkRefusal()
-	}
-	return wk.commits, wk.facts, nil
+	return wk.commits, wk.facts, wk, nil
 }
 
 // newWalk opens a walk over raws, the range's log oldest first: every ledger

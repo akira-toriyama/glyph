@@ -1,0 +1,13 @@
+diff --git a/internal/walk/walk.go b/internal/walk/walk.go
+index 5d5f971..23406cd 100644
+--- a/internal/walk/walk.go
++++ b/internal/walk/walk.go
+@@ -150,7 +150,7 @@ func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, r
+ 		return Result{}, err
+ 	}
+ 	if wedged {
+-		return Result{}, wk.walkRefusal(refused)
++		return Result{}, wk.walkRefusal(nil)
+ 	}
+ 	if len(refused) > 0 {
+ 		return Result{}, attributionWedge(refused, owner, repo, lines)
