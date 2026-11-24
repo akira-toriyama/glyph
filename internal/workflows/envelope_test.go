@@ -39,7 +39,7 @@ var detailsRead = regexp.MustCompile(`\.error\.details`)
 // renders it. glyph writes one `::error::` per finding onto the diagnostic
 // stream itself, and a consumer's whole job is `cat` — replay that stream into
 // the log and frame the SUMMARY (`.error.message`, which stays legitimate and
-// present in three workflows today).
+// is framed in two workflows today, lint.yml and pr-verdict.yml).
 //
 // The reconstruction this forbids was real and its failure was silent: lint.yml
 // iterated `.error.details` with jq to mint one annotation per finding, over a

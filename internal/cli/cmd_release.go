@@ -96,8 +96,8 @@ func newReleaseCmd() *cobra.Command {
 			"and the release-notes body from that single commit set — calling bump and\n" +
 			"notes separately walks twice, and a merge landing between the walks could\n" +
 			"version one range and describe another. The walk defaults to the highest\n" +
-			"v* tag HEAD contains (release has exactly one input source, so no bare\n" +
-			"--since-tag is required). Bare release upserts the rolling DRAFT\n" +
+			"parseable version tag HEAD contains (release has exactly one input\n" +
+			"source, so no bare --since-tag is required). Bare release upserts the rolling DRAFT\n" +
 			"release: the one glyph-managed draft is created or updated (tag, notes\n" +
 			"body, target sha) FIRST, and stale drafts are then removed by release\n" +
 			"id; one that will not go leaves a warning rather than failing the\n" +
@@ -145,9 +145,11 @@ func newReleaseCmd() *cobra.Command {
 			"checkout's HEAD unless --target names another commit: a line the push did\n" +
 			"not touch is retargeted too, so the tag GitHub cuts when a human publishes\n" +
 			"it lands on that target, not on the line's last change.\n" +
-			"--current is refused (exit 2) unless the walk selects one line\n" +
-			"(e.g. --since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
-			"prefix: haiku/, or nothing for the root package).",
+			"A --since-tag tag names a line: <prefix>vX.Y.Z (an rc tag too) or\n" +
+			"below:<prefix>vX.Y.Z walks that one line, <prefix> being its tag prefix\n" +
+			"(haiku/, or nothing for the root package), and a line no [[packages]]\n" +
+			"entry declares is refused (exit 2). --current is refused (exit 2) unless\n" +
+			"the walk selects one line.",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// release is where a silently-ignored empty flag costs most:

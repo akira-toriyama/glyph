@@ -380,8 +380,8 @@ convention** — the parent of the first commit written with a sigil. The walk
 reads `tag..HEAD`, which leaves the tagged commit out, so a tag on the first
 convention commit drops that commit from every release (measured 2026-11-08
 on a scratch repository: a `^` under the tag answered `v0.0.1`; the same tag
-on its parent answers `v0.1.0`). The walk baselines at the highest `v*` tag
-the released branch holds, so the number must be the highest one: `v0.0.0` on
+on its parent answers `v0.1.0`). The walk baselines at the highest parseable
+version tag the released branch holds, so the number must be the highest one: `v0.0.0` on
 a repository with no version tags, and above the highest existing tag where
 there are some (`v2.3.1` behind a `v2.3.0`; a lower tag is never the base).
 Push the tag — the walk runs in CI from the checkout's tags, and the draft's

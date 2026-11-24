@@ -113,7 +113,7 @@ func newPreviewCmd() *cobra.Command {
 			"commits read over the API, and what is already merged but unreleased on\n" +
 			"the checked-out branch. Both step from the same tag, so the answer is the\n" +
 			"`next` of whichever folds higher — no caller ever does version arithmetic.\n\n" +
-			"A base branch whose history holds no v* tag skips the pending walk: it\n" +
+			"A base branch whose history holds no version tag skips the pending walk: it\n" +
 			"would resolve the whole history at one API round-trip per commit to\n" +
 			"answer a question that cannot matter (nothing is unreleased when nothing\n" +
 			"was released), so the PR's own verdict stands alone and the body says so.\n" +
