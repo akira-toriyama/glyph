@@ -138,10 +138,12 @@ type reusableCall struct {
 // nothing the caller must match. The pin is kept: GitHub starts the caller
 // against the reusable at that ref, and judgeAt decides whether this binary
 // can speak for it. It is the ONE answer to "which uses: calls a glyph
-// reusable" — both caller checks read it.
-func reusablesCalled(file, body string) []reusableCall {
-	var calls []reusableCall
-	refs, _ := scanUses(file, body) // an unread reference is workflow-glyph-pins' could-not-run
+// reusable" — every caller check reads it. unread is scanUses' Details line of
+// each glyph reference it does not read, which could be a call into any
+// reusable: every caller check is could-not-run over it (usesUnreadWhy), never
+// a pass over a call that was not read. file is the name in .github/workflows.
+func reusablesCalled(file, body string) (calls []reusableCall, unread []string) {
+	refs, unread := scanUses(".github/workflows/"+file, body)
 	for _, ref := range refs {
 		spec, _, _ := strings.Cut(ref.Uses, "@")
 		if !strings.Contains(strings.ToLower(spec), "/.github/workflows/") {
@@ -149,8 +151,12 @@ func reusablesCalled(file, body string) []reusableCall {
 		}
 		calls = append(calls, reusableCall{Reusable: spec[strings.LastIndex(spec, "/")+1:], Ref: ref.Ref, Line: ref.Line})
 	}
-	return calls
+	return calls, unread
 }
+
+// What every caller check says of a glyph reference scanUses does not read
+// (reusablesCalled's unread): could-not-run, as for a with: it does not read.
+const usesUnreadWhy = "a glyph reference doctor does not read could call any glyph reusable"
 
 // callerGrants returns the union of every `scope: level` pair granted by any
 // permissions block in the file — block form, flow form (`{contents: read}`)

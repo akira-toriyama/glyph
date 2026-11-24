@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -206,6 +207,52 @@ func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
 			lockFile(t, filepath.Join(root, ".github", "workflows", "other.yml"))
 			if c := check(root, true); c.Status != StatusFail {
 				t.Errorf("a finding beside an unreadable file: status = %s, want %s — a defect observed outranks a file unread (observed %q)", c.Status, StatusFail, c.Observed)
+			}
+		})
+	}
+}
+
+// TestCallerChecksNeverPassOverAnUnreadGlyphCall holds the three caller checks
+// to the grade a with: they cannot read gets (#363): a glyph reference
+// scanUses does not read is could-not-run in each, naming the file and line.
+// reusablesCalled dropped it, so where it was the file's only call every check
+// passed as if nothing called glyph. A call that was read keeps its verdict.
+func TestCallerChecksNeverPassOverAnUnreadGlyphCall(t *testing.T) {
+	requiringInstallNotes(t)
+	// A flow mapping nesting a flow value is a spelling scanUses does not read.
+	// The permissions block keeps the file out of the permissions check's
+	// no-block exemption, which is decided before any call is.
+	const unread = "on: push\npermissions:\n  contents: read\njobs:\n" +
+		"  c: {uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.1, with: {a: 1}}\n"
+	// Fails all three when read: release needs contents: write and, under the
+	// fixture table, install-notes, and binary is an artifact input.
+	const read = "name: c\non:\n  push:\npermissions:\n  contents: read\njobs:\n  r:\n" +
+		"    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n    with:\n      binary: probe\n"
+	checks := map[string]func(string) Check{
+		idCallerPerms:    func(r string) Check { return permsAt(r, true, "dev") },
+		idCallerInputs:   func(r string) Check { return inputsAt(r, true, "dev") },
+		idCallerArtifact: func(r string) Check { return artifactAt(r, true, loaded(t, packagesConfig("camp"))) },
+	}
+	line := ".github/workflows/c.yml:5 holds a " + glyphRepo + " reference doctor does not read"
+	for id, check := range checks {
+		t.Run(id, func(t *testing.T) {
+			c := check(checkoutAt(t, map[string]string{".github/workflows/c.yml": unread}))
+			if c.Status != StatusUnknown {
+				t.Fatalf("an unread glyph call alone: status = %s, want %s (observed %q, details %v)", c.Status, StatusUnknown, c.Observed, c.Details)
+			}
+			if !slices.ContainsFunc(c.Details, func(d string) bool { return strings.HasPrefix(d, line) }) {
+				t.Errorf("details %v never name the call, %q", c.Details, line)
+			}
+			if want := "1 " + glyphRepo + " reference(s) whose uses: doctor does not read; "; !strings.HasPrefix(c.Observed, want) {
+				t.Errorf("observed = %q, want it to open %q", c.Observed, want)
+			}
+			if !strings.Contains(c.Message, "unverified here, not verified") || c.Fix != usesUnreadFix {
+				t.Errorf("message %q / fix %q: want it to say it verified nothing, and the fix %q", c.Message, c.Fix, usesUnreadFix)
+			}
+
+			c = check(checkoutAt(t, map[string]string{".github/workflows/c.yml": unread, ".github/workflows/release.yml": read}))
+			if c.Status != StatusFail || !slices.ContainsFunc(c.Details, func(d string) bool { return strings.HasPrefix(d, line) }) {
+				t.Errorf("a read finding beside an unread call: status = %s, details %v — want fail, naming the unread call too", c.Status, c.Details)
 			}
 		})
 	}

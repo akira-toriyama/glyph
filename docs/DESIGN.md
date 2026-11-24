@@ -4941,7 +4941,10 @@ The severities are the argued part:
   entry of a one-line flow mapping — and its value is read in every spelling
   GitHub Actions runs (block scalar, flow mapping, quoted key, at step and at job
   level: glyph-test-2 PR #32, 2026-11-24); a glyph reference in a block or flow
-  value read any other way is could-not-run, never zero references. The
+  value read any other way, or on the line(s) below an empty `uses:` (valid
+  YAML; whether Actions runs it is unmeasured), is could-not-run, never zero
+  references — in `workflow-glyph-pins` and in each caller check, which never
+  passes over a call it did not read. The
   owner/repo match is case-insensitive because GitHub's resolution is —
   `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
   repository clean.
@@ -5100,8 +5103,10 @@ The severities are the argued part:
   knows its own release — not above that release. Everything else is
   could-not-run: at or below the bound the binary knows the declarations
   differ but not what they were; above its own release it cannot know; a
-  branch moves, and a sha names a commit doctor cannot map to a release
-  offline (`workflow-glyph-pins` already fails both); and a call into a
+  branch moves, a sha names a commit doctor cannot map to a release offline,
+  and a release candidate is a tag glyph cuts ahead of the release it
+  precedes, not that release (`workflow-glyph-pins` already fails all three,
+  and a candidate's line is that check's own sentence); and a call into a
   reusable this binary has no row for — one added after it was built — is
   unjudged too, never skipped (skipped, a `notes.yml@v5.0.0` caller passed as
   "no workflow calls a glyph reusable … observed — not assumed", measured by

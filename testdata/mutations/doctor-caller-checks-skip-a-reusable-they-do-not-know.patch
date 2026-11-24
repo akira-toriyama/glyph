@@ -1,9 +1,9 @@
 diff --git a/internal/doctor/callerpin.go b/internal/doctor/callerpin.go
-index 7c85f22..6f34a0b 100644
+index a31290b..d88aad1 100644
 --- a/internal/doctor/callerpin.go
 +++ b/internal/doctor/callerpin.go
-@@ -88,7 +88,7 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
- 		}
+@@ -99,7 +99,7 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
+ 		unreadUses = append(unreadUses, unread...)
  		for _, call := range calls {
  			row, known := spec.rows[strings.ToLower(call.Reusable)]
 -			nj := unknownReusable(call.Reusable)

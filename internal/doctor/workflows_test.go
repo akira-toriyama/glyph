@@ -186,6 +186,9 @@ func TestScanUsesSaysWhatItCannotRead(t *testing.T) {
 		{"a flow sequence of steps", "jobs:\n  a:\n    steps: [{uses: " + ref + "}]\n", 1},
 		{"a flow value naming glyph paths, no uses", "on:\n  push:\n    paths: ['akira-toriyama/glyph/**']\n", 0},
 		{"a block value of another repository", "jobs:\n  c:\n    uses: >-\n      actions/checkout@v4\n      x\n", 0},
+		{"a plain value on the line below an empty uses:", "jobs:\n  c:\n    uses:\n      " + ref + "\n", 1},
+		{"a step's plain value below its empty uses:", "jobs:\n  a:\n    steps:\n      - uses: # c\n          " + ref + "\n", 1},
+		{"a plain value below an empty uses: of another repository", "jobs:\n  c:\n    uses:\n      actions/checkout@v4\n", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

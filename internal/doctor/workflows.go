@@ -239,7 +239,7 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 		}
 		if len(unreadRefs) > 0 {
 			gaps = append(gaps, fmt.Sprintf("%d %s reference(s) are spelled in a form doctor does not read", len(unreadRefs), glyphRepo))
-			fixes = append(fixes, "write each named reference as a one-line uses: value, a block value of one line, or a flat { … } mapping")
+			fixes = append(fixes, usesUnreadFix)
 		}
 		c.Observed = fmt.Sprintf("%s; the %d %s reference(s) that were read all pin a release tag",
 			strings.Join(gaps, ", and "), len(refs), glyphRepo)
@@ -258,6 +258,10 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 	}
 	return c
 }
+
+// usesUnreadFix is every check's fix for a glyph reference scanUses does not
+// read: workflow-glyph-pins and the three caller checks.
+const usesUnreadFix = "write each named reference as a one-line uses: value, a block value of one line, or a flat { … } mapping"
 
 // scanUses extracts every akira-toriyama/glyph `uses:` reference from one
 // workflow file, with its verdict. unread is one Details line per glyph
@@ -282,8 +286,10 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 // read when its content is one line holding no whitespace under a `|`, `|-`,
 // `>` or `>-` header — the two values measured, that line with or without a
 // newline; a flow value when flowEntries splits it. Any other block or flow
-// value naming glyph is unread. No spelling measured was refused; the one
-// refusal (a step holding both uses: and run:, 2026-11-24) never runs.
+// value naming glyph is unread, and so is a value on the line(s) below an
+// empty `uses:` — valid YAML, whose run by Actions is unmeasured. No spelling
+// measured was refused; the one refusal (a step holding both uses: and run:,
+// 2026-11-24) never runs.
 func scanUses(file, body string) (refs []pinRef, unread []string) {
 	lines := strings.Split(body, "\n")
 	notRead := func(i int, text, why string) {
@@ -302,7 +308,22 @@ func scanUses(file, body string) (refs []pinRef, unread []string) {
 			continue
 		}
 		key, value, ok := usesKey(line)
-		if !ok || value == "" {
+		if !ok {
+			continue
+		}
+		if value == "" {
+			if key != "uses" {
+				continue
+			}
+			// The value may be a plain scalar on the next, more indented
+			// line(s): valid YAML, and whether Actions runs it is unmeasured.
+			col := indentOf(line)
+			if after, dashed := strings.CutPrefix(strings.TrimLeft(line, " \t"), "-"); dashed {
+				col += 1 + len(after) - len(strings.TrimLeft(after, " \t"))
+			}
+			if below := strings.Join(blockContent(lines, i, col), " "); strings.Contains(strings.ToLower(below), glyphRepo) {
+				notRead(i, below, "a value on the line(s) below an empty uses:, a spelling GitHub Actions was never measured running")
+			}
 			continue
 		}
 		if value[0] == '{' || value[0] == '[' {

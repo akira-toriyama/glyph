@@ -97,14 +97,16 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 	}
 
 	callers := 0
-	var findings, unevaluated, unreadWith, unreadable []string
+	var findings, unevaluated, unreadUses, unreadWith, unreadable []string
 	for _, f := range workflows {
 		if f.Err != nil {
 			unreadable = append(unreadable, f.unreadableLine())
 			continue
 		}
 		lines := strings.Split(f.Body, "\n")
-		for _, call := range reusablesCalled(f.Name, f.Body) {
+		calls, unread := reusablesCalled(f.Name, f.Body)
+		unreadUses = append(unreadUses, unread...)
+		for _, call := range calls {
 			if !strings.EqualFold(call.Reusable, "release.yml") {
 				continue
 			}
@@ -138,7 +140,7 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 	if len(findings) > 0 {
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf("%d artifact input(s) across the %d workflow file(s) that call release.yml", len(findings), callers)
-		c.Details = slices.Concat(findings, unevaluated, unreadWith, unreadable)
+		c.Details = slices.Concat(findings, unevaluated, unreadUses, unreadWith, unreadable)
 		c.Message = "a repository that declares [[packages]] keeps one rolling draft per line, and `app` / `binary` name one " +
 			"artifact for one draft — there is no line it would attach to, so release.yml refuses the run, and it stays " +
 			"red on every push until the input goes"
@@ -154,6 +156,11 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 			"scalar or an alias is not a value doctor reads"}
 		fixes := []string{"write the input as a literal, or drop it — a value that is non-empty at run time is refused " +
 			"on this repository"}
+		if len(unreadUses) > 0 {
+			gaps = append(gaps, fmt.Sprintf("%d %s reference(s) whose uses: doctor does not read", len(unreadUses), glyphRepo))
+			why = append(why, usesUnreadWhy)
+			fixes = append(fixes, usesUnreadFix)
+		}
 		if len(unreadWith) > 0 {
 			gaps = append(gaps, fmt.Sprintf("%d caller(s) whose with: doctor does not read", len(unreadWith)))
 			why = append(why, withUnreadWhy)
@@ -167,10 +174,10 @@ func checkCallerArtifact(root string, rootVerified bool, workflows []workflowFil
 		c.Observed = strings.Join(gaps, "; ") + "; no caller names an artifact outright"
 		c.Message = strings.Join(why, ", and ") + " — " + death + " is unverified here, not verified"
 		c.Fix = strings.Join(fixes, "; ")
-		c.Details = slices.Concat(unevaluated, unreadWith, unreadable)
+		c.Details = slices.Concat(unevaluated, unreadUses, unreadWith, unreadable)
 		return c
 	}
-	if unverifiedCallers(&c, nil, nil, unreadWith, unreadable, death, "no judged caller names an artifact input") {
+	if unverifiedCallers(&c, nil, nil, unreadUses, unreadWith, unreadable, death, "no judged caller names an artifact input") {
 		return c
 	}
 	c.Status = StatusPass
