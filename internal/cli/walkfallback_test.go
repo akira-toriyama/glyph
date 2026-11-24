@@ -432,6 +432,31 @@ func TestJSONCarriesTheCommitsGitHubHadNotIndexed(t *testing.T) {
 		usePR(t, walkServer(t, routes))
 		check(t, want, "preview", "--pr", "7", "--json")
 	})
+	// A --no-ff merge GitHub has not indexed: no message says what it merged,
+	// so the walk is short and release refuses at 4 instead of emitting a
+	// verdict — bump and notes are the readers that carry it.
+	t.Run("merge", func(t *testing.T) {
+		for _, cmd := range []string{"bump", "notes"} {
+			t.Run(cmd, func(t *testing.T) {
+				dir, routes, want := lagRepo(t, false)
+				testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
+				testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a flag")
+				routes[commitPullsPath(headSHA(t, dir))] = `[]`
+				testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
+				testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'topic'", "topic")
+				routes[commitPullsPath(headSHA(t, dir))] = apiUnknownSHA
+				want = append(want, walk.UnknownCommit{SHA: headSHA(t, dir), Arm: walk.ArmMerge})
+				usePR(t, walkServer(t, routes))
+				check(t, want, cmd, "--since-tag", "--json")
+				if cmd == "bump" {
+					usePR(t, dryServer(t, routes))
+					if code, _, stderr := runGlyph(t, "release", "--dry-run", "--json", "--target", goldenTarget); code != 4 {
+						t.Fatalf("release over an unindexed merge exited %d, want 4 (the walk is short)\nstderr: %s", code, stderr)
+					}
+				}
+			})
+		}
+	})
 	t.Run("no lag, no key", func(t *testing.T) {
 		dir, base := testutil.NewTaggedRepo(t)
 		testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")

@@ -124,10 +124,10 @@ func newReleaseCmd() *cobra.Command {
 			"A real run prints the draft's URL; --dry-run computes everything\n" +
 			"including that action and writes nothing, printing the tag line, a\n" +
 			"blank line, then the Markdown body. --json emits\n" +
-			"{current,level,next,tag,target,body,action,url,commits,pulls,reason} —\n" +
-			"pulls is the walk's expansion provenance (each resolved pull and how many\n" +
+			"{current,level,next,tag,target,body,action,url,commits,pulls,reason,unknown}\n" +
+			"— pulls is the walk's expansion provenance (each resolved pull and how many\n" +
 			"of its listed commits the walk took in), which is how a verdict can be\n" +
-			"audited after the fact.\n\n" +
+			"audited after the fact; unknown is bump's (see bump --help).\n\n" +
 			"On a repository declaring [[packages]] release converges ONE rolling draft\n" +
 			"per line (haiku/v0.2.0 beside curry/v0.1.1), every line's upsert written\n" +
 			"before any stray is deleted, each draft's compare link from its own\n" +
@@ -172,7 +172,7 @@ func newReleaseCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.target, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
 	cmd.Flags().StringVar(&o.footerFile, "footer-file", "", "a Markdown file — or a pipe such as <(…) — appended verbatim after the notes, separated by one --- line (the per-repo install block)")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "compute the full verdict and the draft action but write nothing to GitHub")
-	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,level,next,tag,target,body,action,url,commits,pulls,reason}; with [[packages]] declared current/level/action are empty, next/tag/body/url absent (target too when no line has a draft to write), and packages[] carries one verdict per line")
+	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,level,next,tag,target,body,action,url,commits,pulls,reason,unknown}; with [[packages]] declared current/level/action are empty, next/tag/body/url absent (target too when no line has a draft to write), and packages[] carries one verdict per line")
 	return cmd
 }
 
