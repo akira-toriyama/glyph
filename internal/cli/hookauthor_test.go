@@ -105,8 +105,7 @@ func runGitUnexported(dir, path string, extra []string, args ...string) (int, st
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		return exit.ExitCode(), string(out)
 	}
 	if err != nil {
