@@ -95,10 +95,11 @@ func newDoctorCmd() *cobra.Command {
 			"    before the push (it answers once glyph.toml loads; an input set from an\n" +
 			"    expression is could-not-run)\n" +
 			"  - no STALE glyph-written hook is installed (one check per kind: commit-msg,\n" +
-			"    pre-push). Hooks are untracked, so\n" +
-			"    nothing refreshes one: whatever glyph was on PATH the day it was installed\n" +
-			"    froze the exit code it stops a commit on and the arguments it hands lint, and\n" +
-			"    a stale hook still exits 0 — indistinguishable from a clean message. NO hook\n" +
+			"    pre-push). One under .git/hooks is untracked and a tracked core.hooksPath\n" +
+			"    moves only when someone re-installs and commits, so nothing refreshes one:\n" +
+			"    whatever glyph was on PATH the day it was installed froze the exit code it\n" +
+			"    stops a commit on and the arguments it hands lint, and a stale hook still\n" +
+			"    exits 0 — indistinguishable from a clean message. NO hook\n" +
 			"    passes (it is opt-in, and an Actions checkout cannot have one); a hook glyph\n" +
 			"    did not write is advice, because glyph will not overwrite it unasked\n" +
 			"  - a current commit-msg hook is also FIRED with a probe message, because\n" +

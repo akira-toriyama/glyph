@@ -221,6 +221,21 @@ func TestInstallRefreshesAnOlderGlyphHook(t *testing.T) {
 	}
 }
 
+// The header is the one instruction a developer reads off the hook itself, and
+// a plain install already refreshes a glyph-written hook. Naming --force there
+// sent the reader to the flag that also clobbers a foreign hook of the other
+// kind in the same run.
+func TestEveryKindsScriptNamesThePlainInstallToRegenerateIt(t *testing.T) {
+	for _, k := range Kinds() {
+		if !strings.Contains(k.Script, "\n# Regenerate with: glyph hook install\n") {
+			t.Errorf("%s script does not name the plain `glyph hook install` as its regeneration", k.Name)
+		}
+		if strings.Contains(k.Script, "--force") {
+			t.Errorf("%s script names --force, which also replaces a hook glyph did not write", k.Name)
+		}
+	}
+}
+
 // The repos this targets track a real commit-msg hook in git. Clobbering one
 // unasked would stage a content change the developer never requested, so a
 // foreign hook is a refusal — and specifically a usage refusal, since the fix
