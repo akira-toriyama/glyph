@@ -247,7 +247,7 @@ func TestPRUnmatchedCommitIsLint(t *testing.T) {
 	if code != 3 {
 		t.Fatalf("an unmatched PR commit exited %d, want 3 (lint)\nstderr: %s", code, stderr)
 	}
-	if want := "commit a1:"; !strings.Contains(decodeErrorEnvelope(t, stderr).Message, want) {
+	if want := "commit a1:"; !strings.Contains(decodeErrorEnvelope(t, stderr[strings.Index(stderr, "\n{")+1:]).Message, want) {
 		t.Fatalf("the refusal should name the offending commit as %q:\n%s", want, stderr)
 	}
 }

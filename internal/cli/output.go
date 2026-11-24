@@ -3,11 +3,13 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/akira-toriyama/glyph/v6/internal/bump"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
@@ -96,6 +98,32 @@ func warnf(format string, a ...any) {
 // and the `sed -n '/^[{]/,$p'` sieve still recovers the envelope whole.
 func errorf(format string, a ...any) {
 	fmt.Fprintln(errOut, "::error::glyph: "+oneLine(fmt.Sprintf(format, a...)))
+}
+
+// annotateFindings is the one rendering of a refused commit: one error
+// annotation per row — lint --range's findings, and the rows a verdict
+// command's refusal carries in details (annotateRefusal). The envelope's
+// message names only the first row, and no caller may rebuild the rest from
+// details (TestNoWorkflowRebuildsPerFindingAnnotations), so a row this skips
+// reaches no workflow log.
+func annotateFindings(rows []bump.Refusal) {
+	for _, f := range rows {
+		errorf("commit %.7s: %s", f.SHA, f.Detail)
+	}
+}
+
+// annotateRefusal renders err's details through annotateFindings when err is a
+// gate refusal (3) whose details are commit rows, and returns err unchanged.
+// bump, notes, preview and release wrap their run in it, so every input
+// (--range, --pr, --since-tag) annotates the same way.
+func annotateRefusal(err error) error {
+	var ce *core.Error
+	if errors.As(err, &ce) && ce.Code == core.CodeLint {
+		if rows, ok := ce.Details.([]bump.Refusal); ok {
+			annotateFindings(rows)
+		}
+	}
+	return err
 }
 
 // noticef emits one GitHub Actions notice annotation (::notice::) to the

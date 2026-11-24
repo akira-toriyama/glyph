@@ -145,7 +145,7 @@ func newPreviewCmd() *cobra.Command {
 			if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
 				return err
 			}
-			return previewRun(cmd.Context(), o)
+			return annotateRefusal(previewRun(cmd.Context(), o))
 		},
 	}
 	cmd.Flags().IntVar(&o.pr, "pr", 0, "the pull request to preview, read over the API (required)")
