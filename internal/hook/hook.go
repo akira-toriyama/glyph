@@ -60,7 +60,7 @@ func commitMsgScript() string {
 # glyph, which holds the rules. Do not add a regex here: a local copy of the
 # convention is exactly what drifts out of lockstep when the rules move.
 #
-# Regenerate with: glyph hook install --force
+# Regenerate with: glyph hook install
 if ! command -v glyph >/dev/null 2>&1; then
 	echo "glyph: not on PATH — skipping the commit-msg lint (CI still enforces it)" >&2
 	exit 0
@@ -101,7 +101,7 @@ func prePushScript() string {
 # owns the range arithmetic and the rules. Do not compute a range here and do
 # not add a regex: this file is installed once and nothing ever refreshes it.
 #
-# Regenerate with: glyph hook install --force
+# Regenerate with: glyph hook install
 if ! command -v glyph >/dev/null 2>&1; then
 	echo "glyph: not on PATH — skipping the pre-push lint (CI still enforces it)" >&2
 	exit 0

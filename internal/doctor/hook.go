@@ -75,8 +75,9 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
 	case hook.Stale:
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf("%s was written by glyph and no longer matches this binary's hook (%s)", path, diffSummary(installed.Body, k.Script))
-		c.Message = "a hook is written once and never refreshed by anything — hooks are untracked, so no pull, no fleet-sync " +
-			"and no CI job can update one. Everything it decides was therefore frozen at install time: the exit code it " +
+		c.Message = "a hook is written once and refreshed only by a re-install — one under .git/hooks is untracked, and a " +
+			"tracked core.hooksPath moves only when someone re-installs and commits, so no fleet-sync and no CI job " +
+			"updates one. Everything it decides was therefore frozen at install time: the exit code it " +
 			"treats as a convention violation (glyph interpolates that from core.CodeLint precisely because a stale copy " +
 			"waves every violation through) and the arguments it hands `glyph lint`. A hook that judges a message by rules " +
 			"other than this binary's is the hook-green/CI-red split, and it fails in the quiet direction — exit 0"

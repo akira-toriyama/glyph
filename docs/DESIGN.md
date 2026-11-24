@@ -5151,9 +5151,12 @@ The severities are the argued part:
   code from `core.CodeLint` so a renumbered constant cannot leave behind a hook
   comparing against a code glyph no longer emits — one that waves every
   violation through. That holds for the hook glyph *writes*; it holds for
-  nothing already on disk. Hooks are untracked, so no pull, no fleet-sync and no
-  CI job refreshes one, and everything it decides — the gate code, the arguments
-  it hands `lint` — was frozen by whichever glyph was on PATH that day. It fails
+  nothing already on disk. A hook under `.git/hooks` is untracked, so no pull, no
+  fleet-sync and no CI job refreshes one; a tracked `core.hooksPath` (below)
+  moves only when someone re-installs and commits, and a pull then delivers that
+  commit's bytes, not the running glyph's. Either way everything it decides — the
+  gate code, the arguments it hands `lint` — was frozen by whichever glyph ran
+  the install. It fails
   in the quiet direction: a stale hook still exits 0, which is what a clean
   message looks like. Hence the one artefact here that glyph itself wrote is
   also the one nothing else can notice going wrong.
