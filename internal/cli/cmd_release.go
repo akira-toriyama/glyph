@@ -108,10 +108,14 @@ func newReleaseCmd() *cobra.Command {
 			"residual glyph-managed draft is deleted (the draft state converges to\n" +
 			"the verdict) and the run exits 1 (soft no-release). A walk that could\n" +
 			"NOT read its range (a wrong --repo, a merged pull whose merge point\n" +
-			"nothing resolved, a commit GitHub has not indexed, a truncated pull\n" +
-			"listing, a shallow checkout) exits 4 before touching anything — an\n" +
-			"empty fold from a walk that could not look is not evidence that\n" +
-			"nothing shipped, so no verdict is handed down on it at all.\n" +
+			"nothing resolved, a merge commit or a message no pattern claims that\n" +
+			"GitHub has not indexed, a truncated pull listing, a shallow checkout)\n" +
+			"exits 4 before touching anything — an empty fold from a walk that\n" +
+			"could not look is not evidence that nothing shipped, so no verdict is\n" +
+			"handed down on it at all. A single-parent commit GitHub has not\n" +
+			"indexed whose own message a pattern claims is read from that message\n" +
+			"and the walk stays complete: the version can come out lower for one\n" +
+			"run, and the next push corrects it.\n" +
 			"The body's notes close with the range's compare link\n" +
 			"(compare/<base tag>...<target>; none when the walk has no tag base, the\n" +
 			"notes are empty, or --target is not a full sha), before the\n" +

@@ -2230,7 +2230,8 @@ was meant to start, or publish under a token that is not `GITHUB_TOKEN`.
 Convergence is on the verdict, and a verdict is a claim about the range only
 when the walk **read** the range. A walk that came back short — every commit
 unknown to the queried repository, a merged pull whose merge point nothing
-resolved, a commit GitHub had not indexed, a pull whose commit listing GitHub
+resolved, a merge commit or a message no pattern claims that GitHub had not
+indexed, a pull whose commit listing GitHub
 **truncated** at its 250 cap, a **shallow** checkout in which git cannot place
 a listed commit at all, or under `[[packages]]` a commit's file listing GitHub
 capped or would not give (§4.1) — hands down the same empty fold as a range
@@ -2250,7 +2251,14 @@ points resolve now, whoever pressed the button (t-7zt7, t-saky), so nothing
 remains of that shape, and a walk blind to part of its range is exactly what
 the exit is for. Where a re-run cannot read it either, the escape is the wedge
 escape: cut a tag at or past what the walk cannot read, or fix the checkout
-(`fetch-depth: 0`) when the shortfall names it. Ordinary API lag clears on the re-run the error asks for. The same family,
+(`fetch-depth: 0`) when the shortfall names it. Ordinary API lag clears on the re-run the error asks for.
+A single-parent commit GitHub had not indexed whose own message a pattern
+claims is not on that list: the lag arm reads it from that message, a weaker
+copy of the pull it may have squashed, and the walk stays complete, so
+`release --dry-run` exits 0 with the version that message gives
+(`TestSinceTagUnknownShaFallsBack` pins the read). The version can come out
+lower for one run, where the pull's own commits carry more than its title, and
+the next push corrects it (ruled t-4ysr). The same family,
 reached from the output side: a composed body over GitHub's release cap —
 **125000 characters, not bytes**, measured live against the API with the
 over-by-one and the multibyte case both probed (`internal/cli/bodylimit.go`
@@ -2315,7 +2323,7 @@ reproduce. A release run started from a ref that is not the repository's
 downstream of that ref is silently wrong and nothing catches it: the range is
 `<tag>..HEAD` over the branch, so its unmerged commits enter the notes; each
 resolves to no merged pull and takes the direct-push arm, classified from its
-own subject; only an API lag is recorded as dropped, so the walk still calls
+own subject; only an API lag the walk could not read is recorded as dropped, so the walk still calls
 itself complete and the refusal above never fires. Green run, a draft
 describing work the default branch never held, and Publish cutting the tag
 there. A caller cannot close this itself — GitHub offers no way to restrict
@@ -3402,8 +3410,9 @@ so that arm is measured with a stand-in server only
 `later-page-422-discards-the-listed-files`).
 `release` refuses at 4 naming it, `bump` and `notes` warn, and `preview`
 carries it in the PR-side caveat, or in the pending one when the pending walk
-meets it. It is not §4's lag fallback. That arm reads a lagging merge point's
-own message — a weaker copy of the input it lost — and stays complete; here
+meets it. It is not §4's lag fallback. That arm reads a lagging single-parent
+commit's own message when a pattern claims it — a weaker copy of the input it
+lost — and stays complete; here
 the sha came from GitHub's own pull listing, its message was read, and the
 files are the one input attribution has no weaker source for. Before this,
 the same 422 died as a raw `github: GET …/commits/<sha>: 422` at exit 4 on
