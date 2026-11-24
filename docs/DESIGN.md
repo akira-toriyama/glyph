@@ -857,6 +857,15 @@ handling, its Latin-1 fix-up under the default and iconv's whole table under
 any other setting (`golang.org/x/text/encoding`), a dependency and a second
 copy of git's rules bought for patterns no preset ships. Stated, not fixed.
 
+And a git older than **`core.commentString`** (t-9zef): it ignores the key while
+the hook reads it as the prefix (below), so under `core.commentChar=';'` then
+`core.commentString=//` an editor commit's `;` template above the subject is
+stripped by git and judged as the subject at the hook (hook 3, CI 0). Measured:
+git 2.39.5 ignores the key (`git -c core.commentString=// stripspace -c`
+prefixes `#`); Apple 2.50.1, 2.53, 2.54 and 2.56 read it. Only a key that git
+does nothing with reaches it, and the hook does not probe git for the key; the
+tests whose oracle is that answer skip under such a git.
+
 Three ways to close the editor and `--no-verbose` cells were measured and not
 taken. Judging the uncut text whenever the cut leaves nothing closes every cell
 where the typed cut line opens the message — since under `-v` git aborts an
