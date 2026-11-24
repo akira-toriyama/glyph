@@ -528,6 +528,10 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		}
 		_, err := Install(dir, false, Kinds()[0])
 		check(t, err, path, "failed")
+		// It exists; it could not be read. The entry must not claim it absent.
+		if got := refusalDetails(t, err); len(got) != 1 || !got[0].Existed {
+			t.Errorf("refusal details = %+v, want the unreadable hook reported as existing", got)
+		}
 	})
 	t.Run("an unwritable hooks directory", func(t *testing.T) {
 		dir := t.TempDir()

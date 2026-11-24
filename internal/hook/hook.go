@@ -361,13 +361,18 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
 }
 
 // plan decides what one kind needs, without touching the filesystem beyond the
-// read that answers the question. A kind to be written comes back "skipped",
-// with the Action its write earns beside it: Install sets that Action only
-// once the write has happened.
+// read that answers the question — and, when that read fails, the lstat that
+// says whether a file is there at all. A kind to be written comes back
+// "skipped", with the Action its write earns beside it: Install sets that
+// Action only once the write has happened.
 func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
 	in, err := k.Read(hooksDir)
 	res := Result{Kind: k.Name, Path: in.Path}
 	if err != nil {
+		// A file that exists and cannot be read still existed: the failed read
+		// says nothing about absence, which Read reports without an error.
+		_, serr := os.Lstat(in.Path)
+		res.Existed = serr == nil
 		res.Action = "failed"
 		return res, "", core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
 	}

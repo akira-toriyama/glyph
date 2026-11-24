@@ -109,8 +109,9 @@ func newHookInstallCmd() *cobra.Command {
 			}
 			// One script or none: two concatenated shell scripts are not a
 			// script, and writing them out as if they were is worse than
-			// refusing.
-			if o.print && len(args) != 1 {
+			// refusing. Counted after the dedupe — a kind named twice is the
+			// one script.
+			if o.print && (len(args) == 0 || len(kinds) > 1) {
 				return core.Usagef("--print writes ONE hook script; name the kind (one of %s)", strings.Join(hook.KindNames(), ", "))
 			}
 			o.kinds = kinds

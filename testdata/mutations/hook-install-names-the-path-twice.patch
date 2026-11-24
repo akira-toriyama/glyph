@@ -1,5 +1,5 @@
 diff --git a/internal/hook/hook.go b/internal/hook/hook.go
-index b92b99a..7956c83 100644
+index f20020a..46def50 100644
 --- a/internal/hook/hook.go
 +++ b/internal/hook/hook.go
 @@ -341,14 +341,14 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
@@ -19,9 +19,9 @@ index b92b99a..7956c83 100644
  		}
  		rep.Hooks[w.at].Action = w.earns
  	}
-@@ -369,7 +369,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
- 	res := Result{Kind: k.Name, Path: in.Path}
- 	if err != nil {
+@@ -374,7 +374,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
+ 		_, serr := os.Lstat(in.Path)
+ 		res.Existed = serr == nil
  		res.Action = "failed"
 -		return res, "", core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
 +		return res, "", core.APIf("reading %s: %v", in.Path, err)
