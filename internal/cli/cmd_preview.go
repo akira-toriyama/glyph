@@ -131,7 +131,9 @@ func newPreviewCmd() *cobra.Command {
 			"The body never names a rolling draft — the arithmetic is the same whether\n" +
 			"the next release is a draft or a tag cut by hand, and most repos have no\n" +
 			"draft to name. stdout is the Markdown body (post it with `gh pr comment\n" +
-			"--body-file -`); --json emits {current,untagged,level,next,pr,pending,body}.\n" +
+			"--body-file -`); --json emits\n" +
+			"{current,untagged,level,next,pr,pending,body,unknown} — unknown is bump's,\n" +
+			"from the walk behind pending (see bump --help).\n" +
 			"Unlike bump and notes, a none verdict is a normal answer here and exits 0:\n" +
 			"'this PR moves nothing' is exactly what a reviewer asked.\n\n" +
 			"On a repository declaring [[packages]] the body carries one headline per\n" +
@@ -155,7 +157,7 @@ func newPreviewCmd() *cobra.Command {
 	cmd.Flags().IntVar(&o.pr, "pr", 0, "the pull request to preview, read over the API (required)")
 	cmd.Flags().StringVar(&o.repo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().BoolVar(&o.notes, "notes", false, "fold the release-notes preview for this PR into the body")
-	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,untagged,level,next,pr,pending,body}; with [[packages]] declared current/level/pr/pending are empty, untagged false, next absent, and packages[] carries one verdict per line")
+	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,untagged,level,next,pr,pending,body,unknown}; with [[packages]] declared current/level/pr/pending are empty, untagged false, next absent, and packages[] carries one verdict per line")
 	_ = cmd.MarkFlagRequired("pr")
 	return cmd
 }

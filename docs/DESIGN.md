@@ -4436,6 +4436,25 @@ so `internal/workflows` bans the read itself
 (`TestNoWorkflowRebuildsPerFindingAnnotations`) and the mutation ledger holds the
 producer half (`lint-findings-lose-their-annotations`).
 
+**What stderr warns about, stdout carries** (t-xr9d). A walk's API-lag
+`::warning::` lines (§4: a commit GitHub has not indexed yet is the one soft
+arm) once named their commits on stderr only, so a consumer reading
+`bump --since-tag --json` saw a `v0.1.1` and nothing saying a weaker copy of an
+unseen pull decided it. `bump`, `notes`, `release` and `preview` `--json` now
+carry `unknown: [{sha, arm}]` — exactly the commits those warnings name
+(`walk.Facts.Unknown`), in walk order, by full sha — and, like the other
+optional fields, leave it out when the walk met none (a `--range` verdict
+never has one). `arm` is what the fallback did with the commit: `message`,
+read from its own message, which a pattern claims — the only arm that counted
+anything; `unclaimed`, no pattern claims its message, so it counted none and,
+unlike a commit GitHub knows, does not refuse the range; `merge`, a merge
+commit whose pull could not be resolved, so nothing was counted from it;
+`excluded`, an `exclude_authors` author's commit whose pull could not be
+resolved, so nothing was counted from it. The field reports and never gates:
+`release` refuses a walk left short (`merge`, `unclaimed`) at 4 through
+`Facts.Complete`, not by reading it
+(`json-loses-a-lagging-commit-read-from-its-message`).
+
 **One channel, sieved** (t-sa7p). The obvious cure for a sieve copied into
 every consumer — a native hand-off: a root `--error-file <path>` that
 `renderError` also writes, the envelope on fd 3, a path in the environment —

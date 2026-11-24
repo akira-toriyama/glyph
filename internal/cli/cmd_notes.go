@@ -68,8 +68,8 @@ func newNotesCmd() *cobra.Command {
 			"stdout is the Markdown body\n" +
 			"(pipe it into a release step); a --since-tag body closes with the range's\n" +
 			"compare link (compare/<base tag>...<HEAD sha>; none when the walk has no\n" +
-			"tag base, and none from --range or --pr). --json emits {sections,reason} —\n" +
-			"no link. When no commit lands in any [[note.sections]] entry there is\n" +
+			"tag base, and none from --range or --pr). --json emits\n" +
+			"{sections,reason,unknown} — no link; unknown is bump's (see bump --help). When no commit lands in any [[note.sections]] entry there is\n" +
 			"nothing to write: no body, exit 1 (soft no-release).\n\n" +
 			"On a repository declaring [[packages]] the body is per line: stdout is one\n" +
 			"body per line under a `# <path>` heading (bare when a tag selects one\n" +
@@ -90,7 +90,7 @@ func newNotesCmd() *cobra.Command {
 	cmd.Flags().IntVar(&f.pull, "pr", 0, "render notes from a pull request's individual (pre-squash) commits, read over the API")
 	addSinceTagFlag(cmd, &f.tag, "render notes from")
 	cmd.Flags().StringVar(&f.repo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {sections,reason}; with [[packages]] declared sections is empty and packages[] carries one body per line")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {sections,reason,unknown}; with [[packages]] declared sections is empty and packages[] carries one body per line")
 	markInputSourceFlags(cmd)
 	return cmd
 }
