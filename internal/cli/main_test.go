@@ -115,7 +115,7 @@ func runGlyphCtx(t *testing.T, ctx context.Context, args ...string) (code int, s
 	root.SetArgs(args)
 	root.SetOut(errBuf) // cobra's own usage/help output is diagnostics here
 	root.SetErr(errBuf)
-	code = finish(root.ExecuteContext(ctx))
+	code = finish(run(ctx, root))
 	return code, outBuf.String(), errBuf.String()
 }
 

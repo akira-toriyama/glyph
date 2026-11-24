@@ -1,0 +1,15 @@
+diff --git a/internal/cli/output.go b/internal/cli/output.go
+index d2651ea..cc74da6 100644
+--- a/internal/cli/output.go
++++ b/internal/cli/output.go
+@@ -44,9 +44,7 @@ type payload struct {
+ 
+ func (p *payload) Write(b []byte) (int, error) {
+ 	if p.err == nil {
+-		if _, err := p.w.Write(b); err != nil {
+-			p.err = err
+-		}
++		_, _ = p.w.Write(b)
+ 	}
+ 	return len(b), nil
+ }

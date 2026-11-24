@@ -4284,7 +4284,10 @@ the API or the filesystem, or a refusal to hand down a verdict glyph will not
 stand behind (`core.CodeAPI`'s doc lists the refusals) · `130` interrupted.
 
 Errors are classified at the source into `*core.Error`; `ExitCode` funnels
-everything (unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
+everything (unclassified ⇒ API, never usage). The CLI's funnel holds the same
+default — cobra's parse errors are made usage where cobra raises them, not by
+elimination — and a stdout write that fails is `4` on every command, the
+payload a caller reads being what went missing. `3` is the *gate* code — what glyph was asked
 to judge does not conform: a commit message under `lint`, a repository's own
 configuration under `doctor`. Same class, different subject; no new integer.
 

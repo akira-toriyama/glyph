@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // TestFinishSilentInterrupt: both adapters classify a canceled context as a
@@ -23,32 +26,93 @@ func TestFinishSilentInterrupt(t *testing.T) {
 	}
 }
 
-// TestFinishBareErrorIsUsage: a non-*core.Error reaching finish can only be a
-// cobra parse/usage problem (app and core always classify), so it maps to
-// usage (2) with the envelope rendered — the ONE place the unclassified
-// default flips from API to usage. finish carries cobra's message verbatim and
-// appends nothing: a stray positional's remedy is named at the command, by
-// noArgs (TestStrayPositionalNamesItsRemedy), so a bare unknown-command
-// message passes through as cobra wrote it.
-func TestFinishBareErrorIsUsage(t *testing.T) {
-	for _, msg := range []string{"unknown flag: --nope", `unknown command "nope" for "glyph"`} {
+// TestFinishBareErrorIsAPI: a non-*core.Error reaching finish is one nobody
+// classified, so it is 4 with the envelope carrying its message unchanged —
+// "unclassified ⇒ API, never usage" (DESIGN §5). `completion zsh 1</dev/null`
+// once reached this arm with its write error and answered 2.
+func TestFinishBareErrorIsAPI(t *testing.T) {
+	msg := "write /dev/stdout: bad file descriptor"
+	_, stderr, restore := captureOut()
+	t.Cleanup(restore)
+	if code := finish(errors.New(msg)); code != 4 {
+		t.Fatalf("finish(%q) = %d, want 4 (no trustworthy answer)", msg, code)
+	}
+	env := decodeErrorEnvelope(t, stderr.String())
+	if env.Code != 4 || env.Message != msg {
+		t.Fatalf("envelope = %+v, want code 4 carrying %q unchanged", env, msg)
+	}
+}
+
+// TestCobraParseErrorsAreUsage: each kind of error cobra raises over the
+// command line is 2, with cobra's message as the envelope's — classified where
+// cobra raises it (newRootCmd), since finish's bare arm is 4.
+func TestCobraParseErrorsAreUsage(t *testing.T) {
+	for name, tc := range map[string]struct {
+		args []string
+		msg  string
+	}{
+		"unknown flag":       {[]string{"lint", "--nope"}, "unknown flag: --nope"},
+		"missing flag value": {[]string{"bump", "--range"}, "flag needs an argument: --range"},
+		"bad flag value":     {[]string{"lint", "--stdin=maybe"}, `invalid argument "maybe" for "--stdin" flag: must be true or false`},
+		"required flag":      {[]string{"preview"}, `required flag(s) "pr" not set`},
+		"one-required group": {[]string{"bump"}, "at least one of the flags in the group [range pr since-tag] is required"},
+		"exclusive group":    {[]string{"bump", "--range", "a..b", "--pr", "1"}, "if any flags in the group [range pr since-tag] are set none of the others can be; [pr range] were all set"},
+		"completion shell":   {[]string{"completion", "zsh", "extra"}, `glyph completion zsh takes no arguments (got "extra")`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			code, _, stderr := runGlyph(t, tc.args...)
+			env := decodeErrorEnvelope(t, stderr)
+			if code != 2 || env.Code != 2 || env.Message != tc.msg {
+				t.Fatalf("%v = exit %d, envelope %+v; want 2 carrying %q", tc.args, code, env, tc.msg)
+			}
+		})
+	}
+}
+
+// failingStdout is a stdout whose every write fails, as `1</dev/null` does.
+type failingStdout struct{}
+
+func (failingStdout) Write([]byte) (int, error) {
+	return 0, errors.New("write /dev/stdout: bad file descriptor")
+}
+
+// TestStdoutWriteFailureIsAPI: a payload that could not be written is 4, the
+// envelope alone on stderr, whoever wrote it — glyph (bump, version) or cobra
+// (help, the version template, a completion script). The root keeps cobra's
+// own writer here, unlike runGlyph's, so help takes the path it takes in the
+// real process. All five once answered 0 or 2 with nothing delivered.
+func TestStdoutWriteFailureIsAPI(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	t.Chdir(dir)
+	for _, args := range [][]string{
+		{"bump", "--range", base + "..HEAD"},
+		{"version"},
+		{"--help"},
+		{"--version"},
+		{"completion", "zsh"},
+	} {
 		_, stderr, restore := captureOut()
-		t.Cleanup(restore)
-		code := finish(errors.New(msg))
-		if code != 2 {
-			t.Fatalf("finish(%q) = %d, want 2 (usage)", msg, code)
+		out = failingStdout{}
+		root := newRootCmd()
+		root.SetArgs(args)
+		code := finish(run(context.Background(), root))
+		restore()
+		if code != 4 {
+			t.Fatalf("%v with a failing stdout = exit %d, want 4", args, code)
 		}
-		env := decodeErrorEnvelope(t, stderr.String())
-		if env.Code != 2 || env.Message != msg {
-			t.Fatalf("envelope = %+v, want code 2 carrying the cobra message %q unchanged", env, msg)
+		if !strings.HasPrefix(stderr.String(), "{") {
+			t.Fatalf("%v: stderr = %q, want the envelope alone", args, stderr.String())
+		}
+		if env := decodeErrorEnvelope(t, stderr.String()); env.Code != 4 || !strings.Contains(env.Message, "bad file descriptor") {
+			t.Fatalf("%v: envelope = %+v, want code 4 naming the write error", args, env)
 		}
 	}
 }
 
 // TestUnknownCommandIsUsage: an unknown subcommand of the root exits 2. Root's
 // Args: noArgs refuses it as usage; were that wiring dropped, cobra's own
-// unknown-command error would reach finish's bare arm, which maps to usage
-// too.
+// unknown-command error would reach finish's bare arm, which is 4.
 func TestUnknownCommandIsUsage(t *testing.T) {
 	if code, _, _ := runGlyph(t, "no-such-command"); code != 2 {
 		t.Fatalf("unknown command should exit 2 (usage), got %d", code)
@@ -150,20 +214,13 @@ func TestCompletionRejectsAnUnknownShell(t *testing.T) {
 }
 
 // The positive control for the guard above — that `completion zsh` still emits a
-// script — is deliberately NOT here, and the reason is a property of cobra worth
-// knowing before touching this. Cobra captures the completion writer ONCE, at the
-// moment the command tree is built (`out := c.OutOrStdout()` in completions.go,
-// closed over by every shell subcommand's RunE), so it cannot be redirected
-// afterwards. Building the command eagerly — which is what lets us fix its RunE
-// at all — therefore binds that writer to os.Stdout before runGlyph's SetOut can
-// reach it. Identical in the real process, where Execute() never calls SetOut;
-// but it means an in-process test cannot observe the script, and asserting on a
-// stream a test cannot capture is how a green assertion stops meaning anything.
-//
-// So the control lives where the claim is actually observable: scripts/smoke.sh
-// (run by build.yml's extras job and by scripts/check.sh) runs the real binary
-// and asserts the split — the script on stdout for a known shell, nothing on
-// stdout and exit 2 for an unknown one.
+// script — is scripts/smoke.sh (run by build.yml's extras job and by
+// scripts/check.sh), against the real binary: the script on stdout for a known
+// shell, nothing on stdout and exit 2 for an unknown one. Cobra captures the
+// completion writer ONCE, when the command tree is built (`out :=
+// c.OutOrStdout()` in completions.go, closed over by every shell's RunE), so
+// runGlyph's later SetOut never reaches it; newRootCmd sets the root's writer to
+// stdoutFunnel before that capture, which is why the script lands in out.
 
 // TestCompletionBareIsHelpAtZero: a parent command with no subcommand named
 // prints help and exits 0 — the shape bare `glyph` and `glyph hook` already
