@@ -60,7 +60,7 @@ func commitMsgScript() string {
 # glyph, which holds the rules. Do not add a regex here: a local copy of the
 # convention is exactly what drifts out of lockstep when the rules move.
 #
-# Regenerate with: glyph hook install
+# Regenerate with: glyph hook install commit-msg
 if ! command -v glyph >/dev/null 2>&1; then
 	echo "glyph: not on PATH — skipping the commit-msg lint (CI still enforces it)" >&2
 	exit 0
@@ -101,7 +101,7 @@ func prePushScript() string {
 # owns the range arithmetic and the rules. Do not compute a range here and do
 # not add a regex: this file is installed once and nothing ever refreshes it.
 #
-# Regenerate with: glyph hook install
+# Regenerate with: glyph hook install pre-push
 if ! command -v glyph >/dev/null 2>&1; then
 	echo "glyph: not on PATH — skipping the pre-push lint (CI still enforces it)" >&2
 	exit 0
@@ -267,6 +267,10 @@ func KindNames() []string {
 //
 // The last three appear only in a refusal's details, where the first two name
 // a write that happened before the run stopped.
+//
+// Existed says glyph saw a file at Path before the run. False is also what an
+// lstat that could not look reports (a hooks directory glyph cannot search),
+// so it is not proof that no file is there.
 type Result struct {
 	Kind    string `json:"kind"`
 	Path    string `json:"path"`
@@ -362,15 +366,17 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
 
 // plan decides what one kind needs, without touching the filesystem beyond the
 // read that answers the question — and, when that read fails, the lstat that
-// says whether a file is there at all. A kind to be written comes back
+// says whether glyph can see a file there. A kind to be written comes back
 // "skipped", with the Action its write earns beside it: Install sets that
 // Action only once the write has happened.
 func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
 	in, err := k.Read(hooksDir)
 	res := Result{Kind: k.Name, Path: in.Path}
 	if err != nil {
-		// A file that exists and cannot be read still existed: the failed read
-		// says nothing about absence, which Read reports without an error.
+		// A file that exists and cannot be read still existed, and Read reports
+		// absence without an error, so the lstat asks again. It can fail too:
+		// under a hooks directory glyph cannot search (mode 000) it cannot look,
+		// and Existed is then false for a file that is there.
 		_, serr := os.Lstat(in.Path)
 		res.Existed = serr == nil
 		res.Action = "failed"

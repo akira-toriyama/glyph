@@ -186,6 +186,10 @@ func TestEveryHookKindIsCheckedTheSameWay(t *testing.T) {
 			if c.ID != ids[k.Name] {
 				t.Errorf("check id = %q, want %q — each kind carries its own observed/expected pair", c.ID, ids[k.Name])
 			}
+			if want := "glyph hook install " + k.Name + " "; !strings.HasPrefix(c.Fix, want) {
+				t.Errorf("the stale %s fix is %q, want it to start %q — beside a foreign hook of the other kind a "+
+					"plain install refuses and writes nothing, so only an install naming this kind refreshes it", k.Name, c.Fix, want)
+			}
 		})
 	}
 }
