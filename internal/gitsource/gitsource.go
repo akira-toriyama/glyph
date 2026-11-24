@@ -510,10 +510,7 @@ var ErrNoRepository = errors.New("not a git repository")
 // Both kinds exit 128, so the message is the only discriminator, and it is
 // read under LC_ALL=C: git translates it through gettext.
 func InsideGitDir(ctx context.Context, dir string) (bool, error) {
-	// #nosec G204 -- the binary is the fixed literal "git" and every argument
-	// here is a constant of this package.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--is-inside-git-dir")
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd := gitCommand(ctx, dir, "rev-parse", "--is-inside-git-dir")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -1160,6 +1157,32 @@ func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return runIn(ctx, dir, nil, args...)
 }
 
+// gitCommand builds every git child this package runs, so each runs under
+// LC_ALL=C. distill and errorLine read git's severity prefixes, InsideGitDir
+// its message, and git translates both through gettext: under de_DE a log over
+// an unreadable object behind an ambiguous refname distilled to "Warnung:
+// refname 'x' is ambiguous." in place of git's error: line, and under fr_FR to
+// "avertissement : …", at the same exit 4 (measured on git 2.54;
+// TestDistilledLineIsReadUnderThePinnedLocale). The envelope is English, and so
+// is the line it quotes. Appended last, so it wins over any LC_ALL the parent
+// carries (os/exec keeps the last value of a duplicated key). It moves no byte
+// a reader parses: the log records (hash, non-ASCII author name, message bytes),
+// the -z path lists of diff-tree, ls-tree and ls-files over non-ASCII names,
+// for-each-ref and config -z read the same under C as under en_US, de_DE and
+// fr_FR UTF-8 (measured on git 2.54), and git quotes a path by core.quotePath,
+// never by the locale.
+//
+// #nosec G204 -- the binary is the fixed literal "git". Every argument is
+// structured by this package's own funcs; the caller-supplied values among
+// them (a revision range, an object name) are pinned by --end-of-options or
+// open with a literal refs/ prefix at their call sites, so none can be read as
+// an option.
+func gitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	return cmd
+}
+
 // runIn is the exec site behind run, so a fix to it lands once for every
 // reader that carries stderr only as the envelope's one distilled line.
 //
@@ -1167,13 +1190,8 @@ func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
 // keep os/exec's own behaviour (the child gets /dev/null); a string parameter
 // would swap that for a pipe this package then has to write to and close,
 // which is a behaviour change smuggled inside a deduplication.
-//
-// #nosec G204 -- the binary is the fixed literal "git". Every argument is
-// structured by this package's own funcs; the caller-supplied values
-// among them (a revision range, an object name) are pinned as revisions by
-// --end-of-options at their call sites, so none can be read as an option.
 func runIn(ctx context.Context, dir string, stdin io.Reader, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := gitCommand(ctx, dir, args...)
 	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -1194,20 +1212,12 @@ func runIn(ctx context.Context, dir string, stdin io.Reader, args ...string) ([]
 // where git never ran to one (not on PATH, killed by a signal), and err is then
 // the failure as runIn would carry it; the interrupt is asked first, as
 // everywhere (TestHaveCancelIsInterrupted, TestIsAncestorCancelIsInterrupted).
-// The child runs under LC_ALL=C because what errorLine reads is the severity
-// prefix, and git translates the prefix with the message — `Fehler:` under
-// de_DE, `erreur :` under fr_FR, measured on git 2.54 — as InsideGitDir pins
-// the locale for the one line it reads; appended last, so it wins over any
-// LC_ALL the parent carries (os/exec keeps the last value of a duplicated key;
-// TestHeldObjectSignalIsReadUnderThePinnedLocale). Not a property of runIn: no
-// other reader looks at stderr, and the envelope's line keeps the user's
-// language there.
-//
-// #nosec G204 -- as runIn: the fixed literal "git", and every caller-supplied
-// value pinned by --end-of-options at its call site.
+// What errorLine reads is the severity prefix, which git translates with the
+// message — `Fehler:` under de_DE, `erreur :` under fr_FR, measured on git
+// 2.54 — so it rests on gitCommand's LC_ALL=C
+// (TestHeldObjectSignalIsReadUnderThePinnedLocale).
 func runRead(ctx context.Context, dir string, stdin io.Reader, args ...string) (stdout, stderr []byte, status int, err error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd := gitCommand(ctx, dir, args...)
 	cmd.Stdin = stdin
 	var out, serr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &serr
@@ -1278,12 +1288,8 @@ func errorLine(stderr []byte) (string, bool) {
 // command as its caller's refusal names it ("git <verb>: …"), and any failure
 // but exit 1 is that core.APIf. The interrupt is asked first, as runIn asks it.
 // A child the cancel killed exits -1, never 1: the order shows only in a race no test pins.
-//
-// #nosec G204 -- the binary is the fixed literal "git". As at runIn's call
-// sites, the caller-supplied values among args are pinned by --end-of-options
-// or open with a literal refs/ prefix, so none can be read as an option.
 func runAnswer(ctx context.Context, dir, verb string, args ...string) (stdout []byte, yes bool, err error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := gitCommand(ctx, dir, args...)
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if rerr := cmd.Run(); rerr != nil {

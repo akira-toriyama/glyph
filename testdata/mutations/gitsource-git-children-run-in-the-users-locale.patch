@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 16643a8..c0d57a9 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -1179,7 +1179,7 @@ func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+ // an option.
+ func gitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
+ 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+-	cmd.Env = append(os.Environ(), "LC_ALL=C")
++	cmd.Env = os.Environ()
+ 	return cmd
+ }
+ 
