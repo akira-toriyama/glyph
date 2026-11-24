@@ -1,8 +1,8 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index ebb170e..78ec32e 100644
+index e44d1ca..2dc90e8 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -260,14 +260,6 @@ jobs:
+@@ -242,14 +242,6 @@ jobs:
                jq -r '"::error::glyph lint: \(.error.message)"' "$RUNNER_TEMP/glyph-lint.json" || true
              fi
            fi
@@ -16,4 +16,4 @@ index ebb170e..78ec32e 100644
 -          fi
            exit "$status"
  
-       # The squash title: a squash merge records the PR title as the subject of
+       # The squash title, when it is the merge candidate: under

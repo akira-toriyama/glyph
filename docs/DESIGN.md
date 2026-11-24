@@ -4656,6 +4656,23 @@ waited for the commits to go green (run 41809643056). Pinned by
 `squash-title-step-refuses-every-direct-push`,
 `squash-title-step-allowed-to-fail` and `squash-title-step-swallows-the-verdict`.
 
+The title is judged only when it is the merge candidate. `COMMIT_OR_PR_TITLE`
+lands the commit's own subject on a one-commit pull, so `lint --pr` lists the
+pull's commits over the API it reads the title from and judges the title only
+when two or more of them are not merge commits (more than one parent); below
+two it exits 0 with a notice and no title verdict, because the subject that
+lands is a commit the range step judged. The pull's own count is not that
+number: on glyph-test-2 #27 (2026-11-24) one authored commit plus the
+`Merge branch 'main'` that update-branch added landed the commit's subject,
+while `gh pr view --json commits` and REST `.commits` both said 2; #28, the
+same pull rebased by update-branch to one commit, landed its subject too. A
+merge commit whose second parent is not the base is unmeasured and left out by
+the same rule. The step re-fires when the count moves: a second commit pushed
+(#29) and a force-push back to one (#30) each re-ran the workflow. Judging every
+title instead was rejected: it reds a single-commit pull over a title that never
+lands, §7's reason against failing over what the fleet cannot act on. Pinned by
+`TestLintPRTitle`; mutation row `lint-pr-title-counts-merge-commits`.
+
 Two behaviours of the shipped workflows are contract, not implementation
 detail. `lint.yml` carries a second, annotate-only arm (#140): a caller may add
 `push: branches: [main]` and the same rules run over each direct push to the

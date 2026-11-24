@@ -252,13 +252,19 @@ jobs:
           fi
           exit "$status"
 
-      # The squash title: a squash merge records the PR title as the subject of
-      # the commit that lands on main (CONTRIBUTING ratifies that title as a
-      # commit subject), and the range above can never see it — the range holds
-      # the pre-squash commits, while the title exists nowhere as a commit until
-      # the squash mints it. Same stream contract as the range step: glyph
-      # writes one ::error:: per finding itself, the step replays the stream
-      # verbatim and frames only the summary. Bot pulls are excluded inside the
+      # The squash title, when it is the merge candidate: under
+      # COMMIT_OR_PR_TITLE a squash merge records the PR title as the subject of
+      # the commit that lands on main only when the pull holds two or more
+      # commits besides merge commits, and the range above can never see it —
+      # the range holds the pre-squash commits, while the title exists nowhere
+      # as a commit until the squash mints it. Below two the commit's own
+      # subject lands, which the range judged, so glyph exits 0 with a notice
+      # and no title verdict. glyph counts the pull's commits itself over the
+      # API it reads the title from, so the step passes only the number, and a
+      # push that moves the count re-fires it (synchronize). Same stream
+      # contract as the range step: glyph writes one ::error:: per finding (or
+      # its notice) itself, the step replays the stream verbatim and frames
+      # only the summary. Bot pulls are excluded inside the
       # binary (a squash attributes the landed commit to the pull's author), so
       # dependabot's daily titles cannot red the gate.
       #
