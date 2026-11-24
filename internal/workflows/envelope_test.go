@@ -82,13 +82,22 @@ func bareReplay(sink string) *regexp.Regexp {
 	return regexp.MustCompile(`^\s*cat\s+"?` + regexp.QuoteMeta(sink) + `"?\s+>&2\s*$`)
 }
 
+// annotationProbe is the one test a step may put to the raw stream: whether
+// glyph wrote an `::error::` of its own, as the guard of a frame that would
+// otherwise annotate a refused commit twice (pr-verdict.yml). `grep -q` prints
+// nothing, so the stream cannot reach jq through it.
+func annotationProbe(sink string) *regexp.Regexp {
+	return regexp.MustCompile(`^\s*if ! grep -q '\^::error::' "?` + regexp.QuoteMeta(sink) + `"?; then\s*$`)
+}
+
 // TestReusablesSieveTheEnvelopeBeforeJQ guards the consumer half of the stream
 // contract.
 //
 // The rule is deliberately blunt: once a step has parked glyph's stderr in a
-// file, that file may appear in exactly three places — the `2>` that creates it,
-// a bare `cat … >&2` that replays it into the log, and the sieve. Anywhere else,
-// some command is reading a stream that is not JSON.
+// file, that file may appear in exactly four places — the `2>` that creates it,
+// a bare `cat … >&2` that replays it into the log, the sieve, and the
+// annotation probe (annotationProbe). Anywhere else, some command is reading a
+// stream that is not JSON.
 //
 // Blunt beats clever here, and that is measured rather than assumed: two
 // earlier versions of this guard tried to identify the jq command itself
@@ -96,9 +105,9 @@ func bareReplay(sink string) *regexp.Regexp {
 // missed real defects — a jq whose PROGRAM spans two lines, a `cat … | jq`, a
 // `jq … < FILE`, an `ERR=FILE` indirection. This rule catches all of those
 // because it never has to work out which command is reading the file, only that
-// something other than the three sanctioned forms names it. Its failure mode is
-// a false positive on a legitimate fourth use — a conversation in review, not a
-// silent hole in a fleet-distributed gate.
+// something other than the sanctioned forms names it. Its failure mode is
+// a false positive on a legitimate further use — a conversation in review, not a
+// silent hole in a fleet-distributed gate (the annotation probe was one).
 func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
 	// Positive control, for the same reason TestNaiveGrepSeesNoPinInTheReusables
 	// carries one. Every sink assertion below is nested inside "for each sink
@@ -131,6 +140,16 @@ func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
 			t.Fatalf("bareReplay judges %q as %v, want %v — the exemption is not the one described", strings.TrimSpace(line), !ok, ok)
 		}
 	}
+	for line, ok := range map[string]bool{
+		`            if ! grep -q '^::error::' "$ERR"; then`:                        true,
+		`            if ! grep -q '^::error::' "$ERR" | jq -r .error.message; then`: false,
+		`            if ! grep '^::error::' "$ERR"; then`:                           false,
+		`            grep -q '^::error::' "$ERR" && jq -r . "$ERR"`:                 false,
+	} {
+		if annotationProbe("$ERR").MatchString(line) != ok {
+			t.Fatalf("annotationProbe judges %q as %v, want %v — the exemption is not the one described", strings.TrimSpace(line), !ok, ok)
+		}
+	}
 
 	found := 0
 	for _, name := range workflowFiles(t) {
@@ -153,11 +172,12 @@ func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
 					if !strings.Contains(line, sink) {
 						continue
 					}
-					// The redirect that creates it, and the bare replay into the log.
-					if regexp.MustCompile(`2>\s*"?`+regexp.QuoteMeta(sink)).MatchString(line) || bareReplay(sink).MatchString(line) {
+					// The redirect that creates it, the bare replay into the log, and the annotation probe.
+					if regexp.MustCompile(`2>\s*"?`+regexp.QuoteMeta(sink)).MatchString(line) || bareReplay(sink).MatchString(line) ||
+						annotationProbe(sink).MatchString(line) {
 						continue
 					}
-					t.Errorf("%s reads glyph's raw stderr (%s) outside the sanctioned three uses:\n  %s\n"+
+					t.Errorf("%s reads glyph's raw stderr (%s) outside the sanctioned four uses:\n  %s\n"+
 						"That stream carries ::warning:: / ::notice:: annotations as well as the error "+
 						"envelope, so jq over it exits 5 and — behind the `|| true` these steps use — the "+
 						"annotation it was meant to print vanishes in silence. Sieve the envelope out with "+
