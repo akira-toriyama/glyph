@@ -80,7 +80,7 @@ func newNotesCmd() *cobra.Command {
 			if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
 				return err
 			}
-			return notesRun(cmd.Context(), notesOptions{source: sourceOf(cmd, f), json: asJSON})
+			return annotateRefusal(notesRun(cmd.Context(), notesOptions{source: sourceOf(cmd, f), json: asJSON}))
 		},
 	}
 	cmd.Flags().StringVar(&f.rng, "range", "", "render notes for every commit in a git revision range (BASE..HEAD)")

@@ -158,7 +158,7 @@ func newReleaseCmd() *cobra.Command {
 			if !cmd.Flags().Changed("since-tag") {
 				o.tag = walk.Auto
 			}
-			return releaseRun(cmd.Context(), o)
+			return annotateRefusal(releaseRun(cmd.Context(), o))
 		},
 	}
 	addSinceTagFlag(cmd, &o.tag, "compose the release from")

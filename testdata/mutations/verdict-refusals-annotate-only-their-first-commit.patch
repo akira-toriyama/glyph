@@ -1,0 +1,13 @@
+diff --git a/internal/cli/output.go b/internal/cli/output.go
+index d4b6905..2bf39c1 100644
+--- a/internal/cli/output.go
++++ b/internal/cli/output.go
+@@ -120,7 +120,7 @@ func annotateRefusal(err error) error {
+ 	var ce *core.Error
+ 	if errors.As(err, &ce) && ce.Code == core.CodeLint {
+ 		if rows, ok := ce.Details.([]bump.Refusal); ok {
+-			annotateFindings(rows)
++			_ = rows
+ 		}
+ 	}
+ 	return err

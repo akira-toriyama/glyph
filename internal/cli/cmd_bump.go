@@ -111,7 +111,7 @@ func newBumpCmd() *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			return bumpRun(cmd.Context(), bumpOptions{source: sourceOf(cmd, f), current: current, json: asJSON})
+			return annotateRefusal(bumpRun(cmd.Context(), bumpOptions{source: sourceOf(cmd, f), current: current, json: asJSON}))
 		},
 	}
 	cmd.Flags().StringVar(&f.rng, "range", "", "fold every commit in a git revision range (BASE..HEAD)")
