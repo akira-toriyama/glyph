@@ -26,6 +26,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -56,12 +57,22 @@ func Execute() int {
 // verdict the command returned: the payload a caller reads — a version piped
 // into a tag step, a verdict.json — is exactly what went missing. An error that
 // renders its own envelope, and the user's own interrupt, keep their code.
+//
+// A run whose context was cancelled and that ended in any code but success is
+// the interrupt, 130: a read that takes no context (a plain file, stdin)
+// carries no signal, so the code it lets the command reach — a usage refusal,
+// a gate verdict — is not an answer to the run the operator stopped. A run
+// that finished with 0 delivered its verdict and keeps it
+// (TestACancelledRunIsInterruptedUnlessItSucceeded).
 func run(ctx context.Context, root *cobra.Command) error {
 	p := &payload{w: out}
 	saved := out
 	out = p
 	defer func() { out = saved }()
 	err := root.ExecuteContext(ctx)
+	if err != nil && errors.Is(ctx.Err(), context.Canceled) {
+		err = core.Interrupted()
+	}
 	if p.err == nil || core.IsInterrupted(err) {
 		return err
 	}

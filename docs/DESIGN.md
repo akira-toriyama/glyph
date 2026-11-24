@@ -4287,7 +4287,10 @@ Errors are classified at the source into `*core.Error`; `ExitCode` funnels
 everything (unclassified ⇒ API, never usage). The CLI's funnel holds the same
 default — cobra's parse errors are made usage where cobra raises them, not by
 elimination — and a stdout write that fails is `4` on every command, the
-payload a caller reads being what went missing. `3` is the *gate* code — what glyph was asked
+payload a caller reads being what went missing. A run the user interrupted is
+`130` whatever other code its command reached, because a read that takes no
+context (a plain file, stdin) carries no signal and lets the command run on to
+its own; one that finished with `0` keeps it, its verdict delivered. `3` is the *gate* code — what glyph was asked
 to judge does not conform: a commit message under `lint`, a repository's own
 configuration under `doctor`. Same class, different subject; no new integer.
 
@@ -5190,7 +5193,11 @@ The severities are the argued part:
   claim (`commit-msg-hook-fires`, below). Two failures end the run before
   doctor judges anything: a repository it cannot name (no `--repo`,
   `$GITHUB_REPOSITORY` or GitHub `origin`, or a malformed one — usage, 2), and
-  an interrupt in any read.
+  an interrupt in any read that takes the context, the remote listing that
+  names the repository included (130). The plain file reads — `glyph.toml`, the
+  hooks, the workflow and action files — take none: an interrupt landing in one
+  lets the report finish, and the run is `130` unless it finished with `0`
+  (§5, the CLI's funnel).
 - **The byte-identical hook is also FIRED (`commit-msg-hook-fires`).** Current
   bytes prove the script; they prove nothing about the glyph the script resolves
   on PATH at run time, and the script blocks only on the gate code and waves

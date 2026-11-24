@@ -99,9 +99,15 @@ func checkRepoFlag(flag string) error {
 // resolveRepo's usage error is the right answer). An origin on a host the
 // client will NOT query is usage too, but a loud one — it names both hosts,
 // because silently asking api.github.com about a GitLab clone is the shape
-// this guard exists to refuse.
+// this guard exists to refuse. The user's interrupt in the remote listing is
+// asked first and carries out (the shape prepush gives RemoteCanRecordHead):
+// read as "no origin", it would refuse the run the operator stopped as a
+// missing --repo, 2 (TestAnInterruptInTheRemoteListingCarriesOut).
 func originRepo(ctx context.Context) (string, error) {
 	urls, err := gitsource.RemoteURLs(ctx, ".")
+	if core.IsInterrupted(err) {
+		return "", err
+	}
 	if err != nil {
 		return "", nil
 	}
