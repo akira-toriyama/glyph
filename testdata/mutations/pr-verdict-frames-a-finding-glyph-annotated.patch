@@ -1,0 +1,17 @@
+diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
+index a8200af..4713893 100644
+--- a/.github/workflows/pr-verdict.yml
++++ b/.github/workflows/pr-verdict.yml
+@@ -291,10 +291,8 @@ jobs:
+             # log, inside the replayed envelope; an error glyph did not
+             # annotate (an API failure, a refusal with no commit rows) has the
+             # frame as its only headline.
+-            if ! grep -q '^::error::' "$RUNNER_TEMP/preview.err"; then
+-              sed -n '/^[{]/,$p' "$RUNNER_TEMP/preview.err" \
+-                | jq -r '"::error::glyph preview: \(.error.message)"' || true
+-            fi
++            sed -n '/^[{]/,$p' "$RUNNER_TEMP/preview.err" \
++              | jq -r '"::error::glyph preview: \(.error.message)"' || true
+             exit "$status"
+           fi
+ 
