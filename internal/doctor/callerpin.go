@@ -158,9 +158,15 @@ type notJudged struct {
 // unknown to a tree built past it.
 func judgeAt(ref, after, glyph, floor string) *notJudged {
 	if !isReleaseTag(ref) {
+		why := fmt.Sprintf("@%s is not a release tag: a branch moves, and a sha names a commit doctor cannot map "+
+			"to a release offline", ref)
+		if isPreRelease(ref) {
+			// One wording for a release candidate across every check that
+			// reports it: idWorkflowPinned already fails it with this sentence.
+			why = pinProblem(ref, true)
+		}
 		return &notJudged{
-			Why: fmt.Sprintf("@%s is not a release tag: a branch moves, and a sha names a commit doctor cannot map "+
-				"to a release offline", ref),
+			Why:    why,
 			Remedy: "pin a release tag (" + idWorkflowPinned + " names each such ref)",
 		}
 	}

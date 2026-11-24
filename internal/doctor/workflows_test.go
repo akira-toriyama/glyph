@@ -307,9 +307,6 @@ func TestScanUsesShapes(t *testing.T) {
 	}
 }
 
-// TestPinProblemNamesTheShape: the two failing shapes need different fixes, so
-// the report must not blur them into one sentence. A SHA is immutable and only
-// breaks the version derivation; a moving ref changes under the caller.
 // FuzzScanUsesCitesOnlyRealUsesLines throws arbitrary bytes at the one
 // hand-written stateful scanner in the tree whose input is EXTERNAL — scanUses
 // walks other repositories' workflow YAML, and the comment/stub/block-scalar
@@ -352,6 +349,9 @@ func FuzzScanUsesCitesOnlyRealUsesLines(f *testing.F) {
 	})
 }
 
+// TestPinProblemNamesTheShape: the two failing shapes need different fixes, so
+// the report must not blur them into one sentence. A SHA is immutable and only
+// breaks the version derivation; a moving ref changes under the caller.
 func TestPinProblemNamesTheShape(t *testing.T) {
 	sha := pinProblem("9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0", true)
 	if !strings.Contains(sha, "commit SHA") || !strings.Contains(sha, "job.workflow_ref") {
