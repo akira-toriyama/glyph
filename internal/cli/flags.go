@@ -114,6 +114,29 @@ func checkExclusive(cmd *cobra.Command, names ...string) error {
 	return nil
 }
 
+// typedBool wraps pflag's own bool Value and keeps the text the caller typed
+// after =, so a refusal can quote it: pflag keeps only the parsed value, and
+// `lint --stdin=0` was refused as --stdin=false. Parse errors, the bare-flag
+// form and --help stay pflag's.
+type typedBool struct {
+	pflag.Value
+	typed string
+}
+
+func (b *typedBool) wrap(f *pflag.Flag) { b.Value, f.Value = f.Value, b }
+
+func (b *typedBool) Set(s string) error {
+	if err := b.Value.Set(s); err != nil {
+		return err
+	}
+	b.typed = s
+	return nil
+}
+
+// IsBoolFlag is pflag's marker for a flag that takes no value; the embedded
+// Value interface does not carry it.
+func (b *typedBool) IsBoolFlag() bool { return true }
+
 // addSinceTagFlag wires --since-tag onto a command. The value is optional
 // (pflag's NoOptDefVal grammar): a bare --since-tag resolves the tag itself; a
 // named tag must be attached with = (--since-tag=v1.2.3).

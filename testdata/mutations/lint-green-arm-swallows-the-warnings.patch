@@ -15,13 +15,16 @@ index ebb170e..8178c5b 100644
            # That stream is annotations AND the envelope, and jq over the two
            # together is a parse error — a lint run that warned before it failed
            # would emit no annotations at all. The envelope is written last, so
-@@ -290,11 +290,11 @@ jobs:
+@@ -290,14 +290,14 @@ jobs:
            glyph lint --pr "$PR_NUMBER" 2>"$RUNNER_TEMP/glyph-title.err" || status=$?
            # Replayed before the green exit for the same reason as the range step:
            # a warn-pattern title is green AND annotated, or the warning dies.
 -          cat "$RUNNER_TEMP/glyph-title.err" >&2
+           # Exit 0 is also a pull whose title glyph did not judge (its notice is
+           # replayed above), and the step reads nothing of the stream, so the
+           # green line claims no verdict.
            if [ "$status" -eq 0 ]; then
-             echo "title OK"
+             echo "title not refused"
              exit 0
            fi
 +          cat "$RUNNER_TEMP/glyph-title.err" >&2

@@ -130,6 +130,24 @@ func TestLintStdinFalseIsUsageNotAVerdict(t *testing.T) {
 	}
 }
 
+// TestLintStdinOffRefusalQuotesTheTypedValue: pflag accepts every spelling
+// strconv.ParseBool does, and the refusal said --stdin=false whatever the
+// caller typed — a sentence about an invocation nobody gave.
+func TestLintStdinOffRefusalQuotesTheTypedValue(t *testing.T) {
+	for _, typed := range []string{"0", "F", "false", "FALSE"} {
+		t.Run(typed, func(t *testing.T) {
+			setStdin(t, "")
+			code, _, stderr := runGlyph(t, "lint", "--stdin="+typed)
+			if code != 2 {
+				t.Fatalf("lint --stdin=%s exited %d, want 2 (usage — no input mode was selected)\nstderr: %s", typed, code, stderr)
+			}
+			if want := "--stdin=" + typed + " selects no input mode"; !strings.Contains(stderr, want) {
+				t.Errorf("the refusal does not quote what was typed (want %q):\nstderr: %s", want, stderr)
+			}
+		})
+	}
+}
+
 // TestLintRepoRefusesLocalModes pins the input-source grammar lint shares with
 // bump and notes (markInputSourceFlags's reasoning): --repo feeds the one
 // API-backed mode (--pr), and combined with a local mode it would be silently

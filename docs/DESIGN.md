@@ -902,9 +902,13 @@ row `cleanup-strips-hash-under-any-comment-char.patch`).
 picks the character per commit from what the message already holds, and
 nothing a hook reads names the pick: the config says `auto`, and the file it is
 handed already carries the template in the chosen character, beside whatever
-lines the author opened with it. Measured on git 2.54: a fresh editor commit and an amend whose body
-opens a line with `#` both got a `#` template and lost their `#` lines (so `#`
-agrees). What `#` misjudges is a class: a message git is handed **before** its
+lines the author opened with it. Measured on git 2.54, the two inputs of an
+amend part. A `#` line typed during the amend fares as in a fresh editor
+commit: both got a `#` template and lost their `#` lines (so `#` agrees). A
+recorded message that already opens a line with `#` gets a `;` template
+instead, and git keeps that line while the hook drops it as a `#` comment; the
+verdict moves only when that line is line 1 (hook 0, CI 3), and that case is
+the class that follows. What `#` misjudges is a class: a message git is handed **before** its
 cleanup (measured with `-F`) whose line 1 opens with `#`, in a mode that strips
 comments. git then picks another character, keeps that line and records
 it as the subject; the hook drops it as a `#` comment and judges line 2, the
