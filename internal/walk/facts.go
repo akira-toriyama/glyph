@@ -30,6 +30,13 @@ type PullExpansion struct {
 type Facts struct {
 	// Pulls is the per-pull expansion provenance (see PullExpansion).
 	Pulls []PullExpansion
+	// Unknown are the commits GitHub had not indexed (API lag) that the
+	// fallback met, in walk order: exactly the commits its lag ::warning::
+	// lines name, so a --json reader sees what a stderr reader is told
+	// (bump, notes, release and preview carry it as unknown). Never a gate:
+	// the arms that leave the fold short also record in dropped, which
+	// Complete reads.
+	Unknown []UnknownCommit
 	// allUnknown: every commit the walk asked about was unknown to the queried
 	// repository. One unknown SHA is API lag; ALL of them is what a wrong --repo
 	// (or an inherited $GITHUB_REPOSITORY in a fork or a reusable-workflow
@@ -78,6 +85,24 @@ type Facts struct {
 	// packages are declared.
 	filesUnknown []unreadListing
 }
+
+// UnknownCommit is one commit GitHub had not indexed, by its full sha, and
+// the arm of the fallback it took: ArmMessage, ArmUnclaimed, ArmMerge or
+// ArmExcluded.
+type UnknownCommit struct {
+	SHA string `json:"sha"`
+	Arm string `json:"arm"`
+}
+
+// The lag arms an UnknownCommit names. Only ArmMessage counted anything; the
+// other three are each one of fallback's "nothing was counted from it"
+// warnings, and ArmMerge and ArmUnclaimed are dropped as well.
+const (
+	ArmMessage   = "message"   // read from its own message, which a pattern claims
+	ArmUnclaimed = "unclaimed" // no pattern claims its own message
+	ArmMerge     = "merge"     // a merge commit: the pull it may have merged could not be resolved
+	ArmExcluded  = "excluded"  // an exclude_authors author's: a pull it may have merged could not be resolved
+)
 
 // unreadListing is one commit whose file listing GitHub did not give whole,
 // as the shortfall names it: its short sha, the pull it was expanded from,

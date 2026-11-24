@@ -486,6 +486,7 @@ func (w *walk) judges(gov string) bool {
 func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 	if lag && len(raw.Parents) >= 2 {
 		w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+		w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmMerge})
 		w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 		return
 	}
@@ -496,6 +497,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 		// message of its own would say.
 		if lag {
 			w.Report.Warnf("commit %.7s, an exclude_authors author's, is not known to GitHub yet (API lag), so a pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+			w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmExcluded})
 		}
 		if raw.SHA == "" || !w.seen[raw.SHA] {
 			if raw.SHA != "" {
@@ -525,13 +527,15 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 		// this commit's true content is a pull the API has not indexed, so
 		// it is dropped from the fold, warned about and carried in
 		// Facts.dropped — release refuses to ACT on it, bump and notes
-		// report it (DESIGN §4).
+		// report it, on stderr and in Facts.Unknown (DESIGN §4).
 		if row, ok := unclaimed(w.cfg, raw); ok {
 			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
+			w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmUnclaimed})
 			w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 			return
 		}
 		w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
+		w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmMessage})
 	} else {
 		// A direct push GitHub knows is judged HERE, like a pull's inner
 		// commit: the fold's remedy (fix the message, add a pattern) is

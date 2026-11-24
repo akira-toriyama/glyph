@@ -28,7 +28,7 @@ import (
 // happened (never on a dry run). pulls is the walk's expansion provenance —
 // which merged pulls it resolved and how many of each one's listed commits
 // the walk took in — which is what a human or a CI step reads to audit how a
-// verdict was assembled.
+// verdict was assembled. unknown is bump's (walk.Facts.Unknown).
 //
 // With packages declared, current / level / action are EMPTY, next / tag /
 // body / url are absent, and packages carries one verdict and one draft per line
@@ -51,6 +51,7 @@ type releaseResult struct {
 	Commits  []bump.Row           `json:"commits"`
 	Packages []packageRelease     `json:"packages,omitempty"`
 	Pulls    []walk.PullExpansion `json:"pulls"`
+	Unknown  []walk.UnknownCommit `json:"unknown,omitempty"`
 	Reason   string               `json:"reason"`
 }
 
@@ -512,7 +513,7 @@ func carryOut(ctx context.Context, gh *github.Client, owner, repoName string, ru
 // count, never moving, because a draft_on_none placeholder is a draft that
 // points at target too.
 func newReleaseResult(cfg *config.Config, w walk.Result, rows []bump.Row, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
-	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls}
+	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls, Unknown: w.Facts.Unknown}
 	if drafted {
 		res.Target = target
 	}

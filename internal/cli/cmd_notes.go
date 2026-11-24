@@ -19,10 +19,13 @@ import (
 // each line renders its own body (DESIGN §4.1), and the top-level sections
 // describe no one line, exactly as bump's scalars describe no one line.
 // reason appears only on an empty verdict — it explains why nothing rendered.
+// unknown is bump's: the commits GitHub had not indexed, absent when none.
 type notesResult struct {
 	Sections []notes.Section `json:"sections"`
 	Packages []packageNotes  `json:"packages,omitempty"`
 	Reason   string          `json:"reason,omitempty"`
+
+	Unknown []walk.UnknownCommit `json:"unknown,omitempty"`
 }
 
 // packageNotes is one line's rendered notes inside notesResult.packages.
@@ -157,12 +160,12 @@ func notesRun(ctx context.Context, o notesOptions) error {
 		}
 		reason := noNotesReason(cfg, n, w.Source)
 		if o.json {
-			printCompact(notesVerdict(cfg, pkgs, reason))
+			printCompact(notesVerdict(cfg, pkgs, w.Facts.Unknown, reason))
 		}
 		return core.NoReleasef("%s", reason).Quiet(o.json)
 	}
 	if o.json {
-		printCompact(notesVerdict(cfg, pkgs, ""))
+		printCompact(notesVerdict(cfg, pkgs, w.Facts.Unknown, ""))
 		return nil
 	}
 	var owner, repo, head string
@@ -189,11 +192,11 @@ func notesRun(ctx context.Context, o notesOptions) error {
 // sections is EMPTY and packages[] carries one body per line; without, the
 // bare line's sections are the top level and packages is absent. reason
 // rides only on an empty verdict.
-func notesVerdict(cfg *config.Config, pkgs []packageNotes, reason string) notesResult {
+func notesVerdict(cfg *config.Config, pkgs []packageNotes, unknown []walk.UnknownCommit, reason string) notesResult {
 	if len(cfg.Packages) == 0 {
-		return notesResult{Sections: pkgs[0].Sections, Reason: reason}
+		return notesResult{Sections: pkgs[0].Sections, Unknown: unknown, Reason: reason}
 	}
-	return notesResult{Sections: []notes.Section{}, Packages: pkgs, Reason: reason}
+	return notesResult{Sections: []notes.Section{}, Packages: pkgs, Unknown: unknown, Reason: reason}
 }
 
 // noNotesReason is the empty verdict's reason line: the count is bump's
