@@ -75,7 +75,9 @@ func newLintCmd() *cobra.Command {
 			"message at authoring time says the later gates will refuse it, and\n" +
 			"--stdin — the commit-msg hook's mode — says so when commit.cleanup names\n" +
 			"a mode git does not know or the installed hook was written by glyph and no\n" +
-			"longer matches this binary's.",
+			"longer matches this binary's, and when it skips the message because the\n" +
+			"author git exports to the hook (GIT_AUTHOR_NAME; git merge exports none)\n" +
+			"is in exclude_authors, as --range skips that author's commits.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
@@ -179,7 +181,12 @@ func lintStdinRun(ctx context.Context) error {
 	// The hook that called this is also the one artefact nothing refreshes,
 	// so its own run is where a drifted copy is reported.
 	warnIfHookStale(ctx, hook.Kinds()[0])
-	return lintOne(cleanup.Apply(string(b), hookCleanupMode(ctx, in)), cfg)
+	// git exports to the commit-msg hook the author it will record — a plain
+	// commit, --amend, --author=, -C and a rebase reword alike — and none
+	// under git merge (measured, git 2.54 and 2.56, t-cgz9), so an
+	// exclude_authors author's commit is skipped here as --range skips it, and
+	// a merge is judged under the empty author.
+	return lintOne(cleanup.Apply(string(b), hookCleanupMode(ctx, in)), os.Getenv("GIT_AUTHOR_NAME"), cfg)
 }
 
 // lintMessageRun lints the one message --message names, at authoring time.
@@ -188,7 +195,7 @@ func lintMessageRun(ctx context.Context, message string) error {
 	if err != nil {
 		return err
 	}
-	return lintOne(message, cfg)
+	return lintOne(message, "", cfg)
 }
 
 // hookCleanupMode reads the five signals a commit-msg hook has about what git
@@ -265,18 +272,24 @@ func isGitMergeMessage(ctx context.Context, message io.Reader) bool {
 	return err == nil && os.SameFile(got, want)
 }
 
-// lintOne lints a single message at authoring time. The author is unknown —
-// no commit exists yet — so it stands as the empty string. That the human
-// authoring path is always judged is enforced in config.Load, which refuses
-// an empty exclude_authors entry (DESIGN §2, `exclude_authors`). Whatever
+// lintOne lints a single message at authoring time, under author: the one git
+// exported to the commit-msg hook, or the empty string where there is none —
+// --message, and the hook under a git merge. That the empty author is always
+// judged is enforced in config.Load, which refuses an empty exclude_authors
+// entry (DESIGN §2, `exclude_authors`); an excluded author is skipped with
+// the warning --range gives a range it judged none of. Whatever
 // tolerance authoring needs is the pattern file's to grant: skip patterns
 // (the presets skip a merge in progress) and unlandable ones (the presets
 // claim git's fixup! and squash! subjects, and an amend! whose body their
 // grammar reads), which pass here with a warning and nowhere else
 // (config.LintAuthoring).
-func lintOne(message string, cfg *config.Config) error {
-	v := cfg.LintAuthoring(message)
-	if v.OK || v.Excluded {
+func lintOne(message, author string, cfg *config.Config) error {
+	v := cfg.LintAuthoring(message, author)
+	if v.Excluded {
+		warnf("nothing linted: the commit's author %q is excluded from the convention (exclude_authors) — nothing to lint is not a pass on anything", author)
+		return nil
+	}
+	if v.OK {
 		if v.Warn != "" {
 			warnf("%s", v.Warn)
 		}

@@ -443,7 +443,7 @@ func Load(data []byte) (*Config, error) {
 
 	for i, a := range r.ExcludeAuthors {
 		if a == "" {
-			return nil, fmt.Errorf("exclude_authors[%d] is empty: the authoring path has no commit yet and judges under an empty author, so an empty entry excludes every message the commit-msg hook is ever handed — the convention gate off, at exit 0, from one stray comma", i)
+			return nil, fmt.Errorf("exclude_authors[%d] is empty: lint --message, and the commit-msg hook under a git merge (which exports no author to it), judge under an empty author, so an empty entry excludes every such message — the convention gate off, at exit 0, from one stray comma", i)
 		}
 	}
 

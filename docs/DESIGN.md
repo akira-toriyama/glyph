@@ -339,12 +339,19 @@ pattern says it means:
   exactly the ones the patterns do not describe. Whether such a commit
   appears in the notes is `[[note.sections]]`'s decision alone (§3), and
   under `[[packages]]` which lines' notes is its files' (§4.1). An
-  **empty entry is refused at load**: the authoring path has no commit yet, so
-  `lint --message` and `lint --stdin` judge under an empty author, and
-  `exclude_authors = ['']` excluded every message the commit-msg hook was ever
-  handed — measured, a message matching no pattern exited 0 with that one
-  entry present and 3 with it removed. A stray comma turning the gate off
-  silently is the shape this file refuses everywhere else. The author it is
+  **empty entry is refused at load**: `lint --message` has no commit and
+  judges under an empty author, and so does the commit-msg hook under
+  `git merge`, the one path that exports no `GIT_AUTHOR_NAME` to it. Every
+  `git commit` — `--amend`, `--author=`, `-C`, a rebase reword — exports the
+  author it will record, and `lint --stdin` judges under that one, skipping an
+  excluded author's message as `--range` skips the commit (t-cgz9; measured
+  on git 2.54 and 2.56: before, the hook refused at 3 a dependabot commit
+  `--range` skipped at 0). When the hook judged every message under the empty
+  author, `exclude_authors = ['']` excluded all of them — measured, a message
+  matching no pattern exited 0 with that one entry present and 3 with it
+  removed. The reason holds, narrower: the entry would still turn the gate off
+  for every merge the hook judges and every `--message`, and a stray comma
+  turning the gate off silently is the shape this file refuses everywhere else. The author it is
   compared against is read from git **whole** (t-esm5): `git log`'s fields
   were framed by the unit separator, a byte git keeps inside a name, so a
   contributor named `dependabot[bot]<US>x` shifted every field by one, read
