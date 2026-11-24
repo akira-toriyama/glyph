@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index 35581a8..4af1147 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -332,7 +332,7 @@ func scanUses(file, body string) (refs []pinRef, unread []unreadUse) {
+ 			if strings.Contains(strings.ToLower(v), glyphRepo) {
+ 				notRead(i, text, "a value carrying an anchor or a tag, which doctor does not resolve")
+ 			}
+-		case '*':
++		case 1:
+ 			name := strings.FieldsFunc(v[1:], func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(",[]{}", r) })
+ 			if len(name) == 0 {
+ 				return true

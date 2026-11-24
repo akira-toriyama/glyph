@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -208,6 +209,247 @@ func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
 				t.Errorf("a finding beside an unreadable file: status = %s, want %s — a defect observed outranks a file unread (observed %q)", c.Status, StatusFail, c.Observed)
 			}
 		})
+	}
+}
+
+// TestCallerChecksNeverPassOverAnUnreadGlyphCall holds the three caller checks
+// to the grade a with: they cannot read gets (#363): a glyph reference
+// scanUses does not read is could-not-run in each, naming the file and line.
+// reusablesCalled dropped it, so where it was the file's only call every check
+// passed as if nothing called glyph. A call that was read keeps its verdict.
+func TestCallerChecksNeverPassOverAnUnreadGlyphCall(t *testing.T) {
+	requiringInstallNotes(t)
+	// A flow mapping nesting a flow value is a spelling scanUses does not read.
+	const unread = "on: push\npermissions:\n  contents: read\njobs:\n" +
+		"  c: {uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.1, with: {a: 1}}\n"
+	// Fails all three when read: release needs contents: write and, under the
+	// fixture table, install-notes, and binary is an artifact input.
+	const read = "name: c\non:\n  push:\npermissions:\n  contents: read\njobs:\n  r:\n" +
+		"    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n    with:\n      binary: probe\n"
+	checks := map[string]func(string) Check{
+		idCallerPerms:    func(r string) Check { return permsAt(r, true, "dev") },
+		idCallerInputs:   func(r string) Check { return inputsAt(r, true, "dev") },
+		idCallerArtifact: func(r string) Check { return artifactAt(r, true, loaded(t, packagesConfig("camp"))) },
+	}
+	line := ".github/workflows/c.yml:5 holds a " + glyphRepo + " reference doctor does not read"
+	for id, check := range checks {
+		t.Run(id, func(t *testing.T) {
+			c := check(checkoutAt(t, map[string]string{".github/workflows/c.yml": unread}))
+			if c.Status != StatusUnknown {
+				t.Fatalf("an unread glyph call alone: status = %s, want %s (observed %q, details %v)", c.Status, StatusUnknown, c.Observed, c.Details)
+			}
+			if !slices.ContainsFunc(c.Details, func(d string) bool { return strings.HasPrefix(d, line) }) {
+				t.Errorf("details %v never name the call, %q", c.Details, line)
+			}
+			if want := "1 " + glyphRepo + " reference(s) whose uses: doctor does not read; "; !strings.HasPrefix(c.Observed, want) {
+				t.Errorf("observed = %q, want it to open %q", c.Observed, want)
+			}
+			if !strings.Contains(c.Message, "unverified here, not verified") || c.Fix != usesUnreadFix {
+				t.Errorf("message %q / fix %q: want it to say it verified nothing, and the fix %q", c.Message, c.Fix, usesUnreadFix)
+			}
+
+			c = check(checkoutAt(t, map[string]string{".github/workflows/c.yml": unread, ".github/workflows/release.yml": read}))
+			if c.Status != StatusFail || !slices.ContainsFunc(c.Details, func(d string) bool { return strings.HasPrefix(d, line) }) {
+				t.Errorf("a read finding beside an unread call: status = %s, details %v — want fail, naming the unread call too", c.Status, c.Details)
+			}
+		})
+	}
+}
+
+// TestCallerChecksNeverJudgeAFlowMappedJob holds the caller checks to the
+// shapes their readers read: callerGrants and jobWith find a job's keys in
+// block form only, so a call scanUses read out of a flow mapping is
+// could-not-run in each, whatever the mapping holds — handed to them, a
+// flow-mapped write-all caller failed as granting nothing while its block
+// twin passed. The pin check keeps judging the flow-mapped ref.
+func TestCallerChecksNeverJudgeAFlowMappedJob(t *testing.T) {
+	const head = "on: push\npermissions: {contents: read}\njobs:\n"
+	const lint = "akira-toriyama/glyph/.github/workflows/lint.yml@v6.1.0"
+	block := head + "  c:\n    uses: " + lint + "\n    permissions: write-all\n"
+	flows := []struct {
+		name, body, line string
+	}{
+		{"with its permissions", head + "  c: {uses: " + lint + ", permissions: write-all}\n", "c.yml:4"},
+		{"alone, no permissions block in the file", "on: push\njobs:\n  c: {uses: " + lint + "}\n", "c.yml:3"},
+	}
+	checks := map[string]func(string) Check{
+		idCallerPerms:  func(r string) Check { return permsAt(r, true, "dev") },
+		idCallerInputs: func(r string) Check { return inputsAt(r, true, "dev") },
+	}
+	for id, check := range checks {
+		t.Run(id, func(t *testing.T) {
+			if c := check(checkoutAt(t, map[string]string{".github/workflows/c.yml": block})); c.Status != StatusPass {
+				t.Fatalf("the block twin: status = %s, want %s (observed %q, details %v)", c.Status, StatusPass, c.Observed, c.Details)
+			}
+			for _, tt := range flows {
+				c := check(checkoutAt(t, map[string]string{".github/workflows/c.yml": tt.body}))
+				assertFlowCall(t, tt.name, c, ".github/workflows/"+tt.line+" calls lint.yml@v6.1.0 from a job written as a flow mapping")
+			}
+		})
+	}
+	t.Run(idCallerArtifact, func(t *testing.T) {
+		const release = "akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0"
+		cfg := loaded(t, packagesConfig("camp"))
+		if c := artifactAt(checkoutAt(t, map[string]string{".github/workflows/r.yml": "on: push\njobs:\n  r:\n    uses: " + release + "\n"}), true, cfg); c.Status != StatusPass {
+			t.Fatalf("the block twin: status = %s, want %s (observed %q, details %v)", c.Status, StatusPass, c.Observed, c.Details)
+		}
+		c := artifactAt(checkoutAt(t, map[string]string{".github/workflows/r.yml": "on: push\njobs:\n  r: {uses: " + release + "}\n"}), true, cfg)
+		assertFlowCall(t, "a release.yml call", c, ".github/workflows/r.yml:3 calls release.yml@v4.2.0 from a job written as a flow mapping")
+	})
+	moving := "on: push\njobs:\n  c: {uses: akira-toriyama/glyph/.github/workflows/lint.yml@main}\n"
+	if c := checkWorkflowPins("/r", true, []workflowFile{{Name: "c.yml", Body: moving}}, nil, nil, nil); c.Status != StatusFail {
+		t.Errorf("workflow-glyph-pins over a flow-mapped call at a moving ref: status = %s, want %s (observed %q)", c.Status, StatusFail, c.Observed)
+	}
+}
+
+func assertFlowCall(t *testing.T, name string, c Check, line string) {
+	t.Helper()
+	if c.Status != StatusUnknown {
+		t.Errorf("%s: status = %s, want %s (observed %q, details %v)", name, c.Status, StatusUnknown, c.Observed, c.Details)
+		return
+	}
+	if !slices.ContainsFunc(c.Details, func(d string) bool { return strings.HasPrefix(d, line) }) {
+		t.Errorf("%s: details %v never name the call, %q", name, c.Details, line)
+	}
+	if want := "1 glyph reusable call(s) in a job written as a flow mapping; "; !strings.HasPrefix(c.Observed, want) || c.Fix != flowCallFix {
+		t.Errorf("%s: observed %q / fix %q: want it to open %q, and the fix %q", name, c.Observed, c.Fix, want, flowCallFix)
+	}
+}
+
+// TestCallerPermissionsWeighsAnUnreadCallBeforeTheExemption holds the order
+// inside workflow-caller-permissions: a glyph call doctor did not read is
+// could-not-run before the no-permissions-block exemption is considered —
+// considered first, a file whose only call was unread passed as "no workflow
+// in this checkout calls a glyph reusable", also where its only permissions
+// block sat inside the unread mapping. A block-less caller whose call was read
+// keeps the exemption's pass.
+func TestCallerPermissionsWeighsAnUnreadCallBeforeTheExemption(t *testing.T) {
+	const lint = "akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.1"
+	for name, body := range map[string]string{
+		"no permissions block":                    "on: push\njobs:\n  c: {uses: " + lint + ", with: {a: 1}}\n",
+		"its only permissions inside the mapping": "on: push\njobs:\n  c: {uses: " + lint + ", permissions: {contents: read}, with: {a: 1}}\n",
+	} {
+		c := permsAt(checkoutAt(t, map[string]string{".github/workflows/c.yml": body}), true, "dev")
+		if c.Status != StatusUnknown || !strings.HasPrefix(c.Observed, "1 "+glyphRepo+" reference(s) whose uses: doctor does not read; ") {
+			t.Errorf("%s: status = %s, observed %q — want %s over the unread call", name, c.Status, c.Observed, StatusUnknown)
+		}
+	}
+	c := permsAt(checkoutAt(t, map[string]string{".github/workflows/c.yml": "on: push\njobs:\n  c:\n    uses: " + lint + "\n"}), true, "dev")
+	if c.Status != StatusPass {
+		t.Errorf("a block-less caller whose call was read: status = %s, want the exemption's %s (observed %q)", c.Status, StatusPass, c.Observed)
+	}
+}
+
+// TestCallerChecksLeaveAnUnreadStepActionToThePinCheck: an unread glyph line
+// whose reference is whole and names no .github/workflows/ path is a step's
+// action reference, which calls no reusable — the caller checks judge the
+// checkout as if the line were absent, and only workflow-glyph-pins is
+// could-not-run over it.
+func TestCallerChecksLeaveAnUnreadStepActionToThePinCheck(t *testing.T) {
+	const steps = "on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n"
+	without := steps + "      - run: true\n"
+	cfg := loaded(t, packagesConfig("camp"))
+	checks := map[string]func(string) Check{
+		idCallerPerms:    func(r string) Check { return permsAt(r, true, "dev") },
+		idCallerInputs:   func(r string) Check { return inputsAt(r, true, "dev") },
+		idCallerArtifact: func(r string) Check { return artifactAt(r, true, cfg) },
+	}
+	for name, body := range map[string]string{
+		"a value below an empty uses:": steps + "      - uses:\n          akira-toriyama/glyph@main\n",
+		"a step's nested flow mapping": steps + "      - {uses: akira-toriyama/glyph@main, with: {a: 1}}\n",
+	} {
+		for id, check := range checks {
+			want := check(checkoutAt(t, map[string]string{".github/workflows/w.yml": without}))
+			got := check(checkoutAt(t, map[string]string{".github/workflows/w.yml": body}))
+			if got.Status != want.Status || got.Observed != want.Observed || len(got.Details) != 0 {
+				t.Errorf("%s, %s: %s %q %v — want it judged as without the line: %s %q", name, id, got.Status, got.Observed, got.Details, want.Status, want.Observed)
+			}
+		}
+		if c := checkWorkflowPins("/r", true, []workflowFile{{Name: "w.yml", Body: body}}, nil, nil, nil); c.Status != StatusUnknown {
+			t.Errorf("%s: workflow-glyph-pins status = %s, want %s (observed %q)", name, c.Status, StatusUnknown, c.Observed)
+		}
+	}
+}
+
+// TestUnresolvedUsesIsCouldNotRunNeverAbsent holds the uses: spellings GitHub
+// Actions runs and scanUses does not resolve (glyph-test-2 PR #33,
+// 2026-11-24): an anchor or a tag on the value and an alias of an anchor
+// whose line names glyph or holds no value, at step and at job level, an
+// explicit `? uses` key and an anchor in a flow-mapped step. Before, each read
+// as zero references and workflow-glyph-pins passed over a moving ref. Each is now
+// could-not-run there, naming its file and line; a job-level one, or one whose
+// value is not known, is could-not-run in the caller checks too, and a step's
+// leaves them judged as a checkout without it. An alias of another action's
+// anchor is not glyph's.
+func TestUnresolvedUsesIsCouldNotRunNeverAbsent(t *testing.T) {
+	const steps = "on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n"
+	const lint = "akira-toriyama/glyph/.github/workflows/lint.yml@main"
+	without := steps + "    steps:\n      - run: true\n"
+	cfg := loaded(t, packagesConfig("camp"))
+	checks := map[string]func(string) Check{
+		idCallerPerms:    func(r string) Check { return permsAt(r, true, "dev") },
+		idCallerInputs:   func(r string) Check { return inputsAt(r, true, "dev") },
+		idCallerArtifact: func(r string) Check { return artifactAt(r, true, cfg) },
+	}
+	tests := []struct {
+		name, body string
+		line       int
+		call       bool // the caller checks are could-not-run over it too
+	}{
+		{"n05 an anchor on a step value", steps + "    steps:\n      - uses: &g akira-toriyama/glyph@main\n", 6, false},
+		{"n06 a tag on a step value", steps + "    steps:\n      - uses: !!str akira-toriyama/glyph@main\n", 6, false},
+		{"n07 an alias of an env anchor", steps + "    env:\n      G: &g akira-toriyama/glyph@main\n    steps:\n      - uses: *g\n", 8, false},
+		{"n08 an anchor on a job value", "on: push\njobs:\n  c:\n    uses: &g " + lint + "\n", 4, true},
+		{"n26 an anchor in a flow-mapped step", steps + "    steps:\n      - {uses: &g akira-toriyama/glyph@main}\n", 6, false},
+		{"n34 an explicit key", steps + "    steps:\n      - ? uses\n        : akira-toriyama/glyph@main\n", 6, false},
+		{"n36 a tag on a job value", "on: push\njobs:\n  c:\n    uses: !!str " + lint + "\n", 4, true},
+		{"an alias of a job's anchored call", "on: push\njobs:\n  b:\n    uses: &w " + lint + "\n  c:\n    uses: *w\n", 6, true},
+		{"an alias of an anchor whose value is below it", "on: push\nenv:\n  W: &w\n    " + lint + "\njobs:\n  c:\n    uses: *w\n", 7, true},
+		{"an explicit quoted key at job level", "on: push\njobs:\n  c:\n    ? 'uses'\n    : " + lint + "\n", 4, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			at := fmt.Sprintf(".github/workflows/w.yml:%d ", tt.line)
+			c := checkWorkflowPins("/r", true, []workflowFile{{Name: "w.yml", Body: tt.body}}, nil, nil, nil)
+			if c.Status != StatusUnknown || !slices.ContainsFunc(c.Details, func(d string) bool { return strings.HasPrefix(d, at) }) {
+				t.Errorf("workflow-glyph-pins: %s %q %v — want %s naming %q", c.Status, c.Observed, c.Details, StatusUnknown, at)
+			}
+			for id, check := range checks {
+				got := check(checkoutAt(t, map[string]string{".github/workflows/w.yml": tt.body}))
+				if tt.call {
+					if got.Status != StatusUnknown || !slices.ContainsFunc(got.Details, func(d string) bool { return strings.HasPrefix(d, at) }) {
+						t.Errorf("%s: %s %q %v — want %s naming %q", id, got.Status, got.Observed, got.Details, StatusUnknown, at)
+					}
+					continue
+				}
+				want := check(checkoutAt(t, map[string]string{".github/workflows/w.yml": without}))
+				if got.Status != want.Status || got.Observed != want.Observed || len(got.Details) != 0 {
+					t.Errorf("%s: %s %q %v — want it judged as without the line: %s %q", id, got.Status, got.Observed, got.Details, want.Status, want.Observed)
+				}
+			}
+		})
+	}
+
+	const checkout = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+	for name, body := range map[string]string{
+		"an alias of an anchored checkout": steps + "    steps:\n      - uses: &co " + checkout + "\n      - uses: *co\n",
+		"an alias of a checkout under env": "on: push\nenv: {CO: &co " + checkout + "}\n" + steps[len("on: push\n"):] + "    steps:\n      - uses: *co\n",
+		"a tag on a checkout":              steps + "    steps:\n      - uses: !!str " + checkout + "\n",
+	} {
+		refs, unread := scanUses("w.yml", body)
+		if len(refs) != 0 || len(unread) != 0 {
+			t.Errorf("%s: scanUses = %+v, unread %+v — want nothing, the reference is not glyph's", name, refs, unread)
+		}
+	}
+
+	for name, body := range map[string]string{
+		"a plain step value": steps + "    steps:\n      - uses: akira-toriyama/glyph@main\n",
+		"a plain job value":  "on: push\njobs:\n  c:\n    uses: " + lint + "\n",
+		"a flow-mapped step": steps + "    steps:\n      - {uses: akira-toriyama/glyph@main}\n",
+	} {
+		if c := checkWorkflowPins("/r", true, []workflowFile{{Name: "w.yml", Body: body}}, nil, nil, nil); c.Status != StatusFail {
+			t.Errorf("%s: workflow-glyph-pins = %s %q, want %s at a moving ref", name, c.Status, c.Observed, StatusFail)
+		}
 	}
 }
 

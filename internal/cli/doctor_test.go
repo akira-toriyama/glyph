@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -1714,6 +1715,36 @@ func TestDoctorReadsTheRealUsesNotTheCommentedStub(t *testing.T) {
 			t.Errorf("the finding must name the moving ref it read, got:\n%s", joined)
 		}
 	})
+}
+
+// TestDoctorSaysOneThingOfAReleaseCandidatePin: a caller pinned at an rc is
+// reported by workflow-glyph-pins and by both caller checks, and the caller
+// checks explained it as a branch or a sha (measured at eb84761 for
+// lint.yml@v3.0.0-rc.3: "is not a release tag: a branch moves, and a sha
+// names a commit doctor cannot map to a release offline"). Every check now
+// gives the same sentence, and the verdicts stand: the pin fails, the caller
+// checks cannot judge it.
+func TestDoctorSaysOneThingOfAReleaseCandidatePin(t *testing.T) {
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, "name: c\non:\n  pull_request:\npermissions:\n  contents: read\n  pull-requests: read\njobs:\n  j:\n"+
+		"    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v3.0.0-rc.3\n")
+	code, stdout, stderr := runGlyph(t, "doctor", "--repo", "akira-toriyama/glyph", "--json")
+	if code != 3 {
+		t.Fatalf("exit %d, want 3 — a release candidate is not a release\nstderr: %s", code, stderr)
+	}
+	rep := decodeJSON[doctorReport](t, stdout)
+	const rc = "@v3.0.0-rc.3 is a pre-release tag, not a release: glyph cuts release candidates (v3.0.0-rc.3 and " +
+		"v3.3.0-rc.2 among them) ahead of the release they precede, and a pin must name a full vX.Y.Z release"
+	for _, want := range []struct{ id, status, detail string }{
+		{"workflow-glyph-pins", "fail", ".github/workflows/commit-lint.yml:9 uses akira-toriyama/glyph/.github/workflows/lint.yml@v3.0.0-rc.3 — " + rc},
+		{"workflow-caller-permissions", "unknown", ".github/workflows/commit-lint.yml calls lint.yml@v3.0.0-rc.3 — not judged: " + rc},
+		{"workflow-caller-inputs", "unknown", ".github/workflows/commit-lint.yml calls lint.yml@v3.0.0-rc.3 — not judged: " + rc},
+	} {
+		c := checkByID(t, rep, want.id)
+		if c.Status != want.status || !slices.Equal(c.Details, []string{want.detail}) {
+			t.Errorf("%s = %s %q\nwant %s %q", want.id, c.Status, c.Details, want.status, want.detail)
+		}
+	}
 }
 
 // TestDoctorReportsTheConfiguredCredential: doctor states which credential it

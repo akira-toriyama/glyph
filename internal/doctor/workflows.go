@@ -21,7 +21,9 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
 	"github.com/akira-toriyama/glyph/v6/internal/config"
@@ -42,6 +44,17 @@ type pinRef struct {
 	Uses    string
 	Ref     string
 	Problem string
+	Flow    bool // read as an entry of a one-line flow mapping (`call: {uses: …}`)
+}
+
+// unreadUse is one glyph reference scanUses does not read: Detail is its
+// Details line, Text the value text it quotes. Unknown: what the value names
+// is on no line doctor reads (an alias whose anchor's value is below it), so
+// Text says nothing of it.
+type unreadUse struct {
+	Detail  string
+	Text    string
+	Unknown bool
 }
 
 // workflowFile is one .github/workflows file as readWorkflows read it. Err is
@@ -143,7 +156,7 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 	}
 
 	var refs []pinRef
-	var unreadable []string
+	var unreadable, unreadRefs []string
 	files := 0
 	for _, f := range workflows {
 		files++
@@ -151,7 +164,11 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 			unreadable = append(unreadable, f.unreadableLine())
 			continue
 		}
-		refs = append(refs, scanUses(filepath.Join(".github", "workflows", f.Name), f.Body)...)
+		r, u := scanUses(filepath.Join(".github", "workflows", f.Name), f.Body)
+		refs = append(refs, r...)
+		for _, x := range u {
+			unreadRefs = append(unreadRefs, x.Detail)
+		}
 	}
 
 	// The workflows directory is not the only place a checkout EXECUTES a glyph
@@ -185,7 +202,11 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 			continue
 		}
 		files++
-		refs = append(refs, scanUses(f.Path, string(body))...)
+		r, u := scanUses(f.Path, string(body))
+		refs = append(refs, r...)
+		for _, x := range u {
+			unreadRefs = append(unreadRefs, x.Detail)
+		}
 	}
 
 	var bad []pinRef
@@ -198,6 +219,7 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 	for _, r := range bad {
 		c.Details = append(c.Details, fmt.Sprintf("%s:%d uses %s — %s", r.File, r.Line, r.Uses, r.Problem))
 	}
+	c.Details = append(c.Details, unreadRefs...)
 	c.Details = append(c.Details, unreadable...)
 	if listErr != "" {
 		c.Details = append(c.Details, listErr)
@@ -221,19 +243,27 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 			"If this repository genuinely has no workflows there is nothing pinned and nothing to drift — but that is "+
 				"unverified, not verified",
 			", so whatever they pin is unverified, not verified")
-	case len(unreadable) > 0 || listErr != "":
+	case len(unreadable) > 0 || listErr != "" || len(unreadRefs) > 0:
 		c.Status = StatusUnknown
-		var gaps []string
+		var gaps, fixes []string
 		if listErr != "" {
 			gaps = append(gaps, "the checkout's action files could not be listed")
 		}
 		if len(unreadable) > 0 {
 			gaps = append(gaps, fmt.Sprintf("%d workflow/action file(s) could not be read", len(unreadable)))
 		}
+		if listErr != "" || len(unreadable) > 0 {
+			fixes = append(fixes, "re-run from inside the git checkout, with read access to the named files (a sparse checkout must include them)")
+		}
+		if len(unreadRefs) > 0 {
+			gaps = append(gaps, fmt.Sprintf("%d %s reference(s) are spelled in a form doctor does not read", len(unreadRefs), glyphRepo))
+			fixes = append(fixes, usesUnreadFix)
+		}
 		c.Observed = fmt.Sprintf("%s; the %d %s reference(s) that were read all pin a release tag",
 			strings.Join(gaps, ", and "), len(refs), glyphRepo)
-		c.Message = "the files that were read are clean, but a file doctor cannot read — or one git never listed — could hold anything"
-		c.Fix = "re-run from inside the git checkout, with read access to the named files (a sparse checkout must include them)"
+		c.Message = "the references that were read are clean, but a file doctor cannot read — or one git never listed — " +
+			"and a reference it cannot read could hold anything"
+		c.Fix = strings.Join(fixes, "; ")
 	case len(refs) == 0:
 		c.Status = StatusPass
 		c.Observed = fmt.Sprintf("no %s reference in the %d workflow/action file(s) in this checkout", glyphRepo, files)
@@ -247,31 +277,278 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 	return c
 }
 
+// usesUnreadFix is every check's fix for a glyph reference scanUses does not
+// read: workflow-glyph-pins and the three caller checks.
+const usesUnreadFix = "write each named reference, with no anchor, alias, tag or `?` key, as a one-line uses: value, a block value of one line, or a flat { … } mapping"
+
 // scanUses extracts every akira-toriyama/glyph `uses:` reference from one
-// workflow file, with its verdict.
+// workflow file, with its verdict. unread is one Details line per glyph
+// reference it saw and cannot read with certainty: could-not-run, never a
+// silent zero refs.
 //
 // A `uses:`-shaped line is not necessarily an executing step (DESIGN §7 has
 // the trap): every glyph reusable ships a COMMENTED caller stub in its header,
 // and a fleet-sync step WRITES caller stubs from a `run: |` heredoc — data it
 // emits into another repository. So only contentLines are read (block scalars
 // skipped whole, whole-line comments dropped), and `uses:` is only recognised
-// as the YAML key at the start of the (optionally list-dashed) line — never as
-// text found anywhere in it, which also keeps a trailing `# uses: …` inline
-// comment from being read as a second reference.
-func scanUses(file, body string) []pinRef {
-	var refs []pinRef
-	for i, line := range contentLines(strings.Split(body, "\n"), 0) {
-		value, ok := usesValue(line)
+// as a YAML key — at the start of the (optionally list-dashed) line, or an
+// entry of a flow mapping — never as text found anywhere in it, which also
+// keeps a trailing `# uses: …` inline comment from being read as a second
+// reference.
+//
+// The spellings read are the ones GitHub Actions runs, each measured at step
+// and at job level (glyph-test-2 PR #32, 2026-11-24): the key plain or quoted
+// (`uses:`, `"uses":`, `'uses':`, withEntry's keys); the value a scalar, a
+// block scalar (`>-`, and `|`, whose trailing newline Actions drops) or a
+// one-line flow mapping (`- {uses: …}`, `call: {uses: …}`). A block value is
+// read when its content is one line holding no whitespace under a `|`, `|-`,
+// `>` or `>-` header — the two values measured, that line with or without a
+// newline; a flow value when flowEntries splits it. Any other block or flow
+// value naming glyph is unread, and so is a value on the line(s) below an
+// empty `uses:` — valid YAML, whose run by Actions is unmeasured. No spelling
+// measured was refused; the one refusal (a step holding both uses: and run:,
+// 2026-11-24) never runs.
+//
+// Actions also runs a uses: value carrying an anchor (`&a`) or a tag
+// (`!!str`) and an alias (`*a`) of an anchor set on an earlier uses: value or
+// under the top-level env:, each at step and at job level, and at step level
+// an explicit `? uses` key and an anchor inside a flow-mapped step
+// (glyph-test-2 PR #33, 2026-11-24). None is resolved here (unresolved,
+// explicitKey): each that may name glyph is unread.
+func scanUses(file, body string) (refs []pinRef, unread []unreadUse) {
+	lines := strings.Split(body, "\n")
+	notRead := func(i int, text, why string) {
+		unread = append(unread, unreadUse{Text: text, Detail: fmt.Sprintf("%s:%d holds a %s reference doctor does not read, `%s`: %s",
+			file, i+1, glyphRepo, text, why)})
+	}
+	// unresolved reports whether v, the value of a uses: key on line i, opens
+	// with an anchor, a tag or an alias, which this reader never resolves, and
+	// records it unread when it may name glyph: an anchor or a tag when v holds
+	// a glyph reference, an alias when the line defining its anchor does or
+	// holds no value for it. text is what the Details line quotes.
+	unresolved := func(i int, v, text string) bool {
+		switch v[0] {
+		case '&', '!':
+			if strings.Contains(strings.ToLower(v), glyphRepo) {
+				notRead(i, text, "a value carrying an anchor or a tag, which doctor does not resolve")
+			}
+		case '*':
+			name := strings.FieldsFunc(v[1:], func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(",[]{}", r) })
+			if len(name) == 0 {
+				return true
+			}
+			at, anchor, named := anchorOf(lines[:i], name[0])
+			switch {
+			case at < 0:
+			case !named:
+				unread = append(unread, unreadUse{Unknown: true, Detail: fmt.Sprintf(
+					"%s:%d may hold a %s reference doctor does not read, `%s`: an alias of the anchor on line %d, whose value is not on that line",
+					file, i+1, glyphRepo, text, at+1)})
+			case strings.Contains(strings.ToLower(anchor), glyphRepo):
+				unread = append(unread, unreadUse{Text: anchor, Detail: fmt.Sprintf(
+					"%s:%d holds a %s reference doctor does not read, `%s`: an alias of the anchor on line %d, `%s`, which doctor does not resolve",
+					file, i+1, glyphRepo, text, at+1, anchor)})
+			}
+		default:
+			return false
+		}
+		return true
+	}
+	var held flowState // a flow value opened on line heldAt that has not closed
+	heldAt, heldText := -1, ""
+	for i, line := range contentLines(lines, 0) {
+		if held.open() {
+			held = flowOpen(line, held)
+			heldText += " " + strings.TrimSpace(line)
+			if !held.open() && namesGlyphUses(heldText) {
+				notRead(heldAt, heldText, "a flow value spread over several lines")
+			}
+			continue
+		}
+		if value, explicit := explicitKey(lines, i); explicit {
+			if strings.Contains(strings.ToLower(value), glyphRepo) {
+				notRead(i, value, "the value of an explicit `? uses` key, which doctor does not read")
+			}
+			continue
+		}
+		key, value, ok := usesKey(line)
 		if !ok {
 			continue
 		}
-		spec, ref, hasRef := strings.Cut(value, "@")
-		if !isGlyphRef(spec) {
+		if value == "" {
+			if key != "uses" {
+				continue
+			}
+			// The value may be a plain scalar on the next, more indented
+			// line(s): valid YAML, and whether Actions runs it is unmeasured.
+			col := indentOf(line)
+			if after, dashed := strings.CutPrefix(strings.TrimLeft(line, " \t"), "-"); dashed {
+				col += 1 + len(after) - len(strings.TrimLeft(after, " \t"))
+			}
+			if below := strings.Join(blockContent(lines, i, col), " "); strings.Contains(strings.ToLower(below), glyphRepo) {
+				notRead(i, below, "a value on the line(s) below an empty uses:, a spelling GitHub Actions was never measured running")
+			}
 			continue
 		}
-		refs = append(refs, pinRef{File: file, Line: i + 1, Uses: value, Ref: ref, Problem: pinProblem(ref, hasRef)})
+		if value[0] == '{' || value[0] == '[' {
+			if entries, flow := flowEntries(value); flow {
+				var found []pinRef
+				var props []string // uses: values opening with an anchor, a tag or an alias
+				for _, e := range entries {
+					k, v, ok := withEntry(e)
+					if !ok {
+						found, props = nil, nil
+						if namesGlyphUses(value) {
+							notRead(i, value, "a flow mapping entry that is not a plain or quoted `key: value`")
+						}
+						break
+					}
+					if k == "uses" {
+						if v != "" && strings.ContainsRune("&!*", rune(v[0])) {
+							props = append(props, v)
+							continue
+						}
+						found = appendRef(found, file, i, v)
+					}
+				}
+				for _, v := range props {
+					unresolved(i, v, value)
+				}
+				for j := range found {
+					found[j].Flow = true
+				}
+				refs = append(refs, found...)
+				continue
+			}
+			if held = flowOpen(value, flowState{}); held.open() {
+				heldAt, heldText = i, value
+			} else if namesGlyphUses(value) {
+				notRead(i, value, "a flow value that is not one flat `{ … }` mapping")
+			}
+			continue
+		}
+		if key != "uses" {
+			continue
+		}
+		if unresolved(i, value, value) {
+			continue
+		}
+		if indent, opens := blockScalarKey(line); opens {
+			content := blockContent(lines, i, indent)
+			switch {
+			case len(content) == 1 && !strings.ContainsAny(content[0], " \t") && slices.Contains([]string{"|", "|-", ">", ">-"}, value):
+				refs = appendRef(refs, file, i, content[0])
+			case strings.Contains(strings.ToLower(strings.Join(content, " ")), glyphRepo):
+				notRead(i, value+" "+strings.Join(content, " "),
+					"a block value is read only as one line, without whitespace, under a |, |-, > or >- header")
+			}
+			continue
+		}
+		refs = appendRef(refs, file, i, value)
 	}
-	return refs
+	if held.open() && namesGlyphUses(heldText) {
+		notRead(heldAt, heldText, "a flow value that never closes")
+	}
+	return refs, unread
+}
+
+// appendRef appends the pin a uses: value names on line i, when it names
+// glyph. The value ends at whitespace: anything after it is a trailing inline
+// comment (`@v0.10.0  # pin a release tag`), which is prose.
+func appendRef(refs []pinRef, file string, i int, value string) []pinRef {
+	fields := strings.Fields(value)
+	if len(fields) == 0 {
+		return refs
+	}
+	value = strings.Trim(fields[0], `"'`)
+	spec, ref, hasRef := strings.Cut(value, "@")
+	if !isGlyphRef(spec) {
+		return refs
+	}
+	return append(refs, pinRef{File: file, Line: i + 1, Uses: value, Ref: ref, Problem: pinProblem(ref, hasRef)})
+}
+
+// namesGlyphUses reports whether text could hold a glyph uses: reference:
+// it names both the key and the repository, so a flow value that only lists
+// paths or branches is never unread for mentioning glyph.
+func namesGlyphUses(text string) bool {
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "uses") && strings.Contains(lower, glyphRepo)
+}
+
+// explicitKey reports whether line i is an explicit key `? uses` (the key
+// plain or quoted, the line optionally list-dashed) and returns its value: the
+// rest of the next content line when that line opens with `: `, its comment
+// cut, else "".
+func explicitKey(lines []string, i int) (value string, ok bool) {
+	trimmed := strings.TrimLeft(lines[i], " \t")
+	if after, dashed := strings.CutPrefix(trimmed, "-"); dashed {
+		trimmed = strings.TrimLeft(after, " \t")
+	}
+	after, found := strings.CutPrefix(trimmed, "?")
+	if !found || after == "" || (after[0] != ' ' && after[0] != '\t') {
+		return "", false
+	}
+	if key := strings.TrimSpace(withoutComment(after)); key != "uses" && key != `"uses"` && key != "'uses'" {
+		return "", false
+	}
+	for _, next := range contentLines(lines, i+1) {
+		if rest, colon := strings.CutPrefix(strings.TrimLeft(next, " \t"), ":"); colon && (rest == "" || rest[0] == ' ' || rest[0] == '\t') {
+			value = strings.TrimSpace(withoutComment(rest))
+		}
+		break
+	}
+	return value, true
+}
+
+// anchorOf finds the last of lines that defines the anchor &name — at its
+// index, -1 for none — and returns that line, trimmed and its comment cut.
+// named is false when the anchor's value is not on that line: nothing but a
+// tag after it, or a block scalar header.
+func anchorOf(lines []string, name string) (at int, line string, named bool) {
+	at = -1
+	for j, l := range contentLines(lines, 0) {
+		l = strings.TrimSpace(withoutComment(l))
+		for k := 0; ; {
+			n := strings.Index(l[k:], "&"+name)
+			if n < 0 {
+				break
+			}
+			start, end := k+n, k+n+1+len(name)
+			k = end
+			if start > 0 && !strings.ContainsRune(" \t[{,", rune(l[start-1])) ||
+				end < len(l) && !strings.ContainsRune(" \t,]}", rune(l[end])) {
+				continue
+			}
+			rest := strings.Fields(l[end:])
+			for len(rest) > 0 && strings.HasPrefix(rest[0], "!") {
+				rest = rest[1:]
+			}
+			at, line, named = j, l, len(rest) > 0 && rest[0][0] != '|' && rest[0][0] != '>'
+			break
+		}
+	}
+	return at, line, named
+}
+
+// blockContent returns the content lines of the block scalar whose header
+// sits on line i with its key at column indent, each without its indentation
+// or a CRLF file's `\r`, trailing blank lines dropped (clip and strip chomping
+// drop them; keep chomping is never read). An interior or leading blank line
+// is kept: it is part of the value.
+func blockContent(lines []string, i, indent int) []string {
+	var content []string
+	for _, line := range lines[i+1:] {
+		line = strings.TrimSuffix(line, "\r")
+		if strings.TrimSpace(line) != "" && indentOf(line) <= indent {
+			break
+		}
+		content = append(content, strings.TrimLeft(line, " \t"))
+	}
+	for len(content) > 0 && strings.TrimSpace(content[len(content)-1]) == "" {
+		content = content[:len(content)-1]
+	}
+	return content
 }
 
 // indentOf counts the leading whitespace of a line. YAML forbids tabs in
@@ -361,12 +638,14 @@ func blockScalarKey(line string) (int, bool) {
 	return indent, strings.Trim(head[1:], "+-0123456789") == ""
 }
 
-// usesValue returns the reference a workflow line's `uses:` key names, or false
-// when the line is a comment, is not a uses: key, or names nothing.
-func usesValue(line string) (string, bool) {
+// usesKey splits a workflow line into the key at its head and that key's
+// value, its trailing comment cut — the key "" when the line is a list item
+// whose value is a flow collection (`- {uses: …}`). ok is false when the line
+// is a comment or opens with no key withEntry reads.
+func usesKey(line string) (key, value string, ok bool) {
 	trimmed := strings.TrimLeft(line, " \t")
 	if strings.HasPrefix(trimmed, "#") {
-		return "", false // the commented caller stub — documentation, not a pin
+		return "", "", false // the commented caller stub — documentation, not a pin
 	}
 	// The key anchoring below would reject a comment line on its own; the
 	// explicit check above stays because it is the trap being stated rather
@@ -376,18 +655,12 @@ func usesValue(line string) (string, bool) {
 	// key (`  uses: …`); nothing else puts uses: at the head of a line.
 	if after, found := strings.CutPrefix(trimmed, "-"); found {
 		trimmed = strings.TrimLeft(after, " \t")
+		if trimmed != "" && (trimmed[0] == '{' || trimmed[0] == '[') {
+			return "", withoutComment(trimmed), true
+		}
 	}
-	rest, found := strings.CutPrefix(trimmed, "uses:")
-	if !found {
-		return "", false
-	}
-	// The value ends at whitespace — everything after it is a trailing inline
-	// comment (`@v0.10.0  # pin a release tag`), which is prose.
-	fields := strings.Fields(rest)
-	if len(fields) == 0 {
-		return "", false
-	}
-	return strings.Trim(fields[0], `"'`), true
+	key, value, ok = withEntry(trimmed)
+	return key, withoutComment(value), ok
 }
 
 // isGlyphRef reports whether a uses: spec (the part before @) names the glyph
@@ -401,9 +674,11 @@ func isGlyphRef(spec string) bool {
 }
 
 // pinProblem judges one ref, returning "" when it is a concrete release tag.
-// The two failing shapes are worth distinguishing in the report because the fix
-// differs: a moving ref must be replaced, while a SHA pin is already immutable
-// and only breaks glyph's version derivation.
+// The failing shapes are worth distinguishing in the report because the fix
+// differs: a moving ref must be replaced, a SHA pin is already immutable and
+// only breaks glyph's version derivation, and a release candidate is a tag
+// glyph does cut (DESIGN §4 names v3.0.0-rc.3 and v3.3.0-rc.2) that is still
+// not a release.
 func pinProblem(ref string, hasRef bool) string {
 	if !hasRef || ref == "" {
 		return "it names no ref at all, so GitHub resolves the repository's default branch — the workflow changes under you"
@@ -415,8 +690,19 @@ func pinProblem(ref string, hasRef bool) string {
 		return "@" + ref + " is a commit SHA: immutable, but a glyph reusable derives the binary version from the TAG it was " +
 			"pinned to (job.workflow_ref) and hard-errors on a non-tag ref unless glyph-version is passed"
 	}
+	if isPreRelease(ref) {
+		return "@" + ref + " is a pre-release tag, not a release: glyph cuts release candidates (v3.0.0-rc.3 and v3.3.0-rc.2 " +
+			"among them) ahead of the release they precede, and a pin must name a full vX.Y.Z release"
+	}
 	return "@" + ref + " is a moving ref (a branch, or a major/minor alias): it can change under the caller between two runs, " +
-		"and glyph's tag space holds only full vX.Y.Z releases — no v1 or v0.10 alias exists to resolve"
+		"and glyph publishes no major/minor alias — no v1 or v0.10 exists to resolve"
+}
+
+// isPreRelease reports whether ref is a bare-line vX.Y.Z carrying a semver
+// pre-release suffix (v3.0.0-rc.3).
+func isPreRelease(ref string) bool {
+	_, v, err := bump.ParseBaseTag(ref)
+	return err == nil && strings.HasPrefix(ref, v.String()+"-")
 }
 
 // isReleaseTag reports whether ref is a house release tag on glyph's own bare

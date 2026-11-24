@@ -75,7 +75,7 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
 	}
 
 	callers := 0
-	var findings, skipped, remedies, unreadWith, unreadable []string
+	var findings, skipped, remedies, unreadUses, flowCalls, unreadWith, unreadable []string
 	for _, f := range workflows {
 		if f.Err != nil {
 			// Not left to the pin check: its unknown answers whether a ref is
@@ -85,16 +85,30 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
 			unreadable = append(unreadable, f.unreadableLine())
 			continue
 		}
-		calls := reusablesCalled(f.Name, f.Body)
-		if len(calls) == 0 {
+		calls, unread := reusablesCalled(f.Name, f.Body)
+		if len(calls) == 0 && len(unread) == 0 {
 			continue
 		}
-		callers++
+		if len(calls) > 0 {
+			callers++
+		}
+		// A call not read is could-not-run before the file's exemption is
+		// considered: the exemption speaks for the calls it read, never for one
+		// it did not.
+		unreadUses = append(unreadUses, unread...)
+		var read []reusableCall
+		for _, call := range calls {
+			if call.Flow {
+				flowCalls = append(flowCalls, flowCallLine(f.Name, call))
+				continue
+			}
+			read = append(read, call)
+		}
 		judge := spec.file(f)
 		if judge == nil {
-			continue
+			continue // exempt the calls it read
 		}
-		for _, call := range calls {
+		for _, call := range read {
 			row, known := spec.rows[strings.ToLower(call.Reusable)]
 			nj := unknownReusable(call.Reusable)
 			if known {
@@ -118,12 +132,12 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
 	if len(findings) > 0 {
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf(spec.failObserved, len(findings), callers)
-		c.Details = slices.Concat(findings, skipped, unreadWith, unreadable)
+		c.Details = slices.Concat(findings, skipped, unreadUses, flowCalls, unreadWith, unreadable)
 		c.Message = spec.failMessage
 		c.Fix = spec.failFix
 		return c
 	}
-	if unverifiedCallers(&c, skipped, remedies, unreadWith, unreadable, spec.death, "no judged caller is short") {
+	if unverifiedCallers(&c, skipped, remedies, unreadUses, flowCalls, unreadWith, unreadable, spec.death, "no judged caller is short") {
 		return c
 	}
 	c.Status = StatusPass
@@ -158,9 +172,15 @@ type notJudged struct {
 // unknown to a tree built past it.
 func judgeAt(ref, after, glyph, floor string) *notJudged {
 	if !isReleaseTag(ref) {
+		why := fmt.Sprintf("@%s is not a release tag: a branch moves, and a sha names a commit doctor cannot map "+
+			"to a release offline", ref)
+		if isPreRelease(ref) {
+			// One wording for a release candidate across every check that
+			// reports it: idWorkflowPinned already fails it with this sentence.
+			why = pinProblem(ref, true)
+		}
 		return &notJudged{
-			Why: fmt.Sprintf("@%s is not a release tag: a branch moves, and a sha names a commit doctor cannot map "+
-				"to a release offline", ref),
+			Why:    why,
 			Remedy: "pin a release tag (" + idWorkflowPinned + " names each such ref)",
 		}
 	}
@@ -204,12 +224,14 @@ func unknownReusable(file string) *notJudged {
 
 // unverifiedCallers fills c's could-not-run arm for a caller check that found
 // no defect: callers it could not judge at their pin (skipped, one Details
-// line each, with remedies), callers whose with: it does not read (unreadWith,
+// line each, with remedies), glyph references it does not read (unreadUses,
+// reusablesCalled's), calls written as a flow mapping (flowCalls,
+// flowCallLine's), callers whose with: it does not read (unreadWith,
 // withUnreadLine's) and files it could not read. It reports false when there
 // is none, and the check passes. death names what goes unverified, and clean
 // is the check's own word for what the judged callers showed.
-func unverifiedCallers(c *Check, skipped, remedies, unreadWith, unreadable []string, death, clean string) bool {
-	if len(skipped) == 0 && len(unreadWith) == 0 && len(unreadable) == 0 {
+func unverifiedCallers(c *Check, skipped, remedies, unreadUses, flowCalls, unreadWith, unreadable []string, death, clean string) bool {
+	if len(skipped) == 0 && len(unreadUses) == 0 && len(flowCalls) == 0 && len(unreadWith) == 0 && len(unreadable) == 0 {
 		return false
 	}
 	c.Status = StatusUnknown
@@ -219,6 +241,16 @@ func unverifiedCallers(c *Check, skipped, remedies, unreadWith, unreadable []str
 		why = append(why, "GitHub starts a caller against the reusable at its pin, not against this binary, and this "+
 			"glyph cannot speak for the release those callers pin")
 		fixes = append(fixes, remedies...)
+	}
+	if len(unreadUses) > 0 {
+		gaps = append(gaps, fmt.Sprintf("%d %s reference(s) whose uses: doctor does not read", len(unreadUses), glyphRepo))
+		why = append(why, usesUnreadWhy)
+		fixes = append(fixes, usesUnreadFix)
+	}
+	if len(flowCalls) > 0 {
+		gaps = append(gaps, fmt.Sprintf("%d glyph reusable call(s) in a job written as a flow mapping", len(flowCalls)))
+		why = append(why, flowCallWhy)
+		fixes = append(fixes, flowCallFix)
 	}
 	if len(unreadWith) > 0 {
 		gaps = append(gaps, fmt.Sprintf("%d caller(s) whose with: doctor does not read", len(unreadWith)))
@@ -233,7 +265,7 @@ func unverifiedCallers(c *Check, skipped, remedies, unreadWith, unreadable []str
 	c.Observed = strings.Join(gaps, "; ") + "; " + clean
 	c.Message = strings.Join(why, ", and ") + " — " + death + " is unverified here, not verified"
 	c.Fix = strings.Join(fixes, "; ")
-	c.Details = slices.Concat(skipped, unreadWith, unreadable)
+	c.Details = slices.Concat(skipped, unreadUses, flowCalls, unreadWith, unreadable)
 	return true
 }
 

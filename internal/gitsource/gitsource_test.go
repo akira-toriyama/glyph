@@ -1440,6 +1440,74 @@ func TestHeldObjectSignalIsReadUnderThePinnedLocale(t *testing.T) {
 	})
 }
 
+// TestDistilledLineIsReadUnderThePinnedLocale: distill picks git's fatal: or
+// error: line out of stderr, and git translates the prefix with the message,
+// so under de_DE a log over an empty object behind an ambiguous refname
+// distilled to the translated warning ("Warnung: refname 'x' is ambiguous.")
+// in place of git's error: line, at the same exit 4 (measured on git 2.54).
+// Every git child runs under LC_ALL=C (gitCommand). Two legs, as in
+// TestHeldObjectSignalIsReadUnderThePinnedLocale: real git, where the git on
+// PATH shows German under de_DE on this host; and a fake git that writes the
+// German prefixes unless its LC_ALL is C, through runIn and runAnswer — the
+// exec paths that carry stderr only as the envelope's one line — so the
+// decision is held on every host.
+func TestDistilledLineIsReadUnderThePinnedLocale(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub git is a shell script")
+	}
+	t.Run("a git that translates", func(t *testing.T) {
+		dir := testutil.NewRepo(t)
+		testutil.Git(t, dir, "akira-toriyama", "branch", "x")
+		testutil.Git(t, dir, "akira-toriyama", "tag", "x")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug: second")
+		middle := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug: third")
+		emptyObject(t, dir, middle)
+		t.Setenv("LC_ALL", "de_DE.UTF-8")
+		t.Setenv("LANG", "de_DE.UTF-8")
+		probe := exec.Command("git", "-C", dir, "log", "x..HEAD")
+		var stderr bytes.Buffer
+		probe.Stderr = &stderr
+		_ = probe.Run()
+		if !strings.HasPrefix(stderr.String(), "Warnung:") {
+			t.Skipf("the git on PATH shows no German under de_DE on this host (built NO_GETTEXT, or no de locale installed; stderr %q); the fake-git leg holds the decision here", stderr.String())
+		}
+
+		_, err := log(context.Background(), dir, "x..HEAD")
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "error:") {
+			t.Errorf("log over an empty object behind an ambiguous refname under de_DE = %v; want CodeAPI quoting git's English error: line, not its translated warning", err)
+		}
+	})
+
+	t.Run("a fake git modelled on the measured one", func(t *testing.T) {
+		bin := t.TempDir()
+		// The shape git 2.54 writes under de_DE for that log: the warning
+		// first, then the failure, every prefix English only under LC_ALL=C.
+		stub := "#!/bin/sh\n" +
+			"case \"$LC_ALL\" in C|POSIX) w='warning:' e='error:' f='fatal:';; *) w='Warnung:' e='Fehler:' f='Schwerwiegend:';; esac\n" +
+			"echo \"$w refname 'x' is ambiguous.\" >&2\n" +
+			"echo \"$e Objektdatei .git/objects/01/23 ist leer\" >&2\n" +
+			"echo \"$f loses Objekt 0123 ist beschädigt\" >&2\n" +
+			"exit 128\n"
+		if err := os.WriteFile(filepath.Join(bin, "git"), []byte(stub), 0o700); err != nil { //nolint:gosec // a stub git must be executable
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		t.Setenv("LC_ALL", "de_DE.UTF-8")
+		t.Setenv("LANG", "de_DE.UTF-8")
+		ctx, dir := context.Background(), t.TempDir()
+
+		_, err := runIn(ctx, dir, nil, "log", "--end-of-options", "x..HEAD")
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "error:") {
+			t.Errorf("runIn against a git that translates the prefixes unless LC_ALL is C = %v; want CodeAPI quoting the English error: line — the child must run under LC_ALL=C whatever the parent's locale", err)
+		}
+		_, _, err = runAnswer(ctx, dir, "config", "config", "--get", "core.bare")
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "error:") {
+			t.Errorf("runAnswer against a git that translates the prefixes unless LC_ALL is C = %v; want CodeAPI quoting the English error: line", err)
+		}
+	})
+}
+
 // TestIsAncestor: a YES is a real ancestor or the rev itself; a NO covers both
 // spellings git gives it — an honest exit 1 for a commit on another line of
 // history, and exit 128 for an object this repository does not hold. The walk

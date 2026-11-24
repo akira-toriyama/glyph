@@ -37,7 +37,7 @@ func (c *Client) PullRequest(ctx context.Context, owner, repo string, number int
 	u := fmt.Sprintf("%s/repos/%s/%s/pulls/%d",
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), number)
 	var raw apiOnePull
-	if _, err := c.get(ctx, u, &raw); err != nil {
+	if err := c.getOne(ctx, u, &raw); err != nil {
 		return Pull{}, flatten(err)
 	}
 	return Pull{Title: raw.Title, Author: raw.User.Login}, nil

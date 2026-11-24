@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index 1a56bb7..068b9c2 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -338,7 +338,7 @@ func scanUses(file, body string) (refs []pinRef, unread []string) {
+ 			content := blockContent(lines, i, indent)
+ 			switch {
+ 			case len(content) == 1 && !strings.ContainsAny(content[0], " \t") && slices.Contains([]string{"|", "|-", ">", ">-"}, value):
+-				refs = appendRef(refs, file, i, content[0])
++				// the block value is never read
+ 			case strings.Contains(strings.ToLower(strings.Join(content, " ")), glyphRepo):
+ 				notRead(i, value+" "+strings.Join(content, " "),
+ 					"a block value is read only as one line, without whitespace, under a |, |-, > or >- header")

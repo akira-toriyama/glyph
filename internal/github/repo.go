@@ -88,7 +88,7 @@ type apiRepo struct {
 func (c *Client) Repository(ctx context.Context, owner, repo string) (Repo, error) {
 	u := fmt.Sprintf("%s/repos/%s/%s", c.baseURL, url.PathEscape(owner), url.PathEscape(repo))
 	var raw apiRepo
-	if _, err := c.get(ctx, u, &raw); err != nil {
+	if err := c.getOne(ctx, u, &raw); err != nil {
 		return Repo{}, err
 	}
 	return Repo(raw), nil
