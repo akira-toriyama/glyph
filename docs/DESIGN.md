@@ -4286,7 +4286,10 @@ stand behind (`core.CodeAPI`'s doc lists the refusals) · `130` interrupted.
 Errors are classified at the source into `*core.Error`; `ExitCode` funnels
 everything (unclassified ⇒ API, never usage). The CLI's funnel holds the same
 default — cobra's parse errors are made usage where cobra raises them, not by
-elimination — and a stdout write that fails is `4` on every command, the
+elimination, save the MinimumNArgs(1) of the `__complete` and
+`__completeNoDesc` commands cobra builds during execution, which leaves a bare
+`glyph __complete` at `4` because no completion script reaches it (zsh, bash
+and fish each pass a word) — and a stdout write that fails is `4` on every command, the
 payload a caller reads being what went missing. A run the user interrupted is
 `130` whatever other code its command reached, because a read that takes no
 context (a plain file, stdin) carries no signal and lets the command run on to

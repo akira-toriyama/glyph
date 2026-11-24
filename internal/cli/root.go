@@ -120,8 +120,8 @@ func newRootCmd() *cobra.Command {
 			"(which rewrites the squash subject to the PR title) can never lose the\n" +
 			"per-commit sigils. One binary lints commits, computes the next version, and\n" +
 			"renders notes. `glyph init --gemoji` (or --conventional) writes a starting\n" +
-			"glyph.toml; lint, bump, notes, preview, release and doctor read the one at\n" +
-			"the repository root.",
+			"glyph.toml; lint, bump, notes, preview, release, doctor and hook pre-push\n" +
+			"read the one at the repository root.",
 		Args:          noArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -179,9 +179,14 @@ func newRootCmd() *cobra.Command {
 	// over without error whenever that command has Args set — every glyph
 	// command does — so `glyph help nosuch` printed the root's help at 0 and
 	// `glyph help lint extra` lint's. This guard hands the leftover words to
-	// the topic's own noArgs, so the refusal is the one `glyph nosuch` or
-	// `glyph lint extra` gives, at 2. InitDefaultHelpCmd is idempotent: the
-	// call cobra makes again at Execute keeps this same command.
+	// the topic's own Args, so they are judged as the same words without help
+	// are: `glyph help nosuch` and `glyph help lint extra` refuse at 2 with the
+	// message `glyph nosuch` or `glyph lint extra` gives, and a command that
+	// takes positionals keeps them — `glyph help hook install pre-push` is
+	// install's help at 0, `glyph help hook install nosuch` install's own
+	// refusal. Not noArgs: it refused every word, positionals included.
+	// InitDefaultHelpCmd is idempotent: the call cobra makes again at Execute
+	// keeps this same command.
 	root.InitDefaultHelpCmd()
 	for _, c := range root.Commands() {
 		if c.Name() == "help" {
@@ -190,7 +195,7 @@ func newRootCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return noArgs(topic, rest)
+				return topic.ValidateArgs(rest)
 			}
 		}
 	}

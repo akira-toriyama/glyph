@@ -113,8 +113,10 @@ runs:
         # sends it — at or past the refused commit, or a squash-merged pull's
         # merge point — and the walk below that tag still reaches the commit:
         # history is immutable, so every re-run refuses it again, and a failed
-        # job leaves the escape tag with no release assets (t-bcdz). Every
-        # other exit is a real failure and keeps its code: 4 clears on a
+        # job leaves the escape tag with no release assets (t-bcdz). On this
+        # path glyph annotates each refused commit as an error while the job
+        # continues, which is intended: the warning below points at them.
+        # Every other exit is a real failure and keeps its code: 4 clears on a
         # re-run, 2 is a broken invocation.
         status=0
         "$GLYPH" notes --since-tag="below:$tag" > "$out" || status=$?
