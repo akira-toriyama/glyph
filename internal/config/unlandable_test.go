@@ -150,7 +150,7 @@ func TestLintRefusesUnlandable(t *testing.T) {
 // verdict cannot offer (TestAuthoringRefusalOffersNoAuthorExclusion).
 func TestLintAuthoringLetsUnlandableThrough(t *testing.T) {
 	cfg := mustLoad(t, unlandableToml)
-	v := cfg.LintAuthoring(amendMessage)
+	v := cfg.LintAuthoring(amendMessage, "")
 	if !v.OK {
 		t.Fatalf("LintAuthoring = %+v, want OK: the hook must not refuse a subject git wrote", v)
 	}
@@ -161,7 +161,7 @@ func TestLintAuthoringLetsUnlandableThrough(t *testing.T) {
 	}
 
 	for _, msg := range []string{":bug:~ fix b", "fixup! :bug:~ fix b", "no gitmoji at all"} {
-		a, h := cfg.LintAuthoring(msg), cfg.Lint(msg, "")
+		a, h := cfg.LintAuthoring(msg, ""), cfg.Lint(msg, "")
 		h.Reason = strings.TrimSuffix(h.Reason, ", or exclude the author")
 		if a != h {
 			t.Errorf("LintAuthoring(%q) = %+v, Lint = %+v: only an unlandable claim may differ", msg, a, h)

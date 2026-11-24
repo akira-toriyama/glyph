@@ -157,7 +157,7 @@ func probeClaimed(ctx context.Context, cfg *config.Config) bool {
 	if cfg == nil {
 		return false
 	}
-	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))
+	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)), "")
 	return v.OK
 }
 
