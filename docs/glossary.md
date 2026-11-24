@@ -612,10 +612,10 @@ owns one. `internal/config/config.go: Pattern`,
 
 **merge candidate** — the subject a squash merge would land on the released
 branch. Under `COMMIT_OR_PR_TITLE` it is the pull's title when the pull holds
-two or more commits besides merge commits, and `lint --pr` (and so
-`lint.yml`'s title step) judges the title only then; below two the commit's
-own subject lands, `--range` judges it, and the title gets a notice and no
-verdict. The count is never the pull's own commit count, which includes merge
+two or more commits besides merge commits; with exactly one the commit's own
+subject lands, `--range` judges it, and `lint --pr` (and so `lint.yml`'s title
+step) gives the title a notice and no verdict — at every other count, none
+included, it judges the title. The count is never the pull's own commit count, which includes merge
 commits (DESIGN §6, the title step). `internal/cli/cmd_lint.go: lintPRRun`
 
 **unlandable** — a message an `unlandable = '<reason>'` pattern claims: legal

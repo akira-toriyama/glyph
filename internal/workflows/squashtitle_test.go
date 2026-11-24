@@ -15,7 +15,7 @@ const lintTitleStep = "Lint the squash title"
 // TestLintGateAlsoJudgesTheSquashTitle pins the second half of the lint gate:
 // the squash title, when it is the merge candidate. Under COMMIT_OR_PR_TITLE a
 // squash merge records the PR title as the subject of the commit that lands on
-// main only when the pull holds two or more commits besides merge commits —
+// main when the pull holds two or more commits besides merge commits —
 // glyph counts them over the API inside `lint --pr`, so the step hands it the
 // number and nothing else — and the BASE..HEAD range can never see that
 // title, because the range holds the pre-squash commits while the title exists

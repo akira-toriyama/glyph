@@ -502,9 +502,11 @@ func twoCommitListing() string {
 // silently; a title outside it exits 3, is annotated by the binary itself (the
 // producer contract of t-sws7), and still ends in one sievable envelope. Such
 // a title lands as the squash subject, which the release walk's fallback reads
-// as a silent none. Below two the title never lands — one commit, or one
-// commit plus a merge from the base (glyph-test-2 #27 landed the commit's
-// subject while REST .commits said 2) — so it gets a notice and no verdict.
+// as a silent none. With exactly one commit besides merge commits the title
+// never lands — one commit, or one commit plus a merge from the base
+// (glyph-test-2 #27 landed the commit's subject while REST .commits said 2) —
+// so it gets a notice and no verdict; every other count, none included, is
+// judged.
 func TestLintPRTitle(t *testing.T) {
 	t.Chdir(testutil.NewRepo(t))
 	t.Run("clean title", func(t *testing.T) {
@@ -547,22 +549,43 @@ func TestLintPRTitle(t *testing.T) {
 		}
 	})
 
-	for name, listing := range map[string]string{
-		"one commit":                           "[" + apiCommit("a1", "akira-toriyama", ":bug:~ fix a") + "]",
-		"one commit and a merge from the base": "[" + apiCommit("a1", "akira-toriyama", ":bug:~ fix a") + "," + apiMergeCommit("m1", "akira-toriyama", "Merge branch 'main' into topic") + "]",
+	// The count rows: only exactly one commit besides merge commits is measured
+	// to land its own subject (glyph-test-2 #27, #28), so only that count skips
+	// the title; none is unmeasured and judged like two.
+	commit := apiCommit("a1", "akira-toriyama", ":bug:~ fix a")
+	merge := apiMergeCommit("m1", "akira-toriyama", "Merge branch 'main' into topic")
+	for _, row := range []struct {
+		name, listing string
+		judged        bool
+	}{
+		{"no commit (an empty listing)", "[]", true},
+		{"merge commits only", "[" + merge + "]", true},
+		{"one commit", "[" + commit + "]", false},
+		{"one commit and a merge from the base", "[" + commit + "," + merge + "]", false},
+		{"two commits", twoCommitListing(), true},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(row.name, func(t *testing.T) {
 			srv := walkServer(t, map[string]string{
 				pullPath(7):        apiOnePullBody("add a menu without a gitmoji", "akira-toriyama"),
-				pullCommitsPath(7): listing,
+				pullCommitsPath(7): row.listing,
 			})
 			usePR(t, srv)
 			code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
-			if code != 0 || stdout != "" {
-				t.Fatalf("lint --pr on a pull whose title never lands = %d stdout %q, want 0 — the squash lands "+
-					"the commit's subject, which the range judged\nstderr: %s", code, stdout, stderr)
+			if stdout != "" {
+				t.Fatalf("lint --pr wrote stdout %q, want none", stdout)
 			}
-			if !strings.Contains(stderr, "::notice::glyph: ") || !strings.Contains(stderr, "title not judged: the pull holds 1 commit(s) besides merge commits") || strings.Contains(stderr, "::error::") {
+			if row.judged {
+				if code != 3 || !strings.Contains(stderr, "::error::glyph: ") || strings.Contains(stderr, "::notice::") {
+					t.Fatalf("lint --pr = %d, want 3 with the title judged and no notice — only exactly one commit "+
+						"besides merge commits is measured to land its own subject\nstderr: %s", code, stderr)
+				}
+				return
+			}
+			if code != 0 {
+				t.Fatalf("lint --pr on a pull whose title never lands = %d, want 0 — the squash lands "+
+					"the commit's subject, which the range judged\nstderr: %s", code, stderr)
+			}
+			if !strings.Contains(stderr, "::notice::glyph: ") || !strings.Contains(stderr, "title not judged: the pull holds one commit besides merge commits") || strings.Contains(stderr, "::error::") {
 				t.Fatalf("want one notice that the title is not judged and no finding, got:\n%s", stderr)
 			}
 		})

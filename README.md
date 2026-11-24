@@ -23,7 +23,8 @@ preview — it runs anywhere, not just on rolling-draft repos). See
 
 Squash-and-merge erases history you need. GitHub's
 `squash_merge_commit_title = COMMIT_OR_PR_TITLE` rewrites the squash subject to
-the **PR title** on any multi-commit PR, so the per-commit types are erased from
+the **PR title** on any PR of two or more commits besides merge commits (DESIGN
+§6), so the per-commit types are erased from
 `main`. Every tool that types a release from **commit text** (git-cliff,
 semantic-release, release-please, cocogitto) is fooled by this — a PR titled
 `chore: cleanup` that contained a feature silently ships no minor bump.
@@ -59,7 +60,7 @@ a baseline**.
 | command | answer |
 |---|---|
 | `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) at the checkout's top level, from any subdirectory — the file everything else reads; an existing file refuses without `--force` |
-| `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a multi-commit squash lands): does one of the repository's patterns claim the message, and does it yield a sigil? |
+| `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (unjudged when the PR holds exactly one commit besides merge commits, whose own subject the squash lands — DESIGN §6): does one of the repository's patterns claim the message, and does it yield a sigil? |
 | `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag`; a commit no pattern claims refuses the whole range |
 | `glyph notes` | the release-notes body: `[[note.sections]]` order, one line per commit through the `note.line` template — over `--since-tag`, closed by the range's compare link |
 | `glyph release` | upserts one rolling **draft** release (tag, target, body closed by the range's compare link — `--footer-file` appends a per-repo Markdown footer); publishing — and therefore the tag — stays a human act |
@@ -153,7 +154,7 @@ on:
     branches: [main]  # optional — annotates a direct push (exit 3 swallowed there alone; a push it cannot judge still fails)
 permissions:
   contents: read
-  pull-requests: read  # the squash-title lint reads GET /pulls/{n}
+  pull-requests: read  # the squash-title lint reads GET /pulls/{n} and GET /pulls/{n}/commits
 jobs:
   lint:
     uses: akira-toriyama/glyph/.github/workflows/lint.yml@vX.Y.Z  # pin a release tag
