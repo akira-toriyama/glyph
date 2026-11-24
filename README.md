@@ -663,8 +663,10 @@ glyph's stderr has a shape too — `::` workflow annotations, then, on a failure
 that is not silent, one JSON error envelope, written last — so read the
 envelope the way the *error envelope* entry in
 [`docs/glossary.md`](docs/glossary.md#6-exit-codes-and-streams) says, never by
-handing stderr whole to `jq`. What a walk's API-lag `::warning::` lines say is
-on stdout too: `bump`, `notes`, `release` and `preview` `--json` carry
+handing stderr whole to `jq`. What a walk's API-lag `::warning::` lines — the
+ones saying a commit `is not known to GitHub yet` — say is on stdout too (the
+direct-push warning, which names lag only as a possible cause, is not):
+`bump`, `notes`, `release` and `preview` `--json` carry
 `unknown: [{sha, arm}]`, the commits GitHub had not indexed, each with the
 arm it took — `message` (read from its own message, which a pattern claims),
 `unclaimed` (no pattern claims it: counted none), `merge` (a merge commit

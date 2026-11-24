@@ -2462,10 +2462,13 @@ glyph's and is rewritten every time. The contract is printed where the human
 is typing, instead of being an unwritten rule learned by losing work. A body
 with no marker contributes no hand region — glyph cannot tell such a body's
 hand-written lines from its own stale output, and guessing would resurrect
-old machine text as if a human had written it. The marker counts only as a
-whole line of its own, a CR before the newline included (t-cjck): the notes
-render a commit subject that quotes it inside a bullet, and a substring match
-read that machine line as the boundary once a human deleted the real one.
+old machine text as if a human had written it. The marker counts only on a
+line of its own, with nothing but white space around it — a CR before the
+newline, or the spaces and tabs a hand edit left, keep it the boundary
+(t-cjck): the notes render a commit subject that quotes it inside a bullet,
+and a substring match read that machine line as the boundary once a human
+deleted the real one; a line holding anything else, `- ` and the marker
+included, is no boundary.
 `checkReleaseBody` sizes the
 FINAL body, hand region included. Rejected: a `RELEASE-NOTE:` commit footer
 (v2 removed footer parsing, and prose does not belong in commit messages
@@ -4464,14 +4467,18 @@ so `internal/workflows` bans the read itself
 producer half (`lint-findings-lose-their-annotations`).
 
 **What stderr warns about, stdout carries** (t-xr9d). A walk's API-lag
-`::warning::` lines (§4: a commit GitHub has not indexed yet is the one soft
-arm) once named their commits on stderr only, so a consumer reading
+`::warning::` lines — the ones saying a commit `is not known to GitHub yet`
+(§4: a commit GitHub has not indexed yet is the one soft arm) — once named
+their commits on stderr only, so a consumer reading
 `bump --since-tag --json` saw a `v0.1.1` and nothing saying a weaker copy of an
 unseen pull decided it. `bump`, `notes`, `release` and `preview` `--json` now
 carry `unknown: [{sha, arm}]` — exactly the commits those warnings name
 (`walk.Facts.Unknown`), in walk order, by full sha — and, like the other
 optional fields, leave it out when the walk met none (a `--range` verdict
-never has one). `arm` is what the fallback did with the commit: `message`,
+never has one). The direct-push warning,
+`has no merged pull request (a direct push, or the API lagging)`, names lag
+only as a possible cause of an empty pull listing and is none of them: its
+commit is never in `unknown`. `arm` is what the fallback did with the commit: `message`,
 read from its own message, which a pattern claims — the only arm that counted
 anything; `unclaimed`, no pattern claims its message, so it counted none and,
 unlike a commit GitHub knows, does not refuse the range; `merge`, a merge
