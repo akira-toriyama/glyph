@@ -36,8 +36,8 @@ func newDoctorCmd() *cobra.Command {
 			"reads are invisible from inside a release run, so when one drifts the workflows\n" +
 			"stay green and the verdict is simply wrong, and nothing says a word.\n\n" +
 			"It is READ-ONLY: nothing about the repository, the checkout or the workflows is\n" +
-			"ever modified. Each failing check prints the command that fixes it and leaves\n" +
-			"running it to you.\n\n" +
+			"ever modified. Each failing check prints the command or edit that fixes it\n" +
+			"and leaves making it to you.\n\n" +
 			"The checks, each independent — one it cannot run never stops the others:\n\n" +
 			"  - glyph.toml exists at the checkout's top level and LOADS (valid schema,\n" +
 			"    compilable patterns, a semver_sigil for every match): the config is what\n" +
@@ -77,7 +77,7 @@ func newDoctorCmd() *cobra.Command {
 			"    squash_merge_commit_message=COMMIT_MESSAGES: these decide whether the commit\n" +
 			"    that lands on main carries a subject the repository's patterns can classify\n" +
 			"  - every `uses: akira-toriyama/glyph/…` in the LOCAL workflows and in every\n" +
-			"    action.yml in the checkout (submodules included) pins a\n" +
+			"    action.yml / action.yaml in the checkout (submodules included) pins a\n" +
 			"    concrete @vX.Y.Z tag (whether the pin is the LATEST release is deliberately\n" +
 			"    NOT checked — glyph-pin-audit.yml in akira-toriyama/.github already owns\n" +
 			"    that question fleet-wide, and two answers to it would be one too many)\n" +
@@ -112,8 +112,9 @@ func newDoctorCmd() *cobra.Command {
 			"checkout, because a pin is a fact about the tree in front of you — pointing\n" +
 			"--repo elsewhere diagnoses that repository's settings and THIS checkout's pins.\n\n" +
 			"Every check carries a stable machine id — branch on that, never on the prose.\n" +
-			"Exit: 0 = every check passed / 2 = the invocation itself was wrong (a\n" +
-			"malformed --repo, rejected before any request goes out) / 3 = a check\n" +
+			"Exit: 0 = every check passed / 2 = the invocation itself was wrong, rejected\n" +
+			"before any request goes out (no repository to diagnose: no --repo, no\n" +
+			"$GITHUB_REPOSITORY, no GitHub origin; or a malformed --repo) / 3 = a check\n" +
 			"failed (the repository violates a convention glyph enforces, the same class\n" +
 			"as a lint violation) / 4 = every runnable check passed but one could not\n" +
 			"run, which is unverified, not fine / 130 = interrupted.\n" +

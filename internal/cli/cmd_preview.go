@@ -129,7 +129,8 @@ func newPreviewCmd() *cobra.Command {
 			"draft to name. stdout is the Markdown body (post it with `gh pr comment\n" +
 			"--body-file -`); --json emits {current,untagged,level,next,pr,pending,body}.\n" +
 			"Unlike bump and notes, a none verdict is a normal answer here and exits 0:\n" +
-			"'this PR moves nothing' is exactly what a reviewer asked.\n\n" +
+			"'this PR moves nothing' is exactly what a reviewer asked. A pull commit no\n" +
+			"pattern claims is refused at exit 3, while the branch can still be fixed.\n\n" +
 			"On a repository declaring [[packages]] the body carries one headline per\n" +
 			"line the pull touches (versions spelled as tags: haiku/v0.1.0 →\n" +
 			"haiku/v0.2.0; a line with no tag names its first release, never a\n" +
@@ -139,7 +140,7 @@ func newPreviewCmd() *cobra.Command {
 			"[{path,current,untagged,level,next,pr,pending}] with the scalars\n" +
 			"current/level/pr/pending EMPTY, untagged false and next absent. A commit\n" +
 			"no line can carry (a version sigil on shared files with no package scope)\n" +
-			"is refused at exit 3 here, while the branch can still be fixed.",
+			"is refused at exit 3 the same way.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {

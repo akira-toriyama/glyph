@@ -104,14 +104,20 @@ func newReleaseCmd() *cobra.Command {
 			"release, because the notes have already landed and the next run\n" +
 			"converges it — no tag is created; GitHub tags the target commit when a\n" +
 			"human publishes.\n" +
-			"On a none verdict any\n" +
-			"residual glyph-managed draft is deleted (the draft state converges to\n" +
-			"the verdict) and the run exits 1 (soft no-release). A walk that could\n" +
-			"NOT read its range (a wrong --repo, a merged pull whose merge point\n" +
+			"On a none verdict the run exits 1 (soft no-release): with draft_on_none\n" +
+			"off any residual glyph-managed draft is deleted (the draft state converges\n" +
+			"to the verdict); with it on, the draft converges to the Unreleased\n" +
+			"placeholder (<path>/Unreleased per line under [[packages]]). A walk that\n" +
+			"could NOT read its range (a wrong --repo, a merged pull whose merge point\n" +
 			"nothing resolved, a commit GitHub has not indexed, a truncated pull\n" +
-			"listing, a shallow checkout) exits 4 before touching anything — an\n" +
-			"empty fold from a walk that could not look is not evidence that\n" +
-			"nothing shipped, so no verdict is handed down on it at all.\n" +
+			"listing, a shallow checkout, or under [[packages]] a commit file listing\n" +
+			"GitHub capped (3000) or would not give) exits 4 before touching anything —\n" +
+			"an empty fold from a walk that could not look is not evidence that\n" +
+			"nothing shipped, so no verdict is handed down on it at all. Exit 4 too,\n" +
+			"with nothing written: a real run (not --dry-run) from a ref other than\n" +
+			"the default branch, a body (footer included) over GitHub's 125000\n" +
+			"characters, and a next version not greater than the highest published\n" +
+			"release.\n" +
 			"The body's notes close with the range's compare link\n" +
 			"(compare/<base tag>...<target>; none when the walk has no tag base, the\n" +
 			"notes are empty, or --target is not a full sha), before the\n" +
@@ -140,7 +146,7 @@ func newReleaseCmd() *cobra.Command {
 			"not touch is retargeted too, so the tag GitHub cuts when a human publishes\n" +
 			"it lands on that target, not on the line's last change.\n" +
 			"--current is refused (exit 2) unless the walk selects one line\n" +
-			"(--since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
+			"(e.g. --since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
 			"prefix: haiku/, or nothing for the root package).",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

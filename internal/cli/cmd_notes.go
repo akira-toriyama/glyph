@@ -69,8 +69,9 @@ func newNotesCmd() *cobra.Command {
 			"no link. When no commit lands in any [[note.sections]] entry there is\n" +
 			"nothing to write: no body, exit 1 (soft no-release).\n\n" +
 			"On a repository declaring [[packages]] the body is per line: stdout is one\n" +
-			"body per line under a `# <path>` heading (bare when a tag selects one\n" +
-			"line), each --since-tag body closed by its own line's compare link (none\n" +
+			"body per line under a `# <path>` heading (bare when the walk covers one\n" +
+			"line: a tag selecting it, or a single declared package), each --since-tag\n" +
+			"body closed by its own line's compare link (none\n" +
 			"for a line with no tag); --json carries\n" +
 			"packages: [{path,sections}] with the top-level\n" +
 			"sections EMPTY. --pr is refused there (exit 2: a pull's listing carries\n" +
