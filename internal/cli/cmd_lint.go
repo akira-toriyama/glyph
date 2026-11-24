@@ -46,6 +46,7 @@ func newLintCmd() *cobra.Command {
 	// mode, and is refused there when it is the only mode flag given); below
 	// it the mode carries all there is to know.
 	var stdin bool
+	stdinTyped := &typedBool{}
 	cmd := &cobra.Command{
 		Use:   "lint",
 		Short: "Lint commit messages against the repository's glyph.toml patterns",
@@ -121,7 +122,7 @@ func newLintCmd() *cobra.Command {
 				o.mode = lintByMessage
 			case cmd.Flags().Changed("stdin"):
 				if !stdin {
-					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range, --pr or --message instead")
+					return core.Usagef("--stdin=%s selects no input mode — --stdin IS the mode, so drop it and give --range, --pr or --message instead", stdinTyped.typed)
 				}
 				o.mode = lintByStdin
 			}
@@ -141,6 +142,7 @@ func newLintCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.repo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&o.message, "message", "", "lint one message given inline")
 	cmd.Flags().BoolVar(&stdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
+	stdinTyped.wrap(cmd.Flags().Lookup("stdin"))
 	cmd.MarkFlagsOneRequired("range", "pr", "message", "stdin")
 	return cmd
 }

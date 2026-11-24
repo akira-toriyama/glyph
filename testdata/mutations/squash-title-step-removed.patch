@@ -2,7 +2,7 @@ diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
 index b02b4c3..b8112e0 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -279,31 +279,3 @@ jobs:
+@@ -279,34 +279,3 @@ jobs:
        # either step's exit. A push has no title to judge. Skipped with the range,
        # the title's finding stayed unseen until the commits went green
        # (glyph-test-2 run 41809643056).
@@ -18,8 +18,11 @@ index b02b4c3..b8112e0 100644
 -          # Replayed before the green exit for the same reason as the range step:
 -          # a warn-pattern title is green AND annotated, or the warning dies.
 -          cat "$RUNNER_TEMP/glyph-title.err" >&2
+-          # Exit 0 is also a pull whose title glyph did not judge (its notice is
+-          # replayed above), and the step reads nothing of the stream, so the
+-          # green line claims no verdict.
 -          if [ "$status" -eq 0 ]; then
--            echo "title OK"
+-            echo "title not refused"
 -            exit 0
 -          fi
 -          sed -n '/^[{]/,$p' "$RUNNER_TEMP/glyph-title.err" > "$RUNNER_TEMP/glyph-title.json"

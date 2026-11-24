@@ -2,7 +2,7 @@ diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
 index ebb170e..f1214a0 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -287,23 +287,23 @@ jobs:
+@@ -287,26 +287,26 @@ jobs:
          run: |
            set -euo pipefail
            status=0
@@ -12,8 +12,11 @@ index ebb170e..f1214a0 100644
            # a warn-pattern title is green AND annotated, or the warning dies.
 -          cat "$RUNNER_TEMP/glyph-title.err" >&2
 +          cat /tmp/glyph-title.err >&2
+           # Exit 0 is also a pull whose title glyph did not judge (its notice is
+           # replayed above), and the step reads nothing of the stream, so the
+           # green line claims no verdict.
            if [ "$status" -eq 0 ]; then
-             echo "title OK"
+             echo "title not refused"
              exit 0
            fi
 -          sed -n '/^[{]/,$p' "$RUNNER_TEMP/glyph-title.err" > "$RUNNER_TEMP/glyph-title.json"

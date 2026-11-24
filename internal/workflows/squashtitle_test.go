@@ -93,10 +93,10 @@ func TestLintTitleStepExitsGlyphsVerdict(t *testing.T) {
 		name, stderr, says string
 		exit               int
 	}{
-		{"a title the grammar claims", "", "title OK", 0},
+		{"a title the grammar claims", "", "title not refused", 0},
 		// glyph's answer for a pull whose title is not the merge candidate:
 		// exit 0 and a notice, which must reach the log beside the green exit.
-		{"a pull whose title does not land", "::notice::glyph: stub title not judged\n", "title OK", 0},
+		{"a pull whose title does not land", "::notice::glyph: stub title not judged\n", "title not refused", 0},
 		{
 			"a title the grammar refuses",
 			"::error::stub finding\n" + `{"error":{"code":3,"message":"stub verdict"}}` + "\n",
