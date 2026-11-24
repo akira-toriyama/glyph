@@ -490,16 +490,28 @@ func apiOnePullBody(title, login string) string {
 	return fmt.Sprintf(`{"number":7,"title":%s,"user":{"login":%q}}`, m, login)
 }
 
-// TestLintPRTitle is the squash-title gate working end to end: a title in the
-// grammar passes silently; a title outside it exits 3, is annotated by the
-// binary itself (the producer contract of t-sws7), and still ends in one
-// sievable envelope. CONTRIBUTING ratifies the title as a commit subject: a
-// title outside the grammar lands as the squash subject, which the release
-// walk's fallback reads as a silent none.
+// twoCommitListing is GET pulls/{n}/commits for a pull whose title is the merge
+// candidate: two commits besides merge commits.
+func twoCommitListing() string {
+	return "[" + apiCommit("a1", "akira-toriyama", ":bug:~ fix a") + "," + apiCommit("a2", "akira-toriyama", ":bug:~ fix b") + "]"
+}
+
+// TestLintPRTitle is the squash-title gate working end to end, on a pull whose
+// title is the merge candidate (two commits besides merge commits, which is
+// when COMMIT_OR_PR_TITLE lands the title): a title in the grammar passes
+// silently; a title outside it exits 3, is annotated by the binary itself (the
+// producer contract of t-sws7), and still ends in one sievable envelope. Such
+// a title lands as the squash subject, which the release walk's fallback reads
+// as a silent none. Below two the title never lands — one commit, or one
+// commit plus a merge from the base (glyph-test-2 #27 landed the commit's
+// subject while REST .commits said 2) — so it gets a notice and no verdict.
 func TestLintPRTitle(t *testing.T) {
 	t.Chdir(testutil.NewRepo(t))
 	t.Run("clean title", func(t *testing.T) {
-		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody(":bug:(lint)~ fix a crash", "akira-toriyama")})
+		srv := walkServer(t, map[string]string{
+			pullPath(7):        apiOnePullBody(":bug:(lint)~ fix a crash", "akira-toriyama"),
+			pullCommitsPath(7): twoCommitListing(),
+		})
 		usePR(t, srv)
 		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
 		if code != 0 {
@@ -511,7 +523,10 @@ func TestLintPRTitle(t *testing.T) {
 	})
 
 	t.Run("unmatched title", func(t *testing.T) {
-		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody("add a menu without a gitmoji", "akira-toriyama")})
+		srv := walkServer(t, map[string]string{
+			pullPath(7):        apiOnePullBody("add a menu without a gitmoji", "akira-toriyama"),
+			pullCommitsPath(7): twoCommitListing(),
+		})
 		usePR(t, srv)
 		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
 		if code != 3 {
@@ -527,7 +542,31 @@ func TestLintPRTitle(t *testing.T) {
 		if env.Code != 3 {
 			t.Errorf("envelope carries code %d, want 3", env.Code)
 		}
+		if !strings.Contains(env.Message, "holds 2 commits besides merge commits") {
+			t.Errorf("the finding must say why the title lands, got %q", env.Message)
+		}
 	})
+
+	for name, listing := range map[string]string{
+		"one commit":                           "[" + apiCommit("a1", "akira-toriyama", ":bug:~ fix a") + "]",
+		"one commit and a merge from the base": "[" + apiCommit("a1", "akira-toriyama", ":bug:~ fix a") + "," + apiMergeCommit("m1", "akira-toriyama", "Merge branch 'main' into topic") + "]",
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := walkServer(t, map[string]string{
+				pullPath(7):        apiOnePullBody("add a menu without a gitmoji", "akira-toriyama"),
+				pullCommitsPath(7): listing,
+			})
+			usePR(t, srv)
+			code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
+			if code != 0 || stdout != "" {
+				t.Fatalf("lint --pr on a pull whose title never lands = %d stdout %q, want 0 — the squash lands "+
+					"the commit's subject, which the range judged\nstderr: %s", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "::notice::glyph: ") || !strings.Contains(stderr, "title not judged: the pull holds 1 commit(s) besides merge commits") || strings.Contains(stderr, "::error::") {
+				t.Fatalf("want one notice that the title is not judged and no finding, got:\n%s", stderr)
+			}
+		})
+	}
 }
 
 // TestLintPRTitleExcludesBots pins the exclusion side: the squash attributes

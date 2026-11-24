@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index cb51e66..de4e037 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -340,7 +340,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
+ 			return err
+ 		}
+ 		for _, c := range commits {
+-			if len(c.Parents) < 2 {
++			if len(c.Parents) > 0 {
+ 				authored++
+ 			}
+ 		}
