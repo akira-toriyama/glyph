@@ -116,11 +116,12 @@ func newRootCmd() *cobra.Command {
 			"under the repository's own glyph.toml — your regex patterns decide the\n" +
 			"grammar; the named group semver_sigil is the only input to version\n" +
 			"calculation — and derives the semantic-version bump and release notes from\n" +
-			"the individual commits inside a pull request, so a squash-merge (which\n" +
-			"rewrites the squash subject to the PR title) can never lose the per-commit\n" +
-			"sigils. One binary lints commits, computes the next version, and renders\n" +
-			"notes. `glyph init --gemoji` (or --conventional) writes a starting\n" +
-			"glyph.toml; everything else reads the one at the repository root.",
+			"the individual commits inside a pull request, so a multi-commit squash-merge\n" +
+			"(which rewrites the squash subject to the PR title) can never lose the\n" +
+			"per-commit sigils. One binary lints commits, computes the next version, and\n" +
+			"renders notes. `glyph init --gemoji` (or --conventional) writes a starting\n" +
+			"glyph.toml; lint, bump, notes, preview, release and doctor read the one at\n" +
+			"the repository root.",
 		Args:          noArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

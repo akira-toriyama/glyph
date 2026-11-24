@@ -2,10 +2,10 @@ diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
 index 1fb308b..4260872 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
-@@ -348,7 +348,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
- 	// (exit 4), and an interrupted claim read lets the report finish (exit 0
- 	// or 3) — codes the fleet's wrappers read as retryable infra, success or a
- 	// violation, on a run the operator stopped.
+@@ -366,7 +366,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
+ 	// its check's could-not-run, and an interrupted claim read lets the report
+ 	// finish — a report written over a run the operator stopped, which at 0
+ 	// the fleet's wrappers read as success.
 -	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, headsErr, probeAbort); err != nil {
 +	if err := firstInterrupt(rerr, herr, terr, probeAbort); err != nil {
  		return err
