@@ -556,13 +556,16 @@ func TestLintPRTitle(t *testing.T) {
 	merge := apiMergeCommit("m1", "akira-toriyama", "Merge branch 'main' into topic")
 	for _, row := range []struct {
 		name, listing string
-		judged        bool
+		judged, zero  bool
+		// why is what a judged row's refusal must say; at zero nothing measured
+		// what a squash lands, so it names the reason and claims no landing.
+		why string
 	}{
-		{"no commit (an empty listing)", "[]", true},
-		{"merge commits only", "[" + merge + "]", true},
-		{"one commit", "[" + commit + "]", false},
-		{"one commit and a merge from the base", "[" + commit + "," + merge + "]", false},
-		{"two commits", twoCommitListing(), true},
+		{"no commit (an empty listing)", "[]", true, true, "this pull holds none, so the title is judged"},
+		{"merge commits only", "[" + merge + "]", true, true, "this pull holds none, so the title is judged"},
+		{"one commit", "[" + commit + "]", false, false, ""},
+		{"one commit and a merge from the base", "[" + commit + "," + merge + "]", false, false, ""},
+		{"two commits", twoCommitListing(), true, false, "holds 2 commits besides merge commits, so a squash merge records this title as the landed commit's subject"},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			srv := walkServer(t, map[string]string{
@@ -578,6 +581,13 @@ func TestLintPRTitle(t *testing.T) {
 				if code != 3 || !strings.Contains(stderr, "::error::glyph: ") || strings.Contains(stderr, "::notice::") {
 					t.Fatalf("lint --pr = %d, want 3 with the title judged and no notice — only exactly one commit "+
 						"besides merge commits is measured to land its own subject\nstderr: %s", code, stderr)
+				}
+				env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+				if !strings.Contains(env.Message, row.why) {
+					t.Errorf("the refusal must say %q, got %q", row.why, env.Message)
+				}
+				if row.zero && strings.Contains(env.Message, "records this title") {
+					t.Errorf("at zero nothing measured what a squash lands, so the refusal claims no landing, got %q", env.Message)
 				}
 				return
 			}

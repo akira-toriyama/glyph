@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 
@@ -362,8 +363,14 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	// One annotation for the finding, written by the binary that computed it —
 	// the same producer contract lintRangeRun holds (t-sws7).
 	errorf("%s/%s#%d title: %s", owner, repo, number, v.Reason)
-	return core.Lintf("1 commit-convention violation in the title of %s/%s#%d — the pull holds %d commits besides merge commits, so a squash merge records this title as the landed commit's subject",
-		owner, repo, number, authored).
+	// Zero is judged because the exemption is measured for one alone, not because
+	// any squash of zero was seen to land the title — so it claims no landing.
+	why := fmt.Sprintf("the pull holds %d commits besides merge commits, so a squash merge records this title as the landed commit's subject", authored)
+	if authored == 0 {
+		why = "a title goes unjudged only on a pull with exactly one commit besides merge commits, whose own subject a squash merge lands, and this pull holds none, so the title is judged"
+	}
+	return core.Lintf("1 commit-convention violation in the title of %s/%s#%d — %s",
+		owner, repo, number, why).
 		WithDetails([]bump.Refusal{{Subject: pull.Title, Detail: v.Reason}})
 }
 
