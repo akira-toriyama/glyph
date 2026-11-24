@@ -1,0 +1,13 @@
+diff --git a/internal/walk/facts.go b/internal/walk/facts.go
+index 831b62b..e8a59d4 100644
+--- a/internal/walk/facts.go
++++ b/internal/walk/facts.go
+@@ -200,7 +200,7 @@ func (f Facts) Remedy() string {
+ 			at[i] = fmt.Sprintf("merged pull request #%d's merge point", n)
+ 		}
+ 		step := "cut a tag at or past what the walk cannot read, " + strings.Join(at, " and ")
+-		if f.truncatedTags != "" {
++		if false && f.truncatedTags != "" {
+ 			step = "cut a tag on every line whose range holds what the walk cannot read, " + strings.Join(at, " and ") + " — " + f.truncatedTags
+ 		}
+ 		steps = append(steps, step)
