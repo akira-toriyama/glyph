@@ -1312,14 +1312,15 @@ func TestDoctorInterruptDuringTopLevelReadCarriesOut(t *testing.T) {
 	interruptDoctor(t, "the top-level read", answersHooksPath)
 }
 
-// TestDoctorInterruptDuringTagsReadCarriesOut is the same guard, fourth
-// read: the tag list the root-line check reads (DESIGN §4.1) is the LAST git
+// TestDoctorInterruptDuringTagsReadCarriesOut is the same guard, fourth read:
+// the tag list the root-line check reads (DESIGN §4.1) is the LAST git
 // subprocess before the report, so a signal landing after the hooks read and
 // the top-level read both succeeded, while `git tag --list` is in flight, is
-// carried by tagsErr alone. Left out of the guard it would be laundered into
-// root-line-tags could-not-run at exit 4 — the code the fleet wrappers
-// retry, on a run the operator stopped. The fake git answers --git-path and
-// --show-toplevel and blocks on tag.
+// carried by tagsErr alone. Left out of the guard it writes the report with
+// root-line-tags rendered could-not-run — a check result on a run the operator
+// stopped. The exit is 130 either way (run in root.go ends a cancelled run that
+// did not succeed there), so the empty stdout is what this test bites on. The
+// fake git answers --git-path and --show-toplevel and blocks on tag.
 func TestDoctorInterruptDuringTagsReadCarriesOut(t *testing.T) {
 	useDoctorCheckout(t, pinnedCaller)
 	interruptDoctor(t, "the tags read", answersHooksPath, answersTopLevel)
@@ -1328,8 +1329,10 @@ func TestDoctorInterruptDuringTagsReadCarriesOut(t *testing.T) {
 // TestDoctorInterruptDuringHeadTreesReadCarriesOut is the same guard, fifth
 // read: HEAD's tree listing the package-paths check reads runs after the tag
 // list, so a signal landing there — every earlier read already answered — is
-// carried by treesErr alone, and left out of the guard it is laundered into
-// package-paths-exist could-not-run at exit 4. The fake git answers the hooks,
+// carried by treesErr alone, and left out of the guard it writes the report
+// with package-paths-exist rendered could-not-run. The exit is 130 either way
+// (run in root.go ends a cancelled run that did not succeed there), so the
+// empty stdout is what this test bites on. The fake git answers the hooks,
 // top-level and tag reads and blocks on ls-tree.
 func TestDoctorInterruptDuringHeadTreesReadCarriesOut(t *testing.T) {
 	useDoctorCheckout(t, pinnedCaller)
@@ -1339,19 +1342,23 @@ func TestDoctorInterruptDuringHeadTreesReadCarriesOut(t *testing.T) {
 // TestDoctorInterruptDuringActionFilesReadCarriesOut is the same guard, sixth
 // read: the action-file listing the pin scan reads runs after HEAD's tree
 // listing, so a signal landing there is carried by actionErr alone, and left
-// out of the guard it is laundered into workflow-glyph-pins could-not-run at
-// exit 4. The fake git answers every earlier read and blocks on ls-files.
+// out of the guard it writes the report with workflow-glyph-pins rendered
+// could-not-run. The exit is 130 either way (run in root.go ends a cancelled
+// run that did not succeed there), so the empty stdout is what this test bites
+// on. The fake git answers every earlier read and blocks on ls-files.
 func TestDoctorInterruptDuringActionFilesReadCarriesOut(t *testing.T) {
 	useDoctorCheckout(t, pinnedCaller)
 	interruptDoctor(t, "the action-file listing", answersHooksPath, answersTopLevel, answersTags, answersHeadTrees)
 }
 
 // TestDoctorInterruptDuringRemoteHeadsReadCarriesOut is the same guard, last
-// read: with a byte-identical pre-push hook installed, doctor asks git for
-// each remote's recorded default branch after every other read, so a signal
-// landing there is carried by headsErr alone — left out of the guard it is
-// laundered into pre-push-hook could-not-run at exit 4. The fake git answers
-// every earlier read and blocks on `config --get-regexp`.
+// read: with a byte-identical pre-push hook installed, doctor asks git for each
+// remote's recorded default branch after every other read, so a signal landing
+// there is carried by headsErr alone — left out of the guard it writes the
+// report with pre-push-hook rendered could-not-run. The exit is 130 either way
+// (run in root.go ends a cancelled run that did not succeed there), so the
+// empty stdout is what this test bites on. The fake git answers every earlier
+// read and blocks on `config --get-regexp`.
 func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 	useDoctorCheckout(t, pinnedCaller)
 	installCurrentHook(t, hook.Kinds()[1])
@@ -1361,14 +1368,16 @@ func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 // TestDoctorInterruptDuringRefNameProbeCarriesOut is the same guard one read
 // deeper, inside the remote-heads read: for a remote whose name git's config
 // accepts and its refs refuse (`remote.mirror..x.url`), `git symbolic-ref`
-// fails 128 and DefaultBranch then asks `git check-ref-format` whether the
-// name can hold a ref at all. A signal landing in that probe kills the child,
-// and a probe that reads the kill as "git could not say" hands back the
-// symbolic-ref failure in the interrupt's place — headsErr carries no
-// interrupt, the guard sees none, and doctor renders pre-push-hook
-// could-not-run at exit 4 on a run the operator stopped (measured by t-8rxf's
-// review, 2026-10-28). The fake git answers every read before it through the
-// real git — config and symbolic-ref included — and blocks on check-ref-format.
+// fails 128 and DefaultBranch then asks `git check-ref-format` whether the name
+// can hold a ref at all. A signal landing in that probe kills the child, and a
+// probe that reads the kill as "git could not say" hands back the symbolic-ref
+// failure in the interrupt's place — headsErr carries no interrupt, the guard
+// sees none, and doctor writes the report with pre-push-hook rendered
+// could-not-run on a run the operator stopped (found by t-8rxf's review,
+// 2026-10-28). The exit is 130 either way (run in root.go ends a cancelled run
+// that did not succeed there), so the empty stdout is what this test bites on.
+// The fake git answers every read before it through the real git — config and
+// symbolic-ref included — and blocks on check-ref-format.
 func TestDoctorInterruptDuringRefNameProbeCarriesOut(t *testing.T) {
 	useDoctorCheckout(t, pinnedCaller)
 	installCurrentHook(t, hook.Kinds()[1])
