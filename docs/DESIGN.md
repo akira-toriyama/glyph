@@ -1842,8 +1842,16 @@ and a template placing it *instead* of the pull would address a squash's entries
 by shas no branch holds. What actually reaches a body is `note.line`'s decision,
 not glyph's — the fold binds `$pr` and `$hash`, and both shipped presets place
 `$pr` alone inside an optional span, so a line reads `- subject (#123)` and
-drops the parens with the pull (§3). v1's hardcoded `(#123, abc1234)` is
-`$[ ($pr, $hash)]` today. Both git questions can also fail to answer, and a
+drops the parens with the pull (§3). v1's hardcoded `(#123, abc1234)` is not
+`$[ ($pr, $hash)]` today: a span renders only when every placeholder inside it
+resolves (§3), so that one span reads `(#123, abc1234)` for a pull's commit
+whose sha a branch holds and drops the whole citation from a squash entry,
+whose `$hash` is blank, and from a direct push, which has no `$pr` (measured
+2026-11-24 by swapping it into the fixtures of
+`TestPreviewNotesCiteThePullUnderReview` and
+`TestNotesSinceTagCiteASquashedCommitByItsPullAlone`). The two-span
+`$[ ($pr)]$[ $hash]` is the form that cites a squash entry by its pull alone
+and a direct push by its sha. Both git questions can also fail to answer, and a
 failure never reads as "never landed" where git signals it: a listed sha whose
 object this clone holds and **cannot read** — empty, truncated, not zlib, under
 a file or fan-out directory git cannot open — answers `missing` to `cat-file
