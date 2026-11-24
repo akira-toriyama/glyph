@@ -8,6 +8,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/v6/internal/core"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
+	"github.com/spf13/cobra"
 )
 
 // TestFinishSilentInterrupt: both adapters classify a canceled context as a
@@ -230,6 +231,39 @@ func TestCompletionBareIsHelpAtZero(t *testing.T) {
 	code, _, _ := runGlyph(t, "completion")
 	if code != 0 {
 		t.Fatalf("bare `completion` exited %d, want 0 (help)", code)
+	}
+}
+
+// TestACancelledRunIsInterruptedUnlessItSucceeded pins run's mapping of a
+// cancelled context: a read that takes no context (doctor's workflow files,
+// lint --stdin) lets a Ctrl-C landing in it run on to the command's own code,
+// measured 3 for lint --stdin, and that code is no answer to a run the operator
+// stopped — so every non-success is 130 with nothing rendered. A run that
+// finished with 0 delivered its verdict and keeps it.
+func TestACancelledRunIsInterruptedUnlessItSucceeded(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		returned error
+		want     int
+	}{
+		{"a gate verdict", core.Lintf("1 violation").Quiet(true), 130},
+		{"a usage refusal", core.Usagef("--repo owner/name is required"), 130},
+		{"a success", nil, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			root := &cobra.Command{Use: "glyph", RunE: func(*cobra.Command, []string) error {
+				cancel()
+				return c.returned
+			}}
+			root.SetArgs(nil)
+			_, stderr, restore := captureOut()
+			code := finish(run(ctx, root))
+			restore()
+			if code != c.want || stderr.Len() != 0 {
+				t.Fatalf("cancelled while returning %v: exit %d stderr %q, want %d with nothing rendered", c.returned, code, stderr.String(), c.want)
+			}
+		})
 	}
 }
 

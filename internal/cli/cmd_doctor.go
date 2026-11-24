@@ -359,11 +359,12 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 	// returns, and the probe — whose fire and claim reads hand none back —
 	// through ctx itself (probeAbort). The plain file reads — glyph.toml
 	// (cfgErr), the two hooks, and doctor.Run's own workflow and action files —
-	// take no ctx and carry no signal, so they are not asked. Left unasked, an
-	// interrupted ctx read renders the abort as its check's could-not-run
-	// (exit 4), and an interrupted claim read lets the report finish (exit 0
-	// or 3) — codes the fleet's wrappers read as retryable infra, success or a
-	// violation, on a run the operator stopped.
+	// take no ctx and carry no signal, so they are not asked: a signal landing
+	// in one lets the report finish, and run (root.go) answers 130 for any
+	// code but 0. Left unasked, an interrupted ctx read renders the abort as
+	// its check's could-not-run, and an interrupted claim read lets the report
+	// finish — a report written over a run the operator stopped, which at 0
+	// the fleet's wrappers read as success.
 	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, headsErr, probeAbort); err != nil {
 		return err
 	}

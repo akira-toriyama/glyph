@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -114,6 +115,33 @@ func TestOriginWithoutACoordinateIsStillUsage(t *testing.T) {
 	code, _, stderr := runGlyph(t, "bump", "--pr", "7")
 	if code != 2 || !strings.Contains(stderr, "--repo owner/name is required") {
 		t.Fatalf("bump --pr with a path origin: exit %d, want 2 with the required-repo usage:\n%s", code, stderr)
+	}
+}
+
+// TestAnInterruptInTheRemoteListingCarriesOut: with no --repo and no
+// GITHUB_REPOSITORY — every local run — the eight commands that name a
+// repository ask git for the remotes, and a Ctrl-C landing in that read is the
+// user's abort. Read as "no origin" it exited 2, "--repo owner/name is
+// required", telling the operator to fix an invocation nothing was wrong with.
+// The fake git answers nothing but the remote listing, so the cancel provably
+// lands there and not in a read before it.
+func TestAnInterruptInTheRemoteListingCarriesOut(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "")
+	t.Chdir(t.TempDir())
+	const onlyTheListing = "case \"$*\" in *--get-regexp*) ;; *) exit 97;; esac\n"
+
+	ctx, reached := cancelOnceAsked(t, blockingGit(t, onlyTheListing))
+	_, _, err := resolveRepo(ctx, "")
+	reached("the remote listing")
+	if !core.IsInterrupted(err) {
+		t.Fatalf("resolveRepo under an interrupted remote listing = %v, want the interrupt", err)
+	}
+
+	ctx, reached = cancelOnceAsked(t, blockingGit(t, onlyTheListing))
+	code, stdout, stderr := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the remote listing")
+	if code != 130 || stdout != "" || stderr != "" {
+		t.Fatalf("doctor interrupted in the remote listing: exit %d stdout %q stderr %q, want 130 with nothing written", code, stdout, stderr)
 	}
 }
 

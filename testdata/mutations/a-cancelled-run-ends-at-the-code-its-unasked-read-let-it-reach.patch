@@ -1,0 +1,15 @@
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index 641931e..f6fa2af 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -70,9 +70,7 @@ func run(ctx context.Context, root *cobra.Command) error {
+ 	out = p
+ 	defer func() { out = saved }()
+ 	err := root.ExecuteContext(ctx)
+-	if err != nil && errors.Is(ctx.Err(), context.Canceled) {
+-		err = core.Interrupted()
+-	}
++	_ = errors.Is
+ 	if p.err == nil || core.IsInterrupted(err) {
+ 		return err
+ 	}
