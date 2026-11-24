@@ -222,17 +222,93 @@ func TestInstallRefreshesAnOlderGlyphHook(t *testing.T) {
 }
 
 // The header is the one instruction a developer reads off the hook itself, and
-// a plain install already refreshes a glyph-written hook. Naming --force there
+// an install of its kind refreshes a glyph-written hook. Naming --force there
 // sent the reader to the flag that also clobbers a foreign hook of the other
-// kind in the same run.
-func TestEveryKindsScriptNamesThePlainInstallToRegenerateIt(t *testing.T) {
+// kind in the same run; naming the plain install sent them to a run that
+// refuses at that foreign hook and writes nothing.
+func TestEveryKindsScriptNamesItsOwnKindsInstallToRegenerateIt(t *testing.T) {
 	for _, k := range Kinds() {
-		if !strings.Contains(k.Script, "\n# Regenerate with: glyph hook install\n") {
-			t.Errorf("%s script does not name the plain `glyph hook install` as its regeneration", k.Name)
+		if !strings.Contains(k.Script, "\n# Regenerate with: glyph hook install "+k.Name+"\n") {
+			t.Errorf("%s script does not name `glyph hook install %s` as its regeneration", k.Name, k.Name)
 		}
 		if strings.Contains(k.Script, "--force") {
 			t.Errorf("%s script names --force, which also replaces a hook glyph did not write", k.Name)
 		}
+	}
+}
+
+// The state the header has to survive: a stale glyph hook of one kind beside a
+// foreign hook of the other. The command is read off the header and run as the
+// CLI runs it (no kind named means every kind), so a header naming the plain
+// install fails here at the refusal that leaves the stale hook stale.
+func TestTheHeadersCommandRefreshesAStaleHookBesideAForeignOne(t *testing.T) {
+	const foreign = "#!/bin/sh\necho somebody else wrote this\n"
+	for _, k := range Kinds() {
+		t.Run(k.Name, func(t *testing.T) {
+			dir := t.TempDir()
+			stale := k.Script + "# stale\n"
+			seed := map[string]string{}
+			for _, o := range Kinds() {
+				seed[o.Name] = foreign
+			}
+			seed[k.Name] = stale
+			for name, body := range seed {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil { //nolint:gosec
+					t.Fatalf("seeding %s: %v", name, err)
+				}
+			}
+			read := func(name string) string {
+				t.Helper()
+				b, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil {
+					t.Fatalf("reading %s: %v", name, err)
+				}
+				return string(b)
+			}
+
+			if _, err := Install(dir, false, Kinds()...); err == nil {
+				t.Fatal("a plain install over a foreign hook succeeded, want the refusal this test is about")
+			}
+			if read(k.Name) != stale {
+				t.Fatalf("the refused plain install rewrote the stale %s hook; it plans every kind and writes nothing", k.Name)
+			}
+
+			const prefix = "# Regenerate with: glyph hook install"
+			var named []Kind
+			found := false
+			for line := range strings.SplitSeq(k.Script, "\n") {
+				rest, ok := strings.CutPrefix(line, prefix)
+				if !ok {
+					continue
+				}
+				found = true
+				for arg := range strings.FieldsSeq(rest) {
+					kk, ok := KindByName(arg)
+					if !ok {
+						t.Fatalf("the %s header names %q, which is not a hook kind", k.Name, arg)
+					}
+					named = append(named, kk)
+				}
+			}
+			if !found {
+				t.Fatalf("the %s script has no %q line", k.Name, prefix)
+			}
+			if len(named) == 0 {
+				named = Kinds()
+			}
+			if _, err := Install(dir, false, named...); err != nil {
+				t.Fatalf("the command the %s header names did not refresh it beside a foreign hook: %v", k.Name, err)
+			}
+			for name, body := range seed {
+				want := body
+				if name == k.Name {
+					want = k.Script
+				}
+				if read(name) != want {
+					t.Errorf("after the header's command, %s holds the wrong bytes (refreshed want %v)", name, name == k.Name)
+				}
+			}
+		})
 	}
 }
 

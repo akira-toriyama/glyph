@@ -81,7 +81,7 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
 			"treats as a convention violation (glyph interpolates that from core.CodeLint precisely because a stale copy " +
 			"waves every violation through) and the arguments it hands `glyph lint`. A hook that judges a message by rules " +
 			"other than this binary's is the hook-green/CI-red split, and it fails in the quiet direction — exit 0"
-		c.Fix = "glyph hook install (re-installing over a glyph-written hook is a no-questions refresh)"
+		c.Fix = "glyph hook install " + k.Name + " (re-installing over a glyph-written hook is a no-questions refresh)"
 	case hook.Foreign:
 		c.Status = StatusAdvice
 		c.Observed = fmt.Sprintf("%s exists and glyph did not write it (no `%s` marker)", path, hook.Marker)
