@@ -13,9 +13,9 @@ import (
 )
 
 // Auto is what a bare --since-tag parses to (the flag's NoOptDefVal):
-// resolve the walk base from the repository itself — the highest parseable v*
-// tag HEAD contains (LatestVersionTag) — so a release job never duplicates
-// glyph's version-tag policy in shell.
+// resolve the walk base from the repository itself — the highest parseable
+// version tag HEAD contains (LatestVersionTag) — so a release job never
+// duplicates glyph's version-tag policy in shell.
 const Auto = "auto"
 
 // below is the prefix of the OTHER resolved --since-tag form,
@@ -57,7 +57,7 @@ func CheckTag(tag string) error {
 	if tag == "" {
 		// A workflow templating an unset variable produces exactly this; auto
 		// is spelled by OMITTING the value, never by an empty one.
-		return core.Usagef("--since-tag= names an empty tag — use a bare --since-tag for the highest v* tag HEAD contains, or name one with --since-tag=TAG")
+		return core.Usagef("--since-tag= names an empty tag — use a bare --since-tag for the highest parseable version tag HEAD contains, or name one with --since-tag=TAG")
 	}
 	if strings.HasPrefix(tag, "-") {
 		return core.Usagef("--since-tag %q looks like an option, not a tag", tag)
@@ -178,10 +178,10 @@ func (w Walker) CheckRange(ctx context.Context, revRange string) error {
 // (LatestVersionTag), and a HEAD whose history holds no such tag walks the
 // whole history from v0.0.0; an explicit tag is taken as named wherever it
 // sits — naming a tag names the release being redone — and names no base
-// when it is not a version (nil: the bump falls back to the highest v* tag
-// HEAD contains). baseTag is the range's left side when it is a tag, in its
-// own spelling (Line.BaseTag): the resolved forms' answer, a typed value only
-// when it is a tag (explicitBase), "" on the whole-history arm.
+// when it is not a version (nil: the bump falls back to the highest parseable
+// version tag HEAD contains). baseTag is the range's left side when it is a
+// tag, in its own spelling (Line.BaseTag): the resolved forms' answer, a typed
+// value only when it is a tag (explicitBase), "" on the whole-history arm.
 func (w Walker) sinceTagRange(ctx context.Context, tagFlag string) (revRange, baseTag string, base *bump.Version, err error) {
 	tag := strings.TrimSpace(tagFlag)
 	if tag == Auto {
