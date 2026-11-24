@@ -1,0 +1,16 @@
+diff --git a/internal/cli/cmd_hook.go b/internal/cli/cmd_hook.go
+index 64907fc..eb6ba92 100644
+--- a/internal/cli/cmd_hook.go
++++ b/internal/cli/cmd_hook.go
+@@ -130,10 +130,7 @@ func newHookInstallCmd() *cobra.Command {
+ 	// rejects an all-false invocation: --print=false and --json=false both
+ 	// leave the command with something to do.
+ 	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
+-		if err := checkExclusive(cmd, "print", "force"); err != nil {
+-			return err
+-		}
+-		return checkExclusive(cmd, "print", "json")
++		return checkExclusive(cmd, "print", "force")
+ 	}
+ 	return cmd
+ }

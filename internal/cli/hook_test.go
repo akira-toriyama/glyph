@@ -218,6 +218,23 @@ func TestHookInstallPrintTakesExactlyOneKind(t *testing.T) {
 	}
 }
 
+// TestHookInstallPrintOfAKindNamedTwiceIsItsScript: kinds dedupe everywhere,
+// --print included — a kind named twice is one kind and one script, printed at
+// exit 0, where counting the arguments refused it as two scripts (two
+// different kinds stay refused: TestHookInstallPrintTakesExactlyOneKind).
+func TestHookInstallPrintOfAKindNamedTwiceIsItsScript(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "hook", "install", "--print", "commit-msg", "commit-msg")
+	if code != int(core.CodeOK) {
+		t.Fatalf("exit = %d, want exactly %d\nstderr: %s", code, core.CodeOK, stderr)
+	}
+	if stdout != hook.Kinds()[0].Script {
+		t.Errorf("stdout = %q, want the commit-msg script once, verbatim", stdout)
+	}
+}
+
 // TestHookInstallRefusalNamesTheKinds: a kind glyph does not write is usage
 // (2), alone or beside a kind it does, and the refusal is resolveHookKinds'
 // one sentence listing the kinds it does write — read from hook.KindNames, so
@@ -517,15 +534,21 @@ func commitWith(dir, path, message string) (string, error) {
 // nothing (installing is what the command does when no flag chooses otherwise),
 // so a =false member is simply not selecting, and only two flags genuinely ON
 // are a conflict.
+//
+// The conflict cases also name a kind: without one, --print's own "name the
+// kind" refusal answers 2 as well, so a lost exclusivity check would pass
+// unseen (mutation row hook-print-with-json-prints-the-script-anyway).
 func TestHookInstallPrintFalseIsNotAConflict(t *testing.T) {
 	for name, tc := range map[string]struct {
 		args     []string
 		wantCode int
 	}{
-		"declining print while forcing installs": {[]string{"hook", "install", "--print=false", "--force"}, 0},
-		"declining print while asking for json":  {[]string{"hook", "install", "--print=false", "--json"}, 0},
-		"print and force really do conflict":     {[]string{"hook", "install", "--print", "--force"}, 2},
-		"print and json really do conflict":      {[]string{"hook", "install", "--print", "--json"}, 2},
+		"declining print while forcing installs":   {[]string{"hook", "install", "--print=false", "--force"}, 0},
+		"declining print while asking for json":    {[]string{"hook", "install", "--print=false", "--json"}, 0},
+		"print and force really do conflict":       {[]string{"hook", "install", "--print", "--force"}, 2},
+		"print and json really do conflict":        {[]string{"hook", "install", "--print", "--json"}, 2},
+		"print and force conflict with a kind too": {[]string{"hook", "install", "--print", "--force", "commit-msg"}, 2},
+		"print and json conflict with a kind too":  {[]string{"hook", "install", "--print", "--json", "commit-msg"}, 2},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testutil.NewTaggedRepo(t)
@@ -533,6 +556,11 @@ func TestHookInstallPrintFalseIsNotAConflict(t *testing.T) {
 			code, _, stderr := runGlyph(t, tc.args...)
 			if code != tc.wantCode {
 				t.Fatalf("%v exited %d, want %d\nstderr: %s", tc.args, code, tc.wantCode, stderr)
+			}
+			if tc.wantCode != 0 {
+				if env := decodeErrorEnvelope(t, stderr); !strings.Contains(env.Message, "cannot be combined") {
+					t.Errorf("%v: envelope = %+v, want the exclusivity refusal", tc.args, env)
+				}
 			}
 			if strings.Contains(stderr, "were all set") {
 				t.Errorf("%v: the envelope claims a flag was set that the caller turned off:\n%s", tc.args, stderr)
