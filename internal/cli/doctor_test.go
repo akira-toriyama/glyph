@@ -1254,8 +1254,11 @@ const (
 // healthy API and a fake git that answers the given arms, signals that the
 // next read is in flight and blocks; the context is cancelled once it has.
 // The run must exit 130 with nothing on stdout: an interrupt is the user's
-// own abort, never a check result — 4 is the code the fleet's wrappers
-// retry, on a run the operator stopped.
+// own abort, never a check result. The code alone cannot tell a guarded read
+// from an unguarded one — run (root.go) ends every cancelled run that did not
+// succeed at 130 (TestACancelledRunIsInterruptedUnlessItSucceeded) — so the
+// stdout assertion is the one that bites: an unguarded read writes the report,
+// the interrupted check rendered as could-not-run.
 func interruptDoctor(t *testing.T, read string, answers ...string) {
 	t.Helper()
 	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
@@ -1279,11 +1282,12 @@ func interruptDoctor(t *testing.T, read string, answers ...string) {
 // TestDoctorInterruptDuringHooksReadCarriesOut pins the guard over doctor's
 // hooks read. Every read runs before the guard, and the signal lands in
 // whichever is in flight. Carried out as a plain read failure, a SIGTERM
-// landing in the hooks read would exit 4 — stdout carrying a report with
-// commit-msg-hook rendered as "could not run: … interrupted" — and 4 is the
-// one code the fleet's wrappers read as retryable infra, so CI would retry a
-// run its operator stopped; the guard makes it exit 130 with nothing written,
-// as the same signal landing in the API read does.
+// landing in the hooks read writes a report with commit-msg-hook rendered as
+// "could not run: … interrupted" — a check result over a run its operator
+// stopped. The exit is 130 either way (run in root.go answers 130 for a
+// cancelled run that did not succeed), so what the guard adds, and what this
+// test bites on, is the empty stdout: nothing written, as when the same signal
+// lands in the API read.
 //
 // The choreography exists because the trivial arrangement proves nothing:
 // cancelling the context BEFORE the run makes the API read interrupted and the

@@ -5289,10 +5289,10 @@ The severities are the argued part:
   2.54.0 and 2.56.0). The remedy is
   `git remote set-head <remote> -a` only where git can record a head at all:
   a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
-  set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote
+  set-head exit 129 unquoted and 1 quoted (git 2.54). `git remote
   rename` is no remedy either: with git's usual fetch refspec it dies on that
   refspec (rc=128), and with the url alone the renamed remote has no refspec
-  for set-head to read (rc=1; review u6b-1, re-measured). So for a name
+  for set-head to read (rc=1, re-measured). So for a name
   `git check-ref-format refs/remotes/<name>/HEAD` refuses, doctor's fix and
   the hook's own warning both offer "pick a name git accepts for
   `<new-name>`, then" `git config --rename-section`, a rewritten fetch
@@ -5300,7 +5300,7 @@ The severities are the argued part:
   with the placeholder filled (`TestSetHeadRemedyRunsPasted`). No sanitised
   name is computed: that would reimplement git's ref rules. Both arms
   single-quote the old name, since `git remote add` accepts names a shell
-  splits (`a;b`, `it's`; review u6b-2) (`hook.SetHeadRemedy`,
+  splits (`a;b`, `it's`) (`hook.SetHeadRemedy`,
   `gitsource.RemoteCanRecordHead`). Firing pre-push itself
   — a `PrePushProbe` beside the commit-msg one — stays unbuilt. It would carry
   a fabricated push into a read-only diagnosis: a scratch repository, a bare

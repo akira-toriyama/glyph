@@ -98,11 +98,13 @@ func newBumpCmd() *cobra.Command {
 			"(haiku/v0.1.1, travel/onsen/v0.0.1), the major folded on a /vN path\n" +
 			"(pubsub/v2 → pubsub/v2.1.0), bare for the root package — present exactly\n" +
 			"when next is, so a line at none carries neither and an all-none walk is a\n" +
-			"full array with no tag in it. --pr is refused there (exit 2: a pull's\n" +
-			"listing carries messages and no files, so nothing can be attributed to a\n" +
-			"line), and --current is refused (exit 2) unless the walk selects one line\n" +
-			"(e.g. --since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
-			"prefix: haiku/, or nothing for the root package).",
+			"full array with no tag in it. A --since-tag tag names a line:\n" +
+			"<prefix>vX.Y.Z (an rc tag too) or below:<prefix>vX.Y.Z walks that one\n" +
+			"line, <prefix> being its tag prefix (haiku/, or nothing for the root\n" +
+			"package), and a line no [[packages]] entry declares is refused (exit 2).\n" +
+			"--pr is refused there (exit 2: a pull's listing carries messages and no\n" +
+			"files, so nothing can be attributed to a line), and --current is refused\n" +
+			"(exit 2) unless the walk selects one line.",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{

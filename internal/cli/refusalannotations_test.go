@@ -70,7 +70,7 @@ func TestVerdictRefusalsAnnotateEachRefusedCommit(t *testing.T) {
 				t.Fatalf("envelope code %d with %d details, want 3 with 2:\n%s", env.Error.Code, len(env.Error.Details), stderr)
 			}
 			var got []string
-			for _, l := range strings.Split(stderr[:cut], "\n") {
+			for l := range strings.SplitSeq(stderr[:cut], "\n") {
 				if strings.HasPrefix(l, "::error::") {
 					got = append(got, l)
 				}

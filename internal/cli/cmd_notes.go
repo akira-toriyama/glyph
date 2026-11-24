@@ -74,7 +74,11 @@ func newNotesCmd() *cobra.Command {
 			"body closed by its own line's compare link (none\n" +
 			"for a line with no tag); --json carries\n" +
 			"packages: [{path,sections}] with the top-level\n" +
-			"sections EMPTY. --pr is refused there (exit 2: a pull's listing carries\n" +
+			"sections EMPTY. A --since-tag tag names a line: <prefix>vX.Y.Z (an rc tag\n" +
+			"too) or below:<prefix>vX.Y.Z walks that one line, <prefix> being its tag\n" +
+			"prefix (haiku/, or nothing for the root package), and a line no\n" +
+			"[[packages]] entry declares is refused (exit 2). --pr is refused there\n" +
+			"(exit 2: a pull's listing carries\n" +
 			"messages and no files, so nothing can be attributed to a line).",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

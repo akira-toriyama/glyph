@@ -223,7 +223,7 @@ func glyphResolves(ctx context.Context) bool {
 // Current — the one arm whose pass this qualifies — so a checkout with no
 // hook, which is every CI runner, pays no subprocess. nil with a nil error
 // means not read. refless marks the unrecorded remotes whose name git cannot
-// place in a ref, for which set-head is no remedy (review u6-2).
+// place in a ref, for which set-head is no remedy (DESIGN §7).
 func readRemoteHeads(ctx context.Context, prePush hook.Installed) (heads map[string]string, refless map[string]bool, err error) {
 	if prePush.State != hook.Current {
 		return nil, nil, nil
