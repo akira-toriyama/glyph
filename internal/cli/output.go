@@ -29,6 +29,35 @@ var (
 	in     io.Reader = os.Stdin
 )
 
+// payload is the one place a stdout write error is seen. run installs it as
+// out for the length of a command, and cobra's own stdout bytes (help, the
+// version template, completion scripts) reach it through stdoutFunnel, so no
+// call site checks a write. It keeps the first error and reports success to
+// every caller — cobra's help and version paths otherwise print the error as
+// a raw stderr line, outside the stream contract — and drops every byte after
+// it: a payload with a hole is worse than a short one. run turns the kept
+// error into CodeAPI.
+type payload struct {
+	w   io.Writer
+	err error
+}
+
+func (p *payload) Write(b []byte) (int, error) {
+	if p.err == nil {
+		if _, err := p.w.Write(b); err != nil {
+			p.err = err
+		}
+	}
+	return len(b), nil
+}
+
+// stdoutFunnel is the root command's output writer (newRootCmd's SetOut): it
+// writes to whatever out is at write time, because cobra's completion shells
+// capture their writer when the tree is built, before run installs payload.
+type stdoutFunnel struct{}
+
+func (stdoutFunnel) Write(b []byte) (int, error) { return out.Write(b) }
+
 // printCompact writes v as one JSON line.
 func printCompact(v any) {
 	fmt.Fprintln(out, string(marshal(v, false)))

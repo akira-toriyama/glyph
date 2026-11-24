@@ -48,7 +48,27 @@ func Execute() int {
 		<-ctx.Done()
 		stop()
 	}()
-	return finish(newRootCmd().ExecuteContext(ctx))
+	return finish(run(ctx, newRootCmd()))
+}
+
+// run executes root with every stdout byte behind one payload latch (output.go)
+// and answers CodeAPI when a write failed, in place of the success or the Silent
+// verdict the command returned: the payload a caller reads — a version piped
+// into a tag step, a verdict.json — is exactly what went missing. An error that
+// renders its own envelope, and the user's own interrupt, keep their code.
+func run(ctx context.Context, root *cobra.Command) error {
+	p := &payload{w: out}
+	saved := out
+	out = p
+	defer func() { out = saved }()
+	err := root.ExecuteContext(ctx)
+	if p.err == nil || core.IsInterrupted(err) {
+		return err
+	}
+	if ce := core.AsError(err); err != nil && (ce == nil || !ce.Silent) {
+		return err
+	}
+	return core.APIf("writing the payload to stdout: %v", p.err)
 }
 
 // finish maps a returned error to the exit-code contract and renders the stderr
@@ -57,18 +77,18 @@ func Execute() int {
 //
 // It CLASSIFIES and then delegates: the number itself always comes from
 // core.ExitCode, so the contract has one implementation rather than two that
-// agree by inspection. The classification rests on a fact only this layer
-// knows: cobra is silenced in newRootCmd, so a bare error arriving here is a
-// parse/usage problem and nothing else — core.ExitCode, which cannot know
-// that, reads an unclassified error as CodeAPI. That fact belongs where it is
-// knowable, and the mapping belongs in core.
+// agree by inspection. An unclassified error is CodeAPI here as in core
+// (DESIGN §5): cobra's parse errors are made usage where cobra raises them —
+// the flag-error func, the Args validators, and the root's PersistentPreRunE
+// for required flags and flag groups (newRootCmd) — so a bare error reaching
+// finish is one nobody classified, never usage by elimination.
 func finish(err error) int {
 	if err == nil {
 		return int(core.CodeOK)
 	}
 	ce := core.AsError(err)
 	if ce == nil {
-		ce = core.Usagef("%s", err.Error())
+		ce = core.APIf("%s", err.Error())
 	}
 	if !ce.Silent {
 		renderError(ce)
@@ -99,8 +119,27 @@ func newRootCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
+		// cobra checks required flags and flag groups after every pre-run and
+		// returns plain errors, which finish reads as 4; the same two checks
+		// run here first, so their refusal is usage. No subcommand may define
+		// its own PersistentPreRunE: cobra runs only the nearest one.
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if err := cmd.ValidateRequiredFlags(); err != nil {
+				return core.Usagef("%s", err.Error())
+			}
+			if err := cmd.ValidateFlagGroups(); err != nil {
+				return core.Usagef("%s", err.Error())
+			}
+			return nil
+		},
 	}
 	root.SetVersionTemplate("glyph {{.Version}}\n")
+	// Before InitDefaultCompletionCmd: the shell subcommands capture the
+	// root's writer once, there, so it must already be the funnel to out.
+	root.SetOut(stdoutFunnel{})
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return core.Usagef("%s", err.Error())
+	})
 	root.AddCommand(newVersionCmd(), newLintCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd(), newInitCmd(), newEmojiCmd())
 
 	// `completion` is cobra's, and the root's noArgs cannot reach it: cobra
@@ -110,12 +149,16 @@ func newRootCmd() *cobra.Command {
 	// the shell sources. A help RunE makes it runnable; noArgs, swapped in for
 	// cobra's NoArgs so the refusal points at `glyph completion --help` like
 	// every other parent's, then rejects the argument at 2, and bare
-	// `glyph completion` still prints help at 0, as `glyph hook` does.
+	// `glyph completion` still prints help at 0, as `glyph hook` does. The
+	// shells get noArgs too: cobra's NoArgs refuses with a plain error.
 	root.InitDefaultCompletionCmd()
 	for _, c := range root.Commands() {
 		if c.Name() == "completion" {
 			c.Args = noArgs
 			c.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
+			for _, shell := range c.Commands() {
+				shell.Args = noArgs
+			}
 		}
 	}
 
