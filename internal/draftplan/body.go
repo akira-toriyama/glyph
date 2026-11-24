@@ -25,9 +25,10 @@ const handMarker = "<!-- glyph: notes written ABOVE this line survive every push
 // lines from its own stale output, and guessing would resurrect old machine
 // text as if a human had written it.
 //
-// The marker counts only as a whole line (a CR before its newline included):
-// the notes render a commit subject that quotes the marker inside a bullet, and
-// a substring match there would read that machine line as the boundary (t-cjck).
+// The marker counts only on a line of its own, white space around it allowed
+// (a CR before its newline, or padding a human left): the notes render a
+// commit subject that quotes the marker inside a bullet, and a substring match
+// there would read that machine line as the boundary (t-cjck).
 func ComposeBody(keep *Draft, generated string) string {
 	var hand string
 	if keep != nil {
@@ -36,12 +37,12 @@ func ComposeBody(keep *Draft, generated string) string {
 	return hand + handMarker + "\n\n" + generated
 }
 
-// handRegion returns everything above body's first line that is the marker
-// alone, and nothing when no line is.
+// handRegion returns everything above body's first line that holds the marker
+// and nothing but white space, and nothing when no line does.
 func handRegion(body string) string {
 	at := 0
 	for line := range strings.Lines(body) {
-		if strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r") == handMarker {
+		if strings.TrimSpace(line) == handMarker {
 			return body[:at]
 		}
 		at += len(line)

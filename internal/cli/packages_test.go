@@ -1810,6 +1810,57 @@ func TestSinceTagPackagesRefusesGrammarAndTreeAtOnce(t *testing.T) {
 			}
 		})
 	}
+
+	// A file read that fails during attribution, before or after the
+	// unclaimed message, leaves the grammar's refusal the verdict: the wedge
+	// was found before the partition ran, so the failure is announced beside
+	// it and the commits past the failure go unread (mutation row
+	// walk-file-failure-hides-the-wedge).
+	for _, tc := range []struct {
+		name           string
+		unclaimedFirst bool
+	}{
+		{"the unclaimed message, then a failed file read", true},
+		{"a failed file read, then the unclaimed message", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, _ := packagesRepo(t)
+			var u, f string
+			if tc.unclaimedFirst {
+				u = testutil.Touch(t, dir, "akira-toriyama", "oops no gemoji", "haiku/z.go")
+				f = testutil.Touch(t, dir, "akira-toriyama", "Add things (#9)", "haiku/s.go")
+			} else {
+				f = testutil.Touch(t, dir, "akira-toriyama", "Add things (#9)", "haiku/s.go")
+				u = testutil.Touch(t, dir, "akira-toriyama", "oops no gemoji", "haiku/z.go")
+			}
+			r := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix the readme", "README.md")
+			usePR(t, failingWalkServer(t, map[string]string{
+				commitPullsPath(u): `[]`,
+				commitPullsPath(r): `[]`,
+				commitPullsPath(f): `[` + apiPullRef(9, "2026-07-22T00:00:00Z", f) + `]`,
+				pullCommitsPath(9): `[` + apiCommit("f1", "akira-toriyama", ":sparkles:^ add a thing") + `]`,
+			}, func(req *http.Request) int {
+				if req.URL.Path == commitFilesPath("f1") {
+					return http.StatusInternalServerError
+				}
+				return 0
+			}))
+			t.Chdir(dir)
+
+			code, _, stderr := runGlyph(t, "bump", "--since-tag")
+			if code != 3 {
+				t.Fatalf("an unclaimed message beside a failed file read exited %d, want 3 (the grammar's refusal is the verdict)\nstderr: %s", code, stderr)
+			}
+			env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+			assertWedgeDetails(t, env, u)
+			if !strings.HasPrefix(env.Message, "commit "+u[:7]+": ") || strings.Contains(env.Message, "boom") {
+				t.Errorf("the envelope must be the grammar's refusal, not the failed read:\n%s", env.Message)
+			}
+			if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "boom") || !strings.Contains(stderr, "the rest of the range could not be read") {
+				t.Errorf("the failed read must be announced beside the refusal:\n%s", stderr)
+			}
+		})
+	}
 }
 
 // TestSinceTagPackagesAttributionRefusalOutranksALaterAPIFailure: collecting

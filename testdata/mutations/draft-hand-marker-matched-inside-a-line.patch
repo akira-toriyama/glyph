@@ -2,11 +2,11 @@ diff --git a/internal/draftplan/body.go b/internal/draftplan/body.go
 index dd3d027..52d61f9 100644
 --- a/internal/draftplan/body.go
 +++ b/internal/draftplan/body.go
-@@ -41,7 +41,7 @@ func ComposeBody(keep *Draft, generated string) string {
+@@ -42,7 +42,7 @@ func ComposeBody(keep *Draft, generated string) string {
  func handRegion(body string) string {
  	at := 0
  	for line := range strings.Lines(body) {
--		if strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r") == handMarker {
+-		if strings.TrimSpace(line) == handMarker {
 +		if strings.Contains(line, handMarker) {
  			return body[:at]
  		}
