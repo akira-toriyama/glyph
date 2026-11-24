@@ -1,5 +1,5 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index e44d1ca..2dc90e8 100644
+index c0010b3..0c1d266 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
 @@ -242,14 +242,6 @@ jobs:
@@ -16,4 +16,4 @@ index e44d1ca..2dc90e8 100644
 -          fi
            exit "$status"
  
-       # The squash title, when it is the merge candidate: under
+       # The squash title: under COMMIT_OR_PR_TITLE a squash merge records the PR

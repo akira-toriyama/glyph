@@ -59,11 +59,11 @@ func newLintCmd() *cobra.Command {
 			"no opinion on combinations (a docs commit carrying ! is the author's call).\n" +
 			"--range lints every commit on its way into main (exclude_authors are\n" +
 			"skipped, and so is anything a skip pattern claims — merge commits under the\n" +
-			"shipped presets). --pr lints a pull request's TITLE over the API when it\n" +
-			"is the merge candidate: with two or more commits besides merge commits, a\n" +
-			"squash merge (COMMIT_OR_PR_TITLE) records the title as the landed commit's\n" +
-			"subject; with fewer it lands that commit's own subject, which --range\n" +
-			"judges, so --pr gives the title no verdict and says so in a notice.\n" +
+			"shipped presets). --pr lints a pull request's TITLE over the API: with two\n" +
+			"or more commits besides merge commits, a squash merge (COMMIT_OR_PR_TITLE)\n" +
+			"records the title as the landed commit's subject; with exactly one it lands\n" +
+			"that commit's own subject, which --range judges, so --pr gives the title no\n" +
+			"verdict and says so in a notice; with none the title is judged too.\n" +
 			"--message and --stdin lint one message at authoring\n" +
 			"time — the commit-msg hook path — where a message an unlandable pattern\n" +
 			"claims passes with its reason as a warning (the shipped presets claim git's\n" +
@@ -138,7 +138,7 @@ func newLintCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&o.rng, "range", "", "lint every commit in a git revision range (BASE..HEAD)")
-	cmd.Flags().IntVar(&o.pull, "pr", 0, "lint a pull request's title, read over the API, when it is the subject a squash merge lands (two or more commits besides merge commits)")
+	cmd.Flags().IntVar(&o.pull, "pr", 0, "lint a pull request's title, read over the API, unless the pull holds exactly one commit besides merge commits (a squash merge then lands that commit's subject)")
 	cmd.Flags().StringVar(&o.repo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&o.message, "message", "", "lint one message given inline")
 	cmd.Flags().BoolVar(&stdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
@@ -304,13 +304,14 @@ func lintOne(message, author string, cfg *config.Config) error {
 		WithDetails([]bump.Refusal{{Subject: bump.FirstLine(message), Detail: v.Reason}})
 }
 
-// lintPRRun lints a pull request's title when it is the merge candidate: under
-// COMMIT_OR_PR_TITLE a squash lands the title only when the pull holds two or
-// more commits besides merge commits (glyph-test-2 #27: one commit plus an
-// update-branch merge landed the commit's subject while REST .commits said 2,
-// so the count is the listing's one-parent commits, never the pull's own
-// count). Below two, the landed subject is a commit --range already judged, so
-// the title gets a notice and no verdict. When it is the candidate, the title
+// lintPRRun lints a pull request's title unless the pull holds exactly one
+// commit besides merge commits: under COMMIT_OR_PR_TITLE a squash then lands
+// that commit's subject (glyph-test-2 #27: one commit plus an update-branch
+// merge landed the commit's subject while REST .commits said 2, so the count is
+// the listing's one-parent commits, never the pull's own count), a commit
+// --range already judged, so the title gets a notice and no verdict. The
+// exemption rests on that measurement alone, so zero — an empty listing, or
+// merge commits only — is judged like two or more. When it lands, the title
 // is the only landed subject the range can never see — it exists nowhere as a
 // commit until the squash mints it.
 //
@@ -346,9 +347,9 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 				authored++
 			}
 		}
-		if authored < 2 {
-			noticef("%s/%s#%d title not judged: the pull holds %d commit(s) besides merge commits, so a squash merge (COMMIT_OR_PR_TITLE) lands that commit's own subject, which --range judges — the title becomes the merge candidate at two",
-				owner, repo, number, authored)
+		if authored == 1 {
+			noticef("%s/%s#%d title not judged: the pull holds one commit besides merge commits, so a squash merge (COMMIT_OR_PR_TITLE) lands that commit's own subject, which --range judges",
+				owner, repo, number)
 			return nil
 		}
 	}
