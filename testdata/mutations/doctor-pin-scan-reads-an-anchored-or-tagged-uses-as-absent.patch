@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index 35581a8..5bb5e3b 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -328,7 +328,7 @@ func scanUses(file, body string) (refs []pinRef, unread []unreadUse) {
+ 	// holds no value for it. text is what the Details line quotes.
+ 	unresolved := func(i int, v, text string) bool {
+ 		switch v[0] {
+-		case '&', '!':
++		case 0:
+ 			if strings.Contains(strings.ToLower(v), glyphRepo) {
+ 				notRead(i, text, "a value carrying an anchor or a tag, which doctor does not resolve")
+ 			}

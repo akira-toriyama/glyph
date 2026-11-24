@@ -148,12 +148,13 @@ type reusableCall struct {
 // reusable: every caller check is could-not-run over it (usesUnreadWhy), never
 // a pass over a call that was not read — unless its text holds every glyph
 // reference whole and none names .github/workflows/: a step's action
-// reference, which calls no reusable and is the pin check's alone.
+// reference, which calls no reusable and is the pin check's alone. A line
+// whose text is not known (unreadUse.Unknown) may call one.
 // file is the name in .github/workflows.
 func reusablesCalled(file, body string) (calls []reusableCall, unread []string) {
 	refs, unreadUses := scanUses(".github/workflows/"+file, body)
 	for _, u := range unreadUses {
-		if mayCallReusable(u.Text) {
+		if u.Unknown || mayCallReusable(u.Text) {
 			unread = append(unread, u.Detail)
 		}
 	}

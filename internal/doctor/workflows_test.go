@@ -160,7 +160,7 @@ func TestScanUsesReadsEverySpellingActionsRuns(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			refs, unread := scanUses("w.yml", tt.body)
 			if len(refs) != 1 || len(unread) != 0 {
-				t.Fatalf("scanUses = %+v, unread %q; want the one reference on line %d", refs, unread, tt.line)
+				t.Fatalf("scanUses = %+v, unread %+v; want the one reference on line %d", refs, unread, tt.line)
 			}
 			if r := refs[0]; r.Line != tt.line || r.Ref != "main" || r.Problem == "" {
 				t.Errorf("reference = %+v, want @main on line %d, judged a moving ref", r, tt.line)
@@ -194,7 +194,7 @@ func TestScanUsesSaysWhatItCannotRead(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			refs, unread := scanUses("w.yml", tt.body)
 			if len(refs) != 0 || len(unread) != tt.unread {
-				t.Errorf("scanUses = %+v, unread %q; want no reference and %d unread line(s)", refs, unread, tt.unread)
+				t.Errorf("scanUses = %+v, unread %+v; want no reference and %d unread line(s)", refs, unread, tt.unread)
 			}
 		})
 	}

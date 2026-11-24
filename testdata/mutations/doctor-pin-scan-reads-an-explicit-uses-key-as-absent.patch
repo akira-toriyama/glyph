@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index 35581a8..741b537 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -365,7 +365,7 @@ func scanUses(file, body string) (refs []pinRef, unread []unreadUse) {
+ 			}
+ 			continue
+ 		}
+-		if value, explicit := explicitKey(lines, i); explicit {
++		if value, explicit := explicitKey(lines, i); explicit && value == "" {
+ 			if strings.Contains(strings.ToLower(value), glyphRepo) {
+ 				notRead(i, value, "the value of an explicit `? uses` key, which doctor does not read")
+ 			}

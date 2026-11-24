@@ -4938,13 +4938,21 @@ The severities are the argued part:
   scan must skip block scalars whole or it fails a repository over text it emits
   rather than runs. Whole-line comments are dropped, block scalars are skipped by
   indentation, `uses:` is only recognised as a YAML key — the line's own, or an
-  entry of a one-line flow mapping — and its value is read in every spelling
-  GitHub Actions runs (block scalar, flow mapping, quoted key, at step and at job
-  level: glyph-test-2 PR #32, 2026-11-24); a glyph reference in a block or flow
-  value read any other way, or on the line(s) below an empty `uses:` (valid
-  YAML; whether Actions runs it is unmeasured), is could-not-run, never zero
-  references — in `workflow-glyph-pins` and in each caller check, which never
-  passes over a call it did not read. The
+  entry of a one-line flow mapping — and its value is read as a plain scalar, a
+  one-line block scalar or a flat flow-mapping entry, under the key plain or
+  quoted (each a spelling GitHub Actions runs, at step and at job level:
+  glyph-test-2 PR #32, 2026-11-24). Actions also runs spellings the scan does
+  not resolve: a value carrying an anchor (`&a`) or a tag (`!!str`) and an alias
+  (`*a`) of an anchor set on an earlier `uses:` value or under the top-level
+  `env:`, each at step and at job level, and at step level an explicit `? uses`
+  key and an anchor inside a flow-mapped step (glyph-test-2 PR #33,
+  2026-11-24). A glyph reference in one of those, in a block or flow value read
+  any other way, or on the line(s) below an empty `uses:` (valid YAML; whether
+  Actions runs it is unmeasured) is could-not-run, never zero references — in
+  `workflow-glyph-pins` and in each caller check, which never passes over a call
+  it did not read. An alias counts as glyph's when the line defining its anchor
+  names glyph or holds no value for it, never when that line names another
+  action. The
   owner/repo match is case-insensitive because GitHub's resolution is —
   `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
   repository clean.

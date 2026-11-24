@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
 	"github.com/akira-toriyama/glyph/v6/internal/config"
@@ -47,10 +48,13 @@ type pinRef struct {
 }
 
 // unreadUse is one glyph reference scanUses does not read: Detail is its
-// Details line, Text the value text it quotes.
+// Details line, Text the value text it quotes. Unknown: what the value names
+// is on no line doctor reads (an alias whose anchor's value is below it), so
+// Text says nothing of it.
 type unreadUse struct {
-	Detail string
-	Text   string
+	Detail  string
+	Text    string
+	Unknown bool
 }
 
 // workflowFile is one .github/workflows file as readWorkflows read it. Err is
@@ -275,7 +279,7 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 
 // usesUnreadFix is every check's fix for a glyph reference scanUses does not
 // read: workflow-glyph-pins and the three caller checks.
-const usesUnreadFix = "write each named reference as a one-line uses: value, a block value of one line, or a flat { … } mapping"
+const usesUnreadFix = "write each named reference, with no anchor, alias, tag or `?` key, as a one-line uses: value, a block value of one line, or a flat { … } mapping"
 
 // scanUses extracts every akira-toriyama/glyph `uses:` reference from one
 // workflow file, with its verdict. unread is one Details line per glyph
@@ -304,11 +308,51 @@ const usesUnreadFix = "write each named reference as a one-line uses: value, a b
 // empty `uses:` — valid YAML, whose run by Actions is unmeasured. No spelling
 // measured was refused; the one refusal (a step holding both uses: and run:,
 // 2026-11-24) never runs.
+//
+// Actions also runs a uses: value carrying an anchor (`&a`) or a tag
+// (`!!str`) and an alias (`*a`) of an anchor set on an earlier uses: value or
+// under the top-level env:, each at step and at job level, and at step level
+// an explicit `? uses` key and an anchor inside a flow-mapped step
+// (glyph-test-2 PR #33, 2026-11-24). None is resolved here (unresolved,
+// explicitKey): each that may name glyph is unread.
 func scanUses(file, body string) (refs []pinRef, unread []unreadUse) {
 	lines := strings.Split(body, "\n")
 	notRead := func(i int, text, why string) {
 		unread = append(unread, unreadUse{Text: text, Detail: fmt.Sprintf("%s:%d holds a %s reference doctor does not read, `%s`: %s",
 			file, i+1, glyphRepo, text, why)})
+	}
+	// unresolved reports whether v, the value of a uses: key on line i, opens
+	// with an anchor, a tag or an alias, which this reader never resolves, and
+	// records it unread when it may name glyph: an anchor or a tag when v holds
+	// a glyph reference, an alias when the line defining its anchor does or
+	// holds no value for it. text is what the Details line quotes.
+	unresolved := func(i int, v, text string) bool {
+		switch v[0] {
+		case '&', '!':
+			if strings.Contains(strings.ToLower(v), glyphRepo) {
+				notRead(i, text, "a value carrying an anchor or a tag, which doctor does not resolve")
+			}
+		case '*':
+			name := strings.FieldsFunc(v[1:], func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(",[]{}", r) })
+			if len(name) == 0 {
+				return true
+			}
+			at, anchor, named := anchorOf(lines[:i], name[0])
+			switch {
+			case at < 0:
+			case !named:
+				unread = append(unread, unreadUse{Unknown: true, Detail: fmt.Sprintf(
+					"%s:%d may hold a %s reference doctor does not read, `%s`: an alias of the anchor on line %d, whose value is not on that line",
+					file, i+1, glyphRepo, text, at+1)})
+			case strings.Contains(strings.ToLower(anchor), glyphRepo):
+				unread = append(unread, unreadUse{Text: anchor, Detail: fmt.Sprintf(
+					"%s:%d holds a %s reference doctor does not read, `%s`: an alias of the anchor on line %d, `%s`, which doctor does not resolve",
+					file, i+1, glyphRepo, text, at+1, anchor)})
+			}
+		default:
+			return false
+		}
+		return true
 	}
 	var held flowState // a flow value opened on line heldAt that has not closed
 	heldAt, heldText := -1, ""
@@ -318,6 +362,12 @@ func scanUses(file, body string) (refs []pinRef, unread []unreadUse) {
 			heldText += " " + strings.TrimSpace(line)
 			if !held.open() && namesGlyphUses(heldText) {
 				notRead(heldAt, heldText, "a flow value spread over several lines")
+			}
+			continue
+		}
+		if value, explicit := explicitKey(lines, i); explicit {
+			if strings.Contains(strings.ToLower(value), glyphRepo) {
+				notRead(i, value, "the value of an explicit `? uses` key, which doctor does not read")
 			}
 			continue
 		}
@@ -343,18 +393,26 @@ func scanUses(file, body string) (refs []pinRef, unread []unreadUse) {
 		if value[0] == '{' || value[0] == '[' {
 			if entries, flow := flowEntries(value); flow {
 				var found []pinRef
+				var props []string // uses: values opening with an anchor, a tag or an alias
 				for _, e := range entries {
 					k, v, ok := withEntry(e)
 					if !ok {
-						found = nil
+						found, props = nil, nil
 						if namesGlyphUses(value) {
 							notRead(i, value, "a flow mapping entry that is not a plain or quoted `key: value`")
 						}
 						break
 					}
 					if k == "uses" {
+						if v != "" && strings.ContainsRune("&!*", rune(v[0])) {
+							props = append(props, v)
+							continue
+						}
 						found = appendRef(found, file, i, v)
 					}
+				}
+				for _, v := range props {
+					unresolved(i, v, value)
 				}
 				for j := range found {
 					found[j].Flow = true
@@ -370,6 +428,9 @@ func scanUses(file, body string) (refs []pinRef, unread []unreadUse) {
 			continue
 		}
 		if key != "uses" {
+			continue
+		}
+		if unresolved(i, value, value) {
 			continue
 		}
 		if indent, opens := blockScalarKey(line); opens {
@@ -413,6 +474,61 @@ func appendRef(refs []pinRef, file string, i int, value string) []pinRef {
 func namesGlyphUses(text string) bool {
 	lower := strings.ToLower(text)
 	return strings.Contains(lower, "uses") && strings.Contains(lower, glyphRepo)
+}
+
+// explicitKey reports whether line i is an explicit key `? uses` (the key
+// plain or quoted, the line optionally list-dashed) and returns its value: the
+// rest of the next content line when that line opens with `: `, its comment
+// cut, else "".
+func explicitKey(lines []string, i int) (value string, ok bool) {
+	trimmed := strings.TrimLeft(lines[i], " \t")
+	if after, dashed := strings.CutPrefix(trimmed, "-"); dashed {
+		trimmed = strings.TrimLeft(after, " \t")
+	}
+	after, found := strings.CutPrefix(trimmed, "?")
+	if !found || after == "" || (after[0] != ' ' && after[0] != '\t') {
+		return "", false
+	}
+	if key := strings.TrimSpace(withoutComment(after)); key != "uses" && key != `"uses"` && key != "'uses'" {
+		return "", false
+	}
+	for _, next := range contentLines(lines, i+1) {
+		if rest, colon := strings.CutPrefix(strings.TrimLeft(next, " \t"), ":"); colon && (rest == "" || rest[0] == ' ' || rest[0] == '\t') {
+			value = strings.TrimSpace(withoutComment(rest))
+		}
+		break
+	}
+	return value, true
+}
+
+// anchorOf finds the last of lines that defines the anchor &name — at its
+// index, -1 for none — and returns that line, trimmed and its comment cut.
+// named is false when the anchor's value is not on that line: nothing but a
+// tag after it, or a block scalar header.
+func anchorOf(lines []string, name string) (at int, line string, named bool) {
+	at = -1
+	for j, l := range contentLines(lines, 0) {
+		l = strings.TrimSpace(withoutComment(l))
+		for k := 0; ; {
+			n := strings.Index(l[k:], "&"+name)
+			if n < 0 {
+				break
+			}
+			start, end := k+n, k+n+1+len(name)
+			k = end
+			if start > 0 && !strings.ContainsRune(" \t[{,", rune(l[start-1])) ||
+				end < len(l) && !strings.ContainsRune(" \t,]}", rune(l[end])) {
+				continue
+			}
+			rest := strings.Fields(l[end:])
+			for len(rest) > 0 && strings.HasPrefix(rest[0], "!") {
+				rest = rest[1:]
+			}
+			at, line, named = j, l, len(rest) > 0 && rest[0][0] != '|' && rest[0][0] != '>'
+			break
+		}
+	}
+	return at, line, named
 }
 
 // blockContent returns the content lines of the block scalar whose header
