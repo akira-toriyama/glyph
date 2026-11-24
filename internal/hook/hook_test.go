@@ -339,6 +339,28 @@ func TestInstallRefusesAForeignHook(t *testing.T) {
 	}
 }
 
+// The refusal's advice forces the kind it told the reader to inspect and no
+// other: a plain --force also replaces a foreign hook of the other kind, one
+// the refusal never named. Each kind is seeded foreign alone and the run asks
+// for every kind, as a bare install does.
+func TestARefusalAdvisesForcingTheKindItNamed(t *testing.T) {
+	for _, k := range Kinds() {
+		t.Run(k.Name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, k.Name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil { //nolint:gosec
+				t.Fatalf("seeding %s: %v", k.Name, err)
+			}
+			_, err := Install(dir, false, Kinds()...)
+			if err == nil {
+				t.Fatalf("Install overwrote a foreign %s hook without --force", k.Name)
+			}
+			if want := "glyph hook install --force " + k.Name + " "; !strings.Contains(err.Error(), want) {
+				t.Errorf("the refusal of a foreign %s hook does not advise %q: %v", k.Name, want, err)
+			}
+		})
+	}
+}
+
 // TestInstallWritesNothingWhenALaterKindRefuses: every kind is planned before
 // any is written, so a refusal on the second kind leaves the first off the
 // disk too — "exit 2, nothing happened" is what the caller reads the refusal

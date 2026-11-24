@@ -88,7 +88,7 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
 		c.Message = "glyph never silently overwrites somebody else's hook, so this is a standing choice and not drift. What " +
 			"it costs is that nothing here is known to lint the convention locally; if this hook does call glyph, it does " +
 			"so on terms this binary cannot see"
-		c.Fix = "inspect it, then `glyph hook install --force` to replace it with the generated hook"
+		c.Fix = "inspect it, then `glyph hook install --force " + k.Name + "` to replace it with the generated hook"
 	}
 	return c
 }

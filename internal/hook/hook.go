@@ -396,8 +396,8 @@ func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
 	default:
 		res.Action = "refused"
 		return res, "", core.Usagef(
-			"the %s hook %s already exists and was not written by glyph — refusing to overwrite it, "+
-				"so nothing was written. Inspect it, then re-run with --force to replace it (its "+
+			"the %[1]s hook %[2]s already exists and was not written by glyph — refusing to overwrite it, "+
+				"so nothing was written. Inspect it, then run glyph hook install --force %[1]s to replace it (its "+
 				"rules, if any, are superseded: the new hook calls glyph)", k.Name, in.Path)
 	}
 }
