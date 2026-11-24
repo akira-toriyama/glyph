@@ -118,5 +118,26 @@ func newRootCmd() *cobra.Command {
 			c.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
 		}
 	}
+
+	// `help` is cobra's too, and it gives it no Args: its Run resolves the
+	// topic with Find, which returns the deepest command plus the words left
+	// over without error whenever that command has Args set — every glyph
+	// command does — so `glyph help nosuch` printed the root's help at 0 and
+	// `glyph help lint extra` lint's. This guard hands the leftover words to
+	// the topic's own noArgs, so the refusal is the one `glyph nosuch` or
+	// `glyph lint extra` gives, at 2. InitDefaultHelpCmd is idempotent: the
+	// call cobra makes again at Execute keeps this same command.
+	root.InitDefaultHelpCmd()
+	for _, c := range root.Commands() {
+		if c.Name() == "help" {
+			c.Args = func(cmd *cobra.Command, args []string) error {
+				topic, rest, err := cmd.Root().Find(args)
+				if err != nil {
+					return err
+				}
+				return noArgs(topic, rest)
+			}
+		}
+	}
 	return root
 }

@@ -56,6 +56,14 @@ if [ -n "$out" ]; then
   echo "  'completion bogus' wrote to stdout, which is what a caller redirects into a sourced file" >&2
   exit 1
 fi
+# `help` is cobra's too: a topic it cannot resolve is usage, as the same words
+# without `help` are — not the root's help at 0.
+status=0
+"$BIN" help nosuch >/dev/null 2>&1 || status=$?
+if [ "$status" -ne 2 ]; then
+  echo "  expected exit 2 (usage) for an unknown help topic, got $status" >&2
+  exit 1
+fi
 
 echo "→ smoke: lint / bump exit-code contract"
 # The CODE is the assertion, not merely non-zero: a `--stdin=false` that exits 3
