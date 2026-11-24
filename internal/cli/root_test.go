@@ -155,9 +155,11 @@ func TestStrayPositionalNamesItsRemedy(t *testing.T) {
 // TestHelpRefusesWhatItCannotResolve: cobra's `help` resolved its topic with
 // Find, which returns the deepest command and the leftover words without
 // error, so `glyph help nosuch` printed the root's help at 0. A leftover word
-// is now the topic's own stray positional — the refusal the same words give
-// without `help` — while a topic that resolves whole still prints the bytes
-// its --help prints, at 0.
+// is now judged by the topic's own Args, as the same words without `help`
+// are: a refusal is the one those words give, and the positionals a topic
+// takes (hook install's kinds, hook pre-push's remote and url) leave its help
+// at 0, the bytes its --help prints. A guard that refused every leftover word
+// failed the last two.
 func TestHelpRefusesWhatItCannotResolve(t *testing.T) {
 	for name, tc := range map[string]struct {
 		args []string
@@ -166,6 +168,8 @@ func TestHelpRefusesWhatItCannotResolve(t *testing.T) {
 		"an unknown topic":          {[]string{"help", "nosuch"}, `unknown command "nosuch" for "glyph" — run 'glyph --help' for the command list`},
 		"a word past a leaf":        {[]string{"help", "lint", "extra"}, `glyph lint takes no arguments (got "extra")`},
 		"an unknown sub of a group": {[]string{"help", "hook", "nosuch"}, `unknown command "nosuch" for "glyph hook" — run 'glyph hook --help' for the command list`},
+		"an unknown shell":          {[]string{"help", "completion", "zshh"}, `unknown command "zshh" for "glyph completion" — run 'glyph completion --help' for the command list`},
+		"a kind install refuses":    {[]string{"help", "hook", "install", "nosuch"}, `glyph writes no "nosuch" hook; the kinds are commit-msg, pre-push`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, stdout, stderr := runGlyph(t, tc.args...)
@@ -178,11 +182,17 @@ func TestHelpRefusesWhatItCannotResolve(t *testing.T) {
 		})
 	}
 	// runGlyph sends cobra's help to its stderr buffer (root.SetOut(errBuf)).
-	for _, topic := range [][]string{{}, {"lint"}, {"hook", "install"}} {
-		code, _, got := runGlyph(t, append([]string{"help"}, topic...)...)
-		_, _, want := runGlyph(t, append(topic, "--help")...)
+	for _, tc := range []struct{ words, topic []string }{
+		{nil, nil},
+		{[]string{"lint"}, []string{"lint"}},
+		{[]string{"hook", "install"}, []string{"hook", "install"}},
+		{[]string{"hook", "install", "pre-push"}, []string{"hook", "install"}},
+		{[]string{"hook", "pre-push", "origin", "url"}, []string{"hook", "pre-push"}},
+	} {
+		code, _, got := runGlyph(t, append([]string{"help"}, tc.words...)...)
+		_, _, want := runGlyph(t, append(tc.topic, "--help")...)
 		if code != 0 || got != want || want == "" {
-			t.Errorf("glyph help %v = %d, want 0 and the bytes --help prints (%d bytes, got %d)", topic, code, len(want), len(got))
+			t.Errorf("glyph help %v = %d, want 0 and the bytes glyph %v --help prints (%d bytes, got %d)", tc.words, code, tc.topic, len(want), len(got))
 		}
 	}
 }
