@@ -907,8 +907,9 @@ There are **two** pin surfaces per glyph release and this check sees one of them
 A consumer that uses the install action pins the action with `uses: …@vX.Y.Z` and
 *also* hands it the release to download, as `with: version: vX.Y.Z` on the same
 step — the action's `version` input is required and has no default, precisely so
-no hand-bumped default can drift. `scanUses` reads only lines whose own YAML key
-is `uses:`, so the `version:` two lines below is invisible to it: a repository
+no hand-bumped default can drift. `scanUses` reads only a `uses:` key, quoted or
+not, the line's own or a one-line flow mapping's entry, so the `version:` two
+lines below is invisible to it: a repository
 whose every `uses:` names the new tag while its `version:` still names an older one
 passes this check while installing a different glyph release than its workflows
 name. The two ship lockstep from one glyph release; bump them in the same edit.

@@ -43,6 +43,14 @@ type pinRef struct {
 	Uses    string
 	Ref     string
 	Problem string
+	Flow    bool // read as an entry of a one-line flow mapping (`call: {uses: …}`)
+}
+
+// unreadUse is one glyph reference scanUses does not read: Detail is its
+// Details line, Text the value text it quotes.
+type unreadUse struct {
+	Detail string
+	Text   string
 }
 
 // workflowFile is one .github/workflows file as readWorkflows read it. Err is
@@ -153,7 +161,10 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 			continue
 		}
 		r, u := scanUses(filepath.Join(".github", "workflows", f.Name), f.Body)
-		refs, unreadRefs = append(refs, r...), append(unreadRefs, u...)
+		refs = append(refs, r...)
+		for _, x := range u {
+			unreadRefs = append(unreadRefs, x.Detail)
+		}
 	}
 
 	// The workflows directory is not the only place a checkout EXECUTES a glyph
@@ -188,7 +199,10 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 		}
 		files++
 		r, u := scanUses(f.Path, string(body))
-		refs, unreadRefs = append(refs, r...), append(unreadRefs, u...)
+		refs = append(refs, r...)
+		for _, x := range u {
+			unreadRefs = append(unreadRefs, x.Detail)
+		}
 	}
 
 	var bad []pinRef
@@ -290,11 +304,11 @@ const usesUnreadFix = "write each named reference as a one-line uses: value, a b
 // empty `uses:` — valid YAML, whose run by Actions is unmeasured. No spelling
 // measured was refused; the one refusal (a step holding both uses: and run:,
 // 2026-11-24) never runs.
-func scanUses(file, body string) (refs []pinRef, unread []string) {
+func scanUses(file, body string) (refs []pinRef, unread []unreadUse) {
 	lines := strings.Split(body, "\n")
 	notRead := func(i int, text, why string) {
-		unread = append(unread, fmt.Sprintf("%s:%d holds a %s reference doctor does not read, `%s`: %s",
-			file, i+1, glyphRepo, text, why))
+		unread = append(unread, unreadUse{Text: text, Detail: fmt.Sprintf("%s:%d holds a %s reference doctor does not read, `%s`: %s",
+			file, i+1, glyphRepo, text, why)})
 	}
 	var held flowState // a flow value opened on line heldAt that has not closed
 	heldAt, heldText := -1, ""
@@ -341,6 +355,9 @@ func scanUses(file, body string) (refs []pinRef, unread []string) {
 					if k == "uses" {
 						found = appendRef(found, file, i, v)
 					}
+				}
+				for j := range found {
+					found[j].Flow = true
 				}
 				refs = append(refs, found...)
 				continue

@@ -1,13 +1,13 @@
 diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
-index f0c14c5..58c73c2 100644
+index d03b035..cd08df0 100644
 --- a/internal/doctor/callerperms.go
 +++ b/internal/doctor/callerperms.go
-@@ -151,7 +151,7 @@ func reusablesCalled(file, body string) (calls []reusableCall, unread []string)
+@@ -164,7 +164,7 @@ func reusablesCalled(file, body string) (calls []reusableCall, unread []string)
  		}
- 		calls = append(calls, reusableCall{Reusable: spec[strings.LastIndex(spec, "/")+1:], Ref: ref.Ref, Line: ref.Line})
+ 		calls = append(calls, reusableCall{Reusable: spec[strings.LastIndex(spec, "/")+1:], Ref: ref.Ref, Line: ref.Line, Flow: ref.Flow})
  	}
 -	return calls, unread
 +	return calls, nil
  }
  
- // What every caller check says of a glyph reference scanUses does not read
+ // mayCallReusable reports whether the text of a glyph reference scanUses does

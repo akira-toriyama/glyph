@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // This check exists for a failure class NO runtime diagnosis can see —
@@ -129,6 +130,10 @@ type reusableCall struct {
 	Reusable string // the file name as the caller spelled it
 	Ref      string
 	Line     int // 1-indexed, the job's `uses:` line (jobWithKeys reads its block from here)
+	// Flow: the call is an entry of a one-line flow mapping. The caller
+	// checks read a job's keys (permissions:, with:) in block form only, so
+	// they judge no such call (flowCallLine) — the pin check still does.
+	Flow bool
 }
 
 // reusablesCalled returns every glyph reusable this workflow file executes,
@@ -141,22 +146,60 @@ type reusableCall struct {
 // reusable" — every caller check reads it. unread is scanUses' Details line of
 // each glyph reference it does not read, which could be a call into any
 // reusable: every caller check is could-not-run over it (usesUnreadWhy), never
-// a pass over a call that was not read. file is the name in .github/workflows.
+// a pass over a call that was not read — unless its text holds every glyph
+// reference whole and none names .github/workflows/: a step's action
+// reference, which calls no reusable and is the pin check's alone.
+// file is the name in .github/workflows.
 func reusablesCalled(file, body string) (calls []reusableCall, unread []string) {
-	refs, unread := scanUses(".github/workflows/"+file, body)
+	refs, unreadUses := scanUses(".github/workflows/"+file, body)
+	for _, u := range unreadUses {
+		if mayCallReusable(u.Text) {
+			unread = append(unread, u.Detail)
+		}
+	}
 	for _, ref := range refs {
 		spec, _, _ := strings.Cut(ref.Uses, "@")
 		if !strings.Contains(strings.ToLower(spec), "/.github/workflows/") {
 			continue
 		}
-		calls = append(calls, reusableCall{Reusable: spec[strings.LastIndex(spec, "/")+1:], Ref: ref.Ref, Line: ref.Line})
+		calls = append(calls, reusableCall{Reusable: spec[strings.LastIndex(spec, "/")+1:], Ref: ref.Ref, Line: ref.Line, Flow: ref.Flow})
 	}
 	return calls, unread
+}
+
+// mayCallReusable reports whether the text of a glyph reference scanUses does
+// not read can be a reusable call: it names .github/workflows/, or a glyph
+// reference in it is not one whole `…@ref` token (split over lines, say), so
+// what it names is not known.
+func mayCallReusable(text string) bool {
+	lower := strings.ToLower(text)
+	if strings.Contains(lower, "/.github/workflows/") {
+		return true
+	}
+	for token := range strings.FieldsFuncSeq(lower, func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(`"',{}[]`, r) }) {
+		if strings.Contains(token, glyphRepo) && !strings.Contains(token, "@") {
+			return true
+		}
+	}
+	return false
 }
 
 // What every caller check says of a glyph reference scanUses does not read
 // (reusablesCalled's unread): could-not-run, as for a with: it does not read.
 const usesUnreadWhy = "a glyph reference doctor does not read could call any glyph reusable"
+
+// What every caller check says of a call written as a flow mapping
+// (reusableCall.Flow): could-not-run, whatever the mapping holds.
+const (
+	flowCallWhy = "these checks read a job's keys in block form, and a job written as a flow mapping is not read"
+	flowCallFix = "write each job that calls a glyph reusable as a block of `key: value` lines"
+)
+
+// flowCallLine is the Details line of a call written as a flow mapping.
+func flowCallLine(file string, call reusableCall) string {
+	return fmt.Sprintf(".github/workflows/%s:%d calls %s@%s from a job written as a flow mapping, and these checks read a job's keys in block form",
+		file, call.Line, call.Reusable, call.Ref)
+}
 
 // callerGrants returns the union of every `scope: level` pair granted by any
 // permissions block in the file — block form, flow form (`{contents: read}`)
