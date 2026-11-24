@@ -66,7 +66,7 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
 		c.Status = StatusPass
 		c.Observed = "no " + k.Name + " hook at " + path + ", so none can be stale"
 		c.Message = "the local gate is opt-in and CI is the authority, so its absence costs a round trip rather than a " +
-			"wrong verdict. `glyph hook install` adds it: it holds no copy of the rules (it shells back to " +
+			"wrong verdict. `glyph hook install " + k.Name + "` adds it: it holds no copy of the rules (it shells back to " +
 			"`" + k.Asks + "`) and blocks for a real convention violation and nothing else"
 	case hook.Current:
 		c.Status = StatusPass

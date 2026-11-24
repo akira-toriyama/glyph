@@ -652,6 +652,11 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 			if warned != tc.wantWarn {
 				t.Fatalf("warned = %v, want %v\nstderr: %s", warned, tc.wantWarn, stderr)
 			}
+			// Beside a foreign pre-push hook a plain install refuses and writes
+			// nothing, so the refresh the warning names is this kind's install.
+			if want := "Refresh it: glyph hook install commit-msg"; tc.wantWarn && !strings.Contains(stderr, want) {
+				t.Errorf("the drift warning does not name %q\nstderr: %s", want, stderr)
+			}
 		})
 	}
 }
