@@ -794,7 +794,7 @@ func nextLink(header string) (string, error) {
 			}
 		}
 		if next == "" {
-			for _, typ := range strings.Fields(rel) {
+			for typ := range strings.FieldsSeq(rel) {
 				if strings.EqualFold(typ, "next") {
 					next = target
 					break
