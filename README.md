@@ -201,7 +201,9 @@ made before `glyph.toml` existed included — under today's `glyph.toml`, and
 glyph ships no migration window: a commit no pattern claims refuses the walk
 (`bump --since-tag` and `release`, `--dry-run` included, exit 3 with one
 `::error::` per commit). The gate never judges those commits again — it lints
-only what a pull or a push adds — so only the walk needs a base:
+only what a pull or a push adds — so only the walk needs a base, and a
+repository whose history predates the sigil gives it one rather than teaching
+its grammar to accept the old subjects:
 
 - **A young repository** whose every commit is already convention-shaped (a
   `:tada:=` bootstrap before the `glyph.toml` commit is) needs no tag. With no
@@ -287,10 +289,11 @@ Success is one `<name> hook installed at <path>` line per hook. From then on a
 `git commit` whose message no pattern claims fails, with glyph's exit-3
 envelope on stderr saying what to write instead. `pre-push` blocks only a push
 to the remote's default branch, which it reads from the local
-`refs/remotes/origin/HEAD`, never over the network; in a clone that records
-none, a violating push goes through with the warning `this clone does not
-record origin's default branch, so nothing in this push could block` — run
-`git remote set-head origin -a` and it blocks.
+`refs/remotes/<remote>/HEAD` of the remote pushed to, never over the network;
+in a clone that records none, a violating push goes through with the warning
+`this clone does not record origin's default branch, so nothing in this push
+could block` (naming the remote) — run `git remote set-head origin -a`, with
+that remote's name, and it blocks.
 
 **3. Wire CI** — three callers, each a few lines around one `uses:` pinned
 to a release tag; `glyph doctor` checks that each grants and passes what its
@@ -628,10 +631,11 @@ name = "core"           # its default "." is no preset scope's word: under the p
 ```
 
 `glyph init` writes this paragraph commented out, and uncommenting its
-entries where they stand is all a declaration takes: an entry anywhere below
-the file's top-level keys loads, while a `[[packages]]` header above them
-swallows them (`unknown keys packages.schema, …`, exit 2), and a header
-uncommented without its `path` does not load. Declaration order decides
+entries where they stand is all a declaration takes. Moved, an entry loads
+only where its keys run to the next table header or the end of the file: a
+`[[packages]]` header placed in front of other keys swallows them — the
+top-level ones (`unknown keys packages.schema, …`) or another table's — at
+exit 2, and a header uncommented without its `path` does not load. Declaration order decides
 nothing about which line a commit moves — the longest path wins, below — and
 only orders the per-line output.
 
