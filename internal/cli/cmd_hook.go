@@ -191,7 +191,7 @@ func resolveHookKinds(args []string) ([]hook.Kind, error) {
 	for i, name := range args {
 		k, ok := hook.KindByName(name)
 		if !ok {
-			return nil, core.Usagef("glyph writes no %q hook; the kinds are %s", name, strings.Join(hook.KindNames(), ", "))
+			return nil, core.Usagef("glyph writes no %q hook; the kinds are %s%s", name, strings.Join(hook.KindNames(), ", "), detachedBoolHint(name))
 		}
 		if !slices.Contains(args[:i], name) {
 			kinds = append(kinds, k)

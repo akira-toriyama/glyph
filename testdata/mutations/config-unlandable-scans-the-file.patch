@@ -1,10 +1,10 @@
 diff --git a/internal/config/match.go b/internal/config/match.go
-index 6ffa041..9ad22fe 100644
+index 9cfadc7..5ed17ac 100644
 --- a/internal/config/match.go
 +++ b/internal/config/match.go
-@@ -68,6 +68,11 @@ type Match struct {
- // pattern declares no fixed fallback. Both are config bugs surfaced at the
- // first commit that hits them.
+@@ -70,6 +70,11 @@ type Match struct {
+ // pattern's (an optional group meets a message with no sigil), so its refusal
+ // names both fixes.
  func (c *Config) Match(message string) (Match, error) {
 +	for i := range c.Patterns {
 +		if p := &c.Patterns[i]; p.unlandable != "" && p.re.MatchString(message) {

@@ -183,6 +183,8 @@ func TestLoadErrors(t *testing.T) {
 		{"missing schema", minimalPatterns, "schema is required"},
 		{"unsupported schema", "schema = 2\n" + minimalPatterns, "unsupported schema = 2"},
 		{"schema zero is declared not missing", "schema = 0\n" + minimalPatterns, "unsupported schema = 0"},
+		{"a newer schema names both fixes", "schema = 2\n" + minimalPatterns, "this glyph reads schema = 1 — a glyph.toml written for a newer schema needs a glyph that reads it; otherwise write schema = 1"},
+		{"an older schema names its one fix", "schema = 0\n" + minimalPatterns, "this glyph reads schema = 1 — write schema = 1"},
 		{"unknown top-level key", "schema = 1\nexclude_author = ['x']\n" + minimalPatterns, "unknown key"},
 		{"unknown pattern key", "schema = 1\n[[patterns]]\npattern = 'x'\nsigil = '='\n", "unknown key"},
 		{"no patterns", "schema = 1\n", "at least one [[patterns]]"},

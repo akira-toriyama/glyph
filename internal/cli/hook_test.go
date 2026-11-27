@@ -271,6 +271,23 @@ func TestHookInstallPrintOfAKindNamedTwiceIsItsScript(t *testing.T) {
 	}
 }
 
+// TestHookInstallRefusalNamesTheAttachedBoolForm: `--print false` sets --print
+// to true and leaves "false" behind, where install reads it as a kind, so the
+// kind refusal also names the attached form a bool flag's value takes.
+func TestHookInstallRefusalNamesTheAttachedBoolForm(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	t.Chdir(dir)
+	args := []string{"hook", "install", "--print", "false"}
+	want := `glyph writes no "false" hook; the kinds are ` + strings.Join(hook.KindNames(), ", ") + ` — a bool flag takes its value attached: --<flag>=false`
+	code, stdout, stderr := runGlyph(t, args...)
+	if code != int(core.CodeUsage) || stdout != "" {
+		t.Fatalf("%v = %d stdout %q, want exactly %d and nothing on stdout\nstderr: %s", args, code, stdout, core.CodeUsage, stderr)
+	}
+	if env := decodeErrorEnvelope(t, stderr); env.Code != int(core.CodeUsage) || env.Message != want {
+		t.Errorf("%v envelope = %+v, want code %d and message\n%s", args, env, core.CodeUsage, want)
+	}
+}
+
 // TestHookInstallRefusalNamesTheKinds: a kind glyph does not write is usage
 // (2), alone or beside a kind it does, and the refusal is resolveHookKinds'
 // one sentence listing the kinds it does write — read from hook.KindNames, so

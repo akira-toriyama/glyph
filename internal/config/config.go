@@ -438,7 +438,10 @@ func Load(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("schema is required (this glyph understands schema = %d)", schema)
 	}
 	if *r.Schema != schema {
-		return nil, fmt.Errorf("unsupported schema = %d (this glyph understands schema = %d); refusing to guess what its fields mean", *r.Schema, schema)
+		if *r.Schema > schema {
+			return nil, fmt.Errorf("unsupported schema = %d: this glyph reads schema = %d — a glyph.toml written for a newer schema needs a glyph that reads it; otherwise write schema = %d", *r.Schema, schema, schema)
+		}
+		return nil, fmt.Errorf("unsupported schema = %d: this glyph reads schema = %d — write schema = %d", *r.Schema, schema, schema)
 	}
 
 	for i, a := range r.ExcludeAuthors {

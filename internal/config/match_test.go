@@ -199,8 +199,9 @@ func TestMatchSigilErrors(t *testing.T) {
 	t.Run("empty capture without fixed fallback", func(t *testing.T) {
 		cfg := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]?)x'\n")
 		_, err := cfg.Match("x no sigil given")
-		if err == nil || !strings.Contains(err.Error(), "captured nothing") {
-			t.Fatalf("err = %v, want captured-nothing error", err)
+		const both = "captured nothing: write the version sigil where that group sits — or, if this pattern should claim messages that carry none, give it a fixed semver_sigil"
+		if err == nil || !strings.Contains(err.Error(), both) {
+			t.Fatalf("err = %v, want the captured-nothing error naming both fixes", err)
 		}
 	})
 	t.Run("empty capture falls back to fixed", func(t *testing.T) {
