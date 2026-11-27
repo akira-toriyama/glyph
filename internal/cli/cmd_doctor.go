@@ -32,21 +32,15 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "Check that this repository satisfies the assumptions glyph's release machinery makes",
 		Long: "doctor answers the question every other glyph command silently assumes: does\n" +
-			"this repository still match the model glyph computes against. The settings it\n" +
-			"reads are invisible from inside a release run, so when one drifts the workflows\n" +
-			"stay green and the verdict is simply wrong, and nothing says a word.\n\n" +
+			"this repository still match the model glyph computes against.\n\n" +
 			"It is READ-ONLY: nothing about the repository, the checkout or the workflows is\n" +
 			"ever modified. Each failing check prints the command or edit that fixes it\n" +
 			"and leaves making it to you.\n\n" +
 			"The checks, each independent — one it cannot run never stops the others:\n\n" +
 			"  - glyph.toml exists at the checkout's top level and LOADS (valid schema,\n" +
-			"    compilable patterns, a semver_sigil for every match): the config is what\n" +
-			"    every verdict command reads before anything else, so a repository that\n" +
-			"    pins glyph without one has its whole gate down\n" +
+			"    compilable patterns, a semver_sigil for every match)\n" +
 			"  - every [[packages]] path is a directory HEAD records, spelled byte for byte\n" +
-			"    as git records it: a path with no such subtree claims no file, so every\n" +
-			"    commit under the directory meant is attributed to another line or to none —\n" +
-			"    a typo silently moves the verdict\n" +
+			"    as git records it\n" +
 			"  - with [[packages]] declared and no root package (path \".\"), a bare v* tag\n" +
 			"    no declared line holds is advice: such tags baseline no line any more, and\n" +
 			"    the note names the declaration that adopts them. Both package checks\n" +
@@ -54,33 +48,27 @@ func newDoctorCmd() *cobra.Command {
 			"  - the credential can read the repository at all, and what the API itself says\n" +
 			"    about its permissions (never a guess at scopes the API did not report);\n" +
 			"    a credential that could not write releases is advice — only `glyph release`\n" +
-			"    writes, and without the advice the 403 lands after the walk spent its budget\n" +
+			"    writes\n" +
 			"  - squash merging is ENABLED: a squash-merged pull puts exactly ONE commit on\n" +
 			"    main and that commit IS its merge_commit_sha, so it is never half-resolved —\n" +
 			"    no part of it can stand aside for a merge point the walk cannot resolve. The\n" +
-			"    multi-commit landings all have that window. (A dark API is still not free:\n" +
-			"    a squash of TWO or more commits besides merge commits carries the PR\n" +
-			"    title — linted by `lint --pr` at the gate, but the fallback still\n" +
-			"    classifies that one subject instead of the pull's commits.)\n" +
+			"    multi-commit landings all have that window.\n" +
 			"  - merge commits / rebase merges are off — advice, not a defect: the walk\n" +
 			"    resolves and expands both (a merge commit from itself, a rebase from its\n" +
 			"    last replayed commit — each what GitHub names merge_commit_sha). What is\n" +
-			"    left is a house convention plus one named, LOUD window per style — a merge\n" +
+			"    left is a recommendation plus one named, LOUD window per style — a merge\n" +
 			"    point GitHub has not indexed yet drops its pull\n" +
 			"    with two warnings (release refuses the incomplete walk at exit 4;\n" +
 			"    bump/notes hand down their verdict without it); a rebase whose listing the\n" +
 			"    walk cannot align — one that dropped a commit it was asked to replay,\n" +
 			"    already upstream or rebased empty — can still fold a replayed commit in\n" +
 			"    twice during API lag.\n" +
-			"    Neither is the silent wrong verdict a failure is reserved for\n" +
 			"  - squash_merge_commit_title=COMMIT_OR_PR_TITLE and\n" +
 			"    squash_merge_commit_message=COMMIT_MESSAGES: these decide whether the commit\n" +
 			"    that lands on main carries a subject the repository's patterns can classify\n" +
 			"  - every `uses: akira-toriyama/glyph/…` in the LOCAL workflows and in every\n" +
 			"    action.yml / action.yaml in the checkout (submodules included) pins a\n" +
-			"    concrete @vX.Y.Z tag (whether the pin is the LATEST release is deliberately\n" +
-			"    NOT checked — glyph-pin-audit.yml in akira-toriyama/.github already owns\n" +
-			"    that question fleet-wide, and two answers to it would be one too many)\n" +
+			"    concrete @vX.Y.Z tag (whether the pin is the LATEST release is not checked)\n" +
 			"  - every caller of a glyph reusable grants the permissions that reusable\n" +
 			"    declares at the release the caller pins: a caller granting less dies as\n" +
 			"    startup_failure before any job runs, which no runtime diagnosis — glyph's\n" +
@@ -95,11 +83,7 @@ func newDoctorCmd() *cobra.Command {
 			"    before the push (it answers once glyph.toml loads; an input set from an\n" +
 			"    expression is could-not-run)\n" +
 			"  - no STALE glyph-written hook is installed (one check per kind: commit-msg,\n" +
-			"    pre-push). One under .git/hooks is untracked and a tracked core.hooksPath\n" +
-			"    moves only when someone re-installs and commits, so no fleet-sync and no\n" +
-			"    CI job updates one: whatever glyph was on PATH the day it was installed\n" +
-			"    froze the exit code it stops a commit on and the arguments it hands lint,\n" +
-			"    and a stale hook still exits 0 — indistinguishable from a clean message.\n" +
+			"    pre-push). One whose bytes differ from the hook this binary writes fails.\n" +
 			"    NO hook passes (it is opt-in, and an Actions checkout cannot have one); a\n" +
 			"    hook glyph did not write is advice, because glyph will not overwrite it\n" +
 			"    unasked\n" +

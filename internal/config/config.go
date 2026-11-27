@@ -1,6 +1,8 @@
 // Package config loads and validates glyph.toml — the configuration in
-// which user-defined RE2 patterns decide the message grammar and the named
-// group semver_sigil is the only input to version calculation. The sigil
+// which user-defined RE2 patterns decide the message grammar and the sigil a
+// pattern yields (its semver_sigil group's capture, or its fixed semver_sigil
+// key when the group captures none) is the only input to version
+// calculation. The sigil
 // alphabet is fixed in the binary (= none / ~ patch / ^ minor / ! major /
 // % promote to 1.0.0); everything else — where the sigil sits, what a subject
 // looks like, which commits are skipped — belongs to the file, not to glyph.
@@ -93,7 +95,7 @@ func parseSigil(s string) (Sigil, error) {
 	case "%":
 		return SigilPromote, nil
 	}
-	return 0, fmt.Errorf("invalid semver_sigil %q: the alphabet is [=~^!%%]", s)
+	return 0, fmt.Errorf("invalid semver_sigil %q: the alphabet is = none / ~ patch / ^ minor / ! major / %% promote to 1.0.0", s)
 }
 
 func (s Sigil) String() string { return string(rune(s)) }
@@ -438,7 +440,10 @@ func Load(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("schema is required (this glyph understands schema = %d)", schema)
 	}
 	if *r.Schema != schema {
-		return nil, fmt.Errorf("unsupported schema = %d (this glyph understands schema = %d); refusing to guess what its fields mean", *r.Schema, schema)
+		if *r.Schema > schema {
+			return nil, fmt.Errorf("unsupported schema = %d: this glyph reads schema = %d — a glyph.toml written for a newer schema needs a glyph that reads it; otherwise write schema = %d", *r.Schema, schema, schema)
+		}
+		return nil, fmt.Errorf("unsupported schema = %d: this glyph reads schema = %d — write schema = %d", *r.Schema, schema, schema)
 	}
 
 	for i, a := range r.ExcludeAuthors {

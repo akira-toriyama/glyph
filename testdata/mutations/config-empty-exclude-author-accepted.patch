@@ -1,9 +1,9 @@
 diff --git a/internal/config/config.go b/internal/config/config.go
-index b37d9f8..15e792e 100644
+index 854603e..8b253a7 100644
 --- a/internal/config/config.go
 +++ b/internal/config/config.go
-@@ -441,12 +441,6 @@ func Load(data []byte) (*Config, error) {
- 		return nil, fmt.Errorf("unsupported schema = %d (this glyph understands schema = %d); refusing to guess what its fields mean", *r.Schema, schema)
+@@ -444,12 +444,6 @@ func Load(data []byte) (*Config, error) {
+ 		return nil, fmt.Errorf("unsupported schema = %d: this glyph reads schema = %d — write schema = %d", *r.Schema, schema, schema)
  	}
  
 -	for i, a := range r.ExcludeAuthors {

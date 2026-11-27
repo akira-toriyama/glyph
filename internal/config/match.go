@@ -65,8 +65,10 @@ type Match struct {
 //
 // The only error is a matched message that yields no usable sigil: the
 // capture is not one of = ~ ^ ! %, or the group captured nothing and the
-// pattern declares no fixed fallback. Both are config bugs surfaced at the
-// first commit that hits them.
+// pattern declares no fixed fallback. Both surface at the first commit that
+// hits them. An empty capture is the message's fault as often as the
+// pattern's (an optional group meets a message with no sigil), so its refusal
+// names both fixes.
 func (c *Config) Match(message string) (Match, error) {
 	for i := range c.Patterns {
 		p := &c.Patterns[i]
@@ -100,7 +102,7 @@ func (c *Config) Match(message string) (Match, error) {
 		case p.fixed != nil:
 			sigil = *p.fixed
 		default:
-			return Match{}, fmt.Errorf("patterns[%d] matched but its %s group captured nothing and no fixed semver_sigil is set", i, sigilGroup)
+			return Match{}, fmt.Errorf("patterns[%d] matched but its %s group captured nothing: write the version sigil where that group sits — or, if this pattern should claim messages that carry none, give it a fixed semver_sigil", i, sigilGroup)
 		}
 
 		return Match{Matched: true, Sigil: sigil, Groups: groups, Warn: p.warn, PatternIndex: i}, nil

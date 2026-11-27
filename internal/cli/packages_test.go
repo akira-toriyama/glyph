@@ -1608,6 +1608,7 @@ func TestSinceTagPackagesHandsDownEveryAttributionRefusalAtOnce(t *testing.T) {
 		"commit " + shas[0][:7] + ": its files (ci.yml) belong to no declared package",
 		"(+2 more refused commit(s), all in details)",
 		"cut a haiku/ tag at or past all of " + all + " / a curry/ tag at or past all of " + all + " by hand",
+		"(DESIGN §4.1). On a branch that has not merged, reword each refused commit there instead",
 	} {
 		if !strings.Contains(env.Message, want) {
 			t.Errorf("the refusal is missing %q:\n%s", want, env.Message)
@@ -1739,7 +1740,7 @@ func TestBumpRangePackagesRefusesGrammarAndTreeAtOnce(t *testing.T) {
 				if !strings.HasPrefix(env.Message, head) {
 					t.Errorf("%s --range: the refusal must open on the first refused commit in range order (%q):\n%s", cmd, head, env.Message)
 				}
-				if want := " (+3 more violation(s), all in details); refusing to version the range"; !strings.HasSuffix(env.Message, want) {
+				if want := " (+3 more violation(s), all in details); refusing to version the range (an unmatched commit folded as none would be a silent hole — fix the message, add a pattern, or exclude the author)"; !strings.HasSuffix(env.Message, want) {
 					t.Errorf("%s --range: the refusal must close as the fold's does (%q):\n%s", cmd, want, env.Message)
 				}
 				for _, walks := range []string{"published branch", "tag at or past", "--since-tag"} {

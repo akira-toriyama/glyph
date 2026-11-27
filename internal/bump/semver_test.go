@@ -278,8 +278,9 @@ func FuzzParseVersion(f *testing.F) {
 
 // TestVersionCompare backs the published-floor guard: the next version must be
 // STRICTLY greater than the highest published release, so equality is not
-// greater — a deleted published release's tag is permanently burned and can
-// never be re-published.
+// greater: an equal version's tag is taken. A deleted published release's tag
+// name is burned for good only where immutable releases are on, and no
+// releases listing shows it.
 func TestVersionCompare(t *testing.T) {
 	for _, c := range []struct {
 		a, b string

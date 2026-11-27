@@ -501,7 +501,7 @@ func TestSinceTagPackagesATagNamesALine(t *testing.T) {
 		"below selects curry":           {[]string{"bump", "--since-tag=below:curry/v0.2.0"}, 0, "curry/v0.1.1\n"},
 		"current on one selected line":  {[]string{"bump", "--since-tag=curry/v0.1.0", "--current", "v1.0.0"}, 0, "curry/v1.0.1\n"},
 		"current over every line":       {[]string{"bump", "--since-tag", "--current", "v1.0.0"}, 2, "answers for 2 lines"},
-		"the refusal spells a line tag": {[]string{"bump", "--since-tag", "--current", "v1.0.0"}, 2, "--since-tag=<prefix>vX.Y.Z (or below:)"},
+		"the refusal spells a line tag": {[]string{"bump", "--since-tag", "--current", "v1.0.0"}, 2, "--since-tag=<prefix>vX.Y.Z or --since-tag=below:<prefix>vX.Y.Z, or drop --current"},
 		"an undeclared line is usage":   {[]string{"bump", "--since-tag=fish/v0.1.0"}, 2, "no [[packages]] entry declares"},
 		"below an undeclared line":      {[]string{"bump", "--since-tag=below:fish/v0.2.0"}, 2, "no [[packages]] entry declares"},
 		"a bare tag with no root line":  {[]string{"bump", "--since-tag=v0.1.0"}, 2, "bare v* line"},

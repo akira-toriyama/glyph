@@ -193,10 +193,22 @@ func noArgs(cmd *cobra.Command, args []string) error {
 			valued = true
 		}
 	})
+	hint := ""
 	if valued {
-		return core.Usagef("%s takes no arguments (got %q) — quote a flag value that holds spaces", cmd.CommandPath(), args[0])
+		hint = " — quote a flag value that holds spaces"
 	}
-	return core.Usagef("%s takes no arguments (got %q)", cmd.CommandPath(), args[0])
+	return core.Usagef("%s takes no arguments (got %q)%s%s", cmd.CommandPath(), args[0], hint, detachedBoolHint(args[0]))
+}
+
+// detachedBoolHint is the clause a refusal of a stray `true` or `false`
+// carries: `--json false` sets --json to true and leaves the word behind, so
+// dropping the word alone inverts what the reader meant. pflag does not report
+// flag order, so the clause cannot name the flag the word followed.
+func detachedBoolHint(arg string) string {
+	if arg != "true" && arg != "false" {
+		return ""
+	}
+	return " — a bool flag takes its value attached: --<flag>=" + arg
 }
 
 // checkLineSelection refuses --current unless exactly one line is selected:
@@ -210,5 +222,5 @@ func checkLineSelection(current string, lines []walk.LineWalk) error {
 	for _, l := range lines {
 		names = append(names, l.TagLine.Label())
 	}
-	return core.Usagef("--current names one version, and this walk answers for %d lines (%s) — select one line with --since-tag=<prefix>vX.Y.Z (or below:), or drop --current", len(lines), strings.Join(names, ", "))
+	return core.Usagef("--current names one version, and this walk answers for %d lines (%s) — select one line with --since-tag=<prefix>vX.Y.Z or --since-tag=below:<prefix>vX.Y.Z, or drop --current", len(lines), strings.Join(names, ", "))
 }

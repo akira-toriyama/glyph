@@ -129,6 +129,9 @@ func TestPrePushWarnsOffTheDefaultBranchAndBlocksOnIt(t *testing.T) {
 		if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "commit-lint job will reject") {
 			t.Fatalf("the finding must still be reported, and say CI will act on it:\n%s", stderr)
 		}
+		if !strings.Contains(stderr, "not blocking off the default branch") {
+			t.Fatalf("with the default branch recorded, the warning must say why it does not block:\n%s", stderr)
+		}
 	})
 
 	t.Run("default branch blocks", func(t *testing.T) {
@@ -164,6 +167,11 @@ func TestPrePushDefaultBranchUnresolvedWarnsOnly(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "git remote set-head 'origin' -a") {
 		t.Fatalf("the warning must name the command that restores the ref:\n%s", stderr)
+	}
+	// The push is to the remote's real default branch, so "off the default branch"
+	// would be false, and the next warning gives the real cause.
+	if strings.Contains(stderr, "off the default branch") || !strings.Contains(stderr, "commit-lint job will reject") {
+		t.Fatalf("with no default branch recorded, the finding must be reported with no claim that the push is off it:\n%s", stderr)
 	}
 }
 

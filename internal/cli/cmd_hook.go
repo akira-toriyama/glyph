@@ -33,8 +33,7 @@ func newHookCmd() *cobra.Command {
 			"Neither hook holds a copy of the convention — both call glyph, so they cannot\n" +
 			"fall out of lockstep when the rules move. Without glyph on PATH they warn\n" +
 			"and let you through, and they block for ONE reason only: lint's\n" +
-			"convention-violation exit. The commit-lint CI job stays the authority; this is\n" +
-			"early warning, and a tool that is unwell must never stop anyone committing.",
+			"convention-violation exit. The commit-lint CI job stays the authority.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
@@ -63,10 +62,7 @@ func newHookPrePushCmd() *cobra.Command {
 			"sigil on a commit no line can carry (shared files, no package scope) is\n" +
 			"caught here and nowhere earlier on this machine. A violation blocks ONLY\n" +
 			"when the ref being written is the remote's default branch. Everywhere else\n" +
-			"the finding is real but the consequence is not — a repo's patterns may bless\n" +
-			"a WIP shape mid-branch that its gate rejects at the merge — so it warns and\n" +
-			"exits 0: refusing a legal mid-branch commit makes the branch unpushable and\n" +
-			"the only escape is --no-verify, which turns the gate off entirely.\n\n" +
+			"it warns and exits 0.\n\n" +
 			"Deletions, tags and a push with nothing to do are skipped in silence. The\n" +
 			"default branch is read from the local refs/remotes/<remote>/HEAD and never\n" +
 			"over the network; where nothing records it, nothing blocks and the run says so.",
@@ -84,17 +80,14 @@ func newHookInstallCmd() *cobra.Command {
 		Short:     "Install glyph's git hooks into this repository",
 		ValidArgs: hook.KindNames(),
 		Long: "install writes glyph's git hooks: a commit-msg hook that hands git's message\n" +
-			"file to `glyph lint --stdin`, and a pre-push hook that lints the commits a push\n" +
-			"would add — so a convention violation surfaces at authoring time instead of in\n" +
-			"CI. The hooks carry no copy of the rules: each calls the installed glyph,\n" +
-			"which reads the repository's glyph.toml at run time, so the rules a hook\n" +
-			"enforces cannot fall out of lockstep when they move.\n\n" +
+			"file to `glyph lint --stdin`, and a pre-push hook that runs\n" +
+			"`glyph hook pre-push`; `glyph hook --help` states what they call and what\n" +
+			"happens without glyph on PATH.\n\n" +
 			"The destination honours core.hooksPath, so a repo that tracks its hooks under\n" +
 			"scripts/hooks is written there (and the change shows up in git status, to be\n" +
 			"committed like any other file).\n\n" +
 			"An existing hook glyph did not write is never clobbered: install refuses and\n" +
-			"exits 2 until --force. Where glyph is absent from PATH the installed hook\n" +
-			"warns and lets the commit through — CI stays the authority.\n\n" +
+			"exits 2 until --force.\n\n" +
 			"Naming no kind installs every hook glyph writes (commit-msg, pre-push).\n" +
 			"Name kinds to install a subset — the escape when one of them is somebody\n" +
 			"else's file. Nothing is written unless every named kind can be: a run that\n" +
@@ -191,7 +184,7 @@ func resolveHookKinds(args []string) ([]hook.Kind, error) {
 	for i, name := range args {
 		k, ok := hook.KindByName(name)
 		if !ok {
-			return nil, core.Usagef("glyph writes no %q hook; the kinds are %s", name, strings.Join(hook.KindNames(), ", "))
+			return nil, core.Usagef("glyph writes no %q hook; the kinds are %s%s", name, strings.Join(hook.KindNames(), ", "), detachedBoolHint(name))
 		}
 		if !slices.Contains(args[:i], name) {
 			kinds = append(kinds, k)

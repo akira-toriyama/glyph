@@ -51,7 +51,9 @@ pattern says it means:
 
 - The named group **`semver_sigil`** must capture one of the five sigils
   (README "Commit format" spells the alphabet and what each means; the binary
-  holds it as `config.Sigil`), the only input to version calculation (§3). The
+  holds it as `config.Sigil`). The sigil a pattern yields (its `semver_sigil`
+  group's capture, or its fixed `semver_sigil` key, below, when the group
+  captures none) is the only input to version calculation (§3). The
   alphabet is fixed in the binary;
   everything else (where the sigil sits, what a prefix looks like, whether a
   scope exists) is the pattern file's decision. RE2 means no lookahead and no
@@ -395,8 +397,9 @@ pattern says it means:
 - **A refusal quotes the form** (mutation row
   `lint-violation-forgets-the-form.patch`, t-s1q0): the no-pattern-matches
   violation carries the first line of `commit.template` verbatim — `write it
-  as <:code:>[(scope: a-z 0-9 -)]<semver_sigil> <subject> with a semver_sigil
-  of = ~ ^ ! or %` — so the refused author is told the shape instead of
+  as <:code:>[(scope: a-z 0-9 -)]<semver_sigil> <subject> (commit.template in
+  glyph.toml) with a semver_sigil of = none / ~ patch / ^ minor / ! major / %
+  promote to 1.0.0` — so the refused author is told the shape instead of
   re-deriving it from the winning regex on every failure (measured: the
   envelope said only "see glyph.toml", while the window warning then sitting
   next to it already spelled the line). The template stays unparsed: glyph
@@ -681,7 +684,11 @@ matching and a non-matching message at both gates; mutation row
 SAME verdict on one commit; a gap is glyph lying in one of two directions, and
 the two are not equally bad. Blessing a message CI will reject costs a round
 trip. Refusing one CI would accept costs the commit — the only way past the hook
-is `--no-verify`, which turns the whole gate off.
+is `--no-verify`, which turns the whole gate off. That cost is why the pre-push
+hook only warns off the remote's default branch. Off it the finding is real but
+the consequence is not — a repository's patterns may bless a WIP shape
+mid-branch that its gate rejects at the merge — and refusing a legal mid-branch
+commit would leave the branch unpushable without `--no-verify`.
 
 **One gap is argued rather than accidental: a message an `unlandable`
 pattern claims** (§2). The hook passes it and CI refuses it, deliberately,
@@ -1679,6 +1686,32 @@ none is refused there whenever the release it runs behind was published from
 glyph's own verdict: the max-fold is monotone, and that release's range held
 this one.
 
+What the refusal says is the operator's only guide off the floor, and its old
+text misled (t-hrfr case R4, 2026-11-27, on glyph-test-2: stray published
+releases v6.90.0 and v6.91.0 above a v0.1.x line). It said a deleted release's
+tag is permanently burned and offered "bump past it", which has no means: no
+flag sets the version, and no sigil steps a 0.1.x line past v6.91.0. One of
+three cold readers acted correctly — one refused to delete because of the burn
+and planned a bump to v6.92.0, one handed the decision back, one deleted
+v6.91.0 alone and left v6.90.0 as the next refusal. The burn is conditional:
+with immutable releases off, deleting a stray with its tag clears the floor
+(measured the same day on glyph-test-2: `release --dry-run` after the deletion
+drafted v0.1.1 at exit 0); with them on, a deleted release's tag name can never
+be reused (GitHub's rule; the hub's `docs/immutable-releases-hardening.md`), and
+the floor, reading only the releases listing, cannot see a burned name. So the
+refusal lists every published release at or above the computed version, since
+one cleared alone leaves the next to refuse on the following run, and gives
+each escape that has a means: a run behind them (a re-run at an older commit)
+needs nothing, one the line released off its branch is landed with a merge
+commit (`git merge -s ours`, below), one published by mistake is deleted with
+its tag. It names the read that tells the two deletions apart (`gh api
+repos/{owner}/{repo}/immutable-releases`, measured `"enabled":false` on glyph
+and glyph-test-2 and `true` on facet) instead of making it: the read needs admin
+access the release job's token lacks (GitHub's docs, not measured), so in CI it
+would add a failure mode and an "unknown" arm for wording alone, and whether a
+listed release is the line's own or a mistake is a question glyph cannot answer
+whatever the setting says.
+
 The rule has three prices, each measured 2026-09-29 on a stand-in API:
 
 - **A topic branch answers as of its fork point.** Forked between v1.0.0 and
@@ -2269,7 +2302,8 @@ that genuinely holds nothing, and glyph acted on both alike: it deleted
 the rolling draft on the very reading it had just told the operator to re-run
 (t-441z), and, where one commit *did* classify, it retagged an existing v1.0.0
 draft down to v0.1.1 out of a fold missing the `:boom:` pull — exit 0, green,
-and a human publishing that draft burns the tag forever. So an incomplete walk
+and a human publishing that draft spends its tag (for good where immutable
+releases are on, even once the release is deleted). So an incomplete walk
 **fails loud (4)** before the releases listing is even fetched: no delete, no
 retag, no draft, no verdict — the same refusal to judge an unread range that
 the wedge, the covered pull and the published floor have always made (ratified
@@ -2343,7 +2377,8 @@ the footer would keep it, at the price of a new layout for every comment that
 carries notes, and the cut would still fall inside the block with the notice
 folded away — so the block is closed, and the layout stays.) A next version
 not strictly above the highest published release on the line — the maximum
-version, not the one published last — fails loud (an unpublishable draft; a
+version, not the one published last — fails loud (the draft would collide
+with or regress below a published release; where immutable releases are on, a
 deleted published release's tag is burned forever).
 
 The refusals above are about evidence — a range glyph could not read. One is
@@ -4691,8 +4726,11 @@ single home for it (§8 keeps no copy).
 `pr-verdict.yml` is advisory and not meant to be a required check:
 convention enforcement is `lint.yml`'s. A pull carrying a commit the lint
 rejects fails the verdict job too — the walk refuses an unclassifiable commit
-(§3) — and the job goes red without repeating commit-lint's per-commit
-annotations, which stay the one authoritative signal. Its comment is
+(§3) — and the job goes red with one `::error::` per refused commit — preview
+writes them and the compose step replays its stderr, adding its own headline
+only for an error glyph did not annotate (an API failure, a refusal with no
+commit rows) — while commit-lint stays the one authoritative signal, the verdict
+job being advisory. Its comment is
 refreshed on every push, a red one included: when the compose step does not
 succeed (preview exiting non-zero, or a step before it failed), the upsert still
 runs (`if: ${{ !cancelled() }}`) and replaces the comment with the workflow's

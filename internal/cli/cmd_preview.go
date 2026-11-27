@@ -117,10 +117,8 @@ func newPreviewCmd() *cobra.Command {
 			"commits read over the API, and what is already merged but unreleased on\n" +
 			"the checked-out branch. Both step from the same tag, so the answer is the\n" +
 			"`next` of whichever folds higher — no caller ever does version arithmetic.\n\n" +
-			"A base branch whose history holds no version tag skips the pending walk: it\n" +
-			"would resolve the whole history at one API round-trip per commit to\n" +
-			"answer a question that cannot matter (nothing is unreleased when nothing\n" +
-			"was released), so the PR's own verdict stands alone and the body says so.\n" +
+			"A base branch whose history holds no version tag skips the pending walk,\n" +
+			"so the PR's own verdict stands alone and the body says so.\n" +
 			"On a shallow checkout that holds no tag the walk is skipped the same way,\n" +
 			"and the body says the tag is out of the clone's reach rather than that the\n" +
 			"base branch has none. Whether the walk is skipped or runs (a touched\n" +
@@ -128,15 +126,13 @@ func newPreviewCmd() *cobra.Command {
 			"checkout's reach names no version, since a tag past that reach could\n" +
 			"refute any version it named (check out with fetch-depth: 0 for the\n" +
 			"pending side).\n\n" +
-			"The body never names a rolling draft — the arithmetic is the same whether\n" +
-			"the next release is a draft or a tag cut by hand, and most repos have no\n" +
-			"draft to name. stdout is the Markdown body (post it with `gh pr comment\n" +
-			"--body-file -`); --json emits\n" +
+			"The body never names a rolling draft. stdout is the Markdown body (post it\n" +
+			"with `gh pr comment --body-file -`); --json emits\n" +
 			"{current,untagged,level,next,pr,pending,body,unknown} — unknown is bump's,\n" +
 			"from the walk behind pending (see bump --help).\n" +
-			"Unlike bump and notes, a none verdict is a normal answer here and exits 0:\n" +
-			"'this PR moves nothing' is exactly what a reviewer asked. A pull commit no\n" +
-			"pattern claims is refused at exit 3, while the branch can still be fixed.\n\n" +
+			"Unlike bump and notes, a none verdict is a normal answer here and exits 0.\n" +
+			"A pull commit no pattern claims is refused at exit 3, while the branch can\n" +
+			"still be fixed.\n\n" +
 			"On a repository declaring [[packages]] the body carries one headline per\n" +
 			"line the pull touches (versions spelled as tags: haiku/v0.1.0 →\n" +
 			"haiku/v0.2.0; a line with no tag names its first release, never a\n" +

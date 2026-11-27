@@ -204,13 +204,11 @@ it every verdict command refuses at exit 2), the squash-merge settings the
 walk assumes, a credential that can read the repository (and, for `release`,
 write it), workflow pins on release tags, caller workflows granting and
 passing what the pinned reusables declare, and the installed hooks (if any)
-written by *this* binary. `glyph doctor --help` lists every check and what
-each one guards. When one of those drifts nothing goes red — the verdict is
-just computed over a repository that no longer matches the model, which is
-exactly what `doctor` exists to catch. Nothing is ever modified. Its exit
-codes are its own subset of the contract, stated in `glyph doctor --help`: a
-failing check is a convention violation, a check that could not run is no
-trustworthy answer — unverified, which is not the same as fine.
+written by *this* binary. `glyph doctor --help` lists every check and its
+severity. When one of those drifts nothing goes red — the verdict is just
+computed over a repository that no longer matches the model, which is exactly
+what `doctor` exists to catch. Its exit codes are its own subset of the
+contract, stated in `glyph doctor --help`.
 
 **2. Move the lint to the moment you write the message:**
 
@@ -220,14 +218,11 @@ glyph hook install commit-msg      # or name the ones you want
 ```
 
 Two hooks, one gate. `commit-msg` runs `glyph lint --stdin` on the message being
-written. `pre-push` hands git's ref list to `glyph hook pre-push`, which lints the
-commits the push would add that the remote does not already have, and blocks
-**only** when the ref being written is the remote's default branch — anywhere
-else it warns and lets the push through (`glyph hook pre-push --help` says why).
-Neither hook holds a copy of the convention: `glyph hook --help` states what they
-call and what happens without glyph on `PATH`. The verdict `commit-msg` gives is
-the verdict CI will give: glyph
-reduces the message as git's cleanup will before linting it — from the
+written. `pre-push` hands git's ref list to `glyph hook pre-push`, whose --help
+says what it lints and when it blocks. Neither hook holds a copy of the
+convention: `glyph hook --help` states what they call and what happens without
+glyph on `PATH`. The verdict `commit-msg` gives is the verdict CI will give:
+glyph reduces the message as git's cleanup will before linting it — from the
 repository's `commit.cleanup`, `commit.verbose` and comment prefix
 (`core.commentChar`; `auto` is read as `#`), whether an editor runs, and whether
 the commit is a `git merge` (DESIGN §2.1). The gaps are stated rather
@@ -291,12 +286,17 @@ appends a per-repo Markdown block (an `## Install` section) after it;
 `app` / `binary` name an artefact the reusable builds and attaches, on a
 macOS runner. Each input's `description:` in `release.yml` is its contract.
 
-The draft is always one a human can publish. Every published release sets a
-**floor** (per line under `[[packages]]`), wherever its commit sits: a
-computed version that is not strictly greater than the highest of them — equal included, because that
-tag is taken, or burned for good if its release was deleted — is refused at
-exit 4 before anything is written, `--dry-run` included, with both versions
-named. DESIGN §4 has the rule and its prices.
+The draft never collides with or regresses below a published `vX.Y.Z`
+release. Each one on the line sets a **floor** (per line under
+`[[packages]]`), wherever its commit sits, and a published pre-release sets
+none: a computed version that is not strictly greater than the highest of
+them — equal included, because that tag is taken — is refused at exit 4 before
+anything is written, `--dry-run` included. The refusal names every published release at or
+above the computed version and how to clear each: one released off the default
+branch by landing its tagged commit with a merge commit, one published by
+mistake by deleting it with its tag. Where immutable releases are on, that
+deletion burns the tag name for good, and the line can never publish that
+version. DESIGN §4 has the rule and its prices.
 
 A tag-push job — a GoReleaser step rendering the body of the tag it was just
 handed — cannot walk with a bare `--since-tag`: at that moment the new tag is
@@ -414,17 +414,13 @@ owns what it folds. Examples under the gemoji preset:
 :rocket:% call it 1.0                                    → v1.0.0
 ```
 
-Which code to write is `glyph emoji`'s answer: an ordered dictionary, read
-top to bottom, stop at the first description that fits. It is advice, not
-grammar — `glyph emoji --help` states what it prints and what lint does not
-read.
+Which code to write is `glyph emoji`'s answer; `glyph emoji --help` says how
+to read it and what lint does not read.
 
-**Below 1.0, `!` does not reach 1.0.0.** While the version is `v0.y.z` a
-breaking change steps the minor, and `%` is the only way across: it lands
-exactly on `v1.0.0`, and from 1.x on it is an ordinary major step. A `%`
-commit is still classified as breaking everywhere a level is published,
-because the rule shortens the *step*, not the meaning of the commit (DESIGN §3
-has the arithmetic and what it collapses).
+**Below 1.0, `!` does not reach 1.0.0** — `%` does (`glyph bump --help`
+states the step). A `%` commit is still classified as breaking everywhere a
+level is published, because the rule shortens the *step*, not the meaning of
+the commit (DESIGN §3 has the arithmetic and what it collapses).
 
 Under the conventional preset the sigil sits before the colon, so
 Conventional Commits' own `feat!:` reads as the major sigil unchanged
@@ -588,45 +584,17 @@ in a major-version subdirectory (`pubsub/v2` → `pubsub/v2.0.0`) — a tag that
 takes that number, so the line's first release steps from it
 (`pubsub/v2.1.0`); a line whose first change is the root commit has no
 commit before it and is offered none. Past the walk cap the refusal names
-the same tag. On
-stdout `bump` prints the next **tag** of every line that moves, one per line
-(`haiku/v0.2.0`), and exits `1` only when every line folds to none; `--json`
-carries `packages: [{path, current, level, next, tag, commits, reason}]` with the
-scalar `current` / `level` **empty** and `next` absent, as on a none verdict —
-there is no one line for them to describe, so a consumer reading only the
-scalars fails safe provided it reads an absent key as empty
-(`jq -r '.next // empty'`; a plain `.next` prints `null`). In a row `current`
-and `next` are bare versions (`v0.1.1`) and `tag` is the line's tag — the
-declared path is the prefix, a nested line's whole path included
-(`travel/onsen/v0.0.1`), the major folded on a `/vN` path, bare for the root
-package — so upload to `tag`, never to `next`. A line that folds to none
-carries neither `next` nor `tag`, so an all-none walk is a full array with
-no `tag` in it. `notes`
-mirrors it: `packages: [{path, sections}]`, and on stdout one body per line
-under a `# <path>` heading (bare when one line is selected). `--pr` is
-refused on both — a pull's listing carries messages and no files.
+the same tag. Each line answers separately on stdout and in `--json`
+(`glyph bump --help`, `glyph notes --help`); upload to a row's `tag`, never
+its `next`, and read an absent key as empty (`jq -r '.next // empty'`).
 
-`release` keeps **one rolling draft per line** — `haiku/v0.2.0` and
-`curry/v0.1.1` side by side, each converged on its own tag prefix (never a
-second draft on a line, retagged in place, a line that folds to none loses
-its residual draft — or keeps a `<path>/Unreleased` placeholder with
-`draft_on_none` on), every line's upsert written before any stray is deleted
-(a write that fails on the second line leaves the first standing and exits
-`4`), each line's draft — and each line's `notes --since-tag` body — closing
-its notes with a compare link from that line's own base tag (none for a line
-with no tag), `--footer-file` appended to every draft, and `--json` carrying
-`packages: [{path, current, level, next, tag, body, action, url, commits,
-reason}]` with the scalar `current` / `level` / `action` empty, `next` /
-`tag` / `body` / `url` absent, and `target` shared — omitted, as the single
-line omits it, when no line has a draft to write. Every line's draft points
-at that one `target` — the checkout's HEAD unless `--target` names another
-commit: a line the push did not touch is retargeted too, so the tag GitHub
-cuts when a human publishes its draft lands on that target, not on the
-line's last change. A bare `vX.Y.Z` draft in a
-repository that declares packages but no root package is the single
-line's residue and is deleted with a notice on the first packages run —
-`release --dry-run` names it without deleting it, so move any hand-written
-prose it carried into the line's own draft first. GitHub's
+`release` keeps **one rolling draft per line** (`haiku/v0.2.0` beside
+`curry/v0.1.1`); `glyph release --help` states the upsert order, the per-line
+compare links, the shared `target` and the `--json` shape. A bare `vX.Y.Z`
+draft in a repository that declares packages but no root package is the
+single line's residue and is deleted with a notice on the first packages
+run — `release --dry-run` names it without deleting it, so move any
+hand-written prose it carried into the line's own draft first. GitHub's
 Latest badge lands on whichever line a human published last; glyph never
 sets `make_latest`. A tag that selects one line converges that line alone.
 

@@ -139,6 +139,7 @@ func TestStrayPositionalNamesItsRemedy(t *testing.T) {
 		"a since-tag leaf":       {[]string{"bump", "--range", "a..b", "extra"}, `glyph bump takes no arguments (got "extra") — quote a flag value that holds spaces`},
 		"a leaf, no flag":        {[]string{"init", "gemoji"}, `glyph init takes no arguments (got "gemoji")`},
 		"a leaf, only bool flag": {[]string{"version", "--json", "foo"}, `glyph version takes no arguments (got "foo")`},
+		"a bool value detached":  {[]string{"version", "--json", "false"}, `glyph version takes no arguments (got "false") — a bool flag takes its value attached: --<flag>=false`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, stdout, stderr := runGlyph(t, tc.args...)
