@@ -2,6 +2,7 @@ package walk
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
@@ -101,17 +102,29 @@ func placeEscape(owner, repo string, number int, mergePoint, offending string) e
 // one tag. "Cut a release tag there" cleared no line: a bare tag is no
 // line's, and one line's tag left the other wedged (t-wjbs, measured
 // 2026-10-26; DESIGN §4.1).
-func (w *walk) walkRefusal() error {
-	first := w.wedges[0]
+//
+// attributed is what the partition refused over the walked commits, after
+// the walk: each is one more wedge after the walk's own, placed as the walk
+// places a refused commit (newWedge) — its escape is its governing identity,
+// the base attributionWedge names for it — so the sentence names every
+// escape of both stages and the tags it names clear the range in one step.
+// Refused alone, the walk's wedges left attribution's refusal to the next red
+// run, past the tag the first one named (t-aveg, measured 2026-11-04).
+func (w *walk) walkRefusal(attributed []placementRefusal) error {
+	refused := slices.Clip(w.wedges)
+	for _, r := range attributed {
+		refused = append(refused, newWedge(r.row, w.owner, w.repo, r.c.Pull, r.c.mergePoint, onMain(r.c.Raw.SHA, w.inRange)))
+	}
+	first := refused[0]
 	more := ""
-	if n := len(w.wedges) - 1; n > 0 {
+	if n := len(refused) - 1; n > 0 {
 		more = fmt.Sprintf(" (+%d more refused commit(s), all in details)", n)
 	}
-	rows := make([]bump.Refusal, 0, len(w.wedges))
+	rows := make([]bump.Refusal, 0, len(refused))
 	var escapes []string
 	named := map[string]bool{}
 	held := make(lineBases, len(w.ranges.lines))
-	for _, wd := range w.wedges {
+	for _, wd := range refused {
 		rows = append(rows, wd.row)
 		for _, e := range wd.escapes {
 			if named[e.base] {

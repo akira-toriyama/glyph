@@ -1,0 +1,12 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 74d07b8..36978e3 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -535,7 +535,6 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+ 			return
+ 		}
+ 		w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
+-		w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmMessage})
+ 	} else {
+ 		// A direct push GitHub knows is judged HERE, like a pull's inner
+ 		// commit: the fold's remedy (fix the message, add a pattern) is

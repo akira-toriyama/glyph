@@ -1,16 +1,13 @@
 diff --git a/internal/draftplan/body.go b/internal/draftplan/body.go
-index 39296b4..4a8e40e 100644
+index dd3d027..151f394 100644
 --- a/internal/draftplan/body.go
 +++ b/internal/draftplan/body.go
-@@ -32,9 +32,6 @@ func ComposeBody(keep *Draft, generated string) string {
+@@ -31,7 +31,7 @@ const handMarker = "<!-- glyph: notes written ABOVE this line survive every push
+ func ComposeBody(keep *Draft, generated string) string {
+ 	var hand string
  	if keep != nil {
- 		existing = keep.Body
+-		hand = handRegion(keep.Body)
++		_ = handRegion(keep.Body)
  	}
--	hand, _, found := strings.Cut(existing, handMarker)
--	if !found {
--		hand = ""
--	}
--	return hand + handMarker + "\n\n" + generated
-+	_, _, _ = strings.Cut(existing, handMarker)
-+	return handMarker + "\n\n" + generated
+ 	return hand + handMarker + "\n\n" + generated
  }

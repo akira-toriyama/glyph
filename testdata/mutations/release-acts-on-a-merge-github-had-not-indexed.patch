@@ -1,0 +1,12 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 7903d76..2aaa93b 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -486,7 +486,6 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+ 	if lag && len(raw.Parents) >= 2 {
+ 		w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+ 		w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmMerge})
+-		w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
+ 		return
+ 	}
+ 	if w.excludes(raw) {

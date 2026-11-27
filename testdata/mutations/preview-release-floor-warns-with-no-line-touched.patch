@@ -1,9 +1,13 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index fbdfbb3..5041230 100644
+index 4022762..6904945 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -396,3 +396,3 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
- func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, repo string, touched []touchedLine) (pending map[string]bump.Decision, short string, walked, shallow bool, err error) {
+@@ -422,7 +422,7 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
+ // 2026-11-08: a --depth 3 clone reaching haiku's tag and not curry's drew
+ // curry's first release and "no release tag on the base branch").
+ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, repo string, touched []touchedLine) (pending map[string]bump.Decision, short string, unknown []walk.UnknownCommit, walked, shallow bool, err error) {
 -	if len(touched) == 0 {
 +	if false {
- 		return nil, "", false, false, nil
+ 		return nil, "", nil, false, false, nil
+ 	}
+ 	shallow, err = checkout().IsShallow(ctx)

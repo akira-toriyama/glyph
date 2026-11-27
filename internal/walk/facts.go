@@ -30,6 +30,13 @@ type PullExpansion struct {
 type Facts struct {
 	// Pulls is the per-pull expansion provenance (see PullExpansion).
 	Pulls []PullExpansion
+	// Unknown are the commits GitHub had not indexed (API lag) that the
+	// fallback met, in walk order: exactly the commits its lag ::warning::
+	// lines name, so a --json reader sees what a stderr reader is told
+	// (bump, notes, release and preview carry it as unknown). Never a gate:
+	// the arms that leave the fold short also record in dropped, which
+	// Complete reads.
+	Unknown []UnknownCommit
 	// allUnknown: every commit the walk asked about was unknown to the queried
 	// repository. One unknown SHA is API lag; ALL of them is what a wrong --repo
 	// (or an inherited $GITHUB_REPOSITORY in a fork or a reusable-workflow
@@ -53,6 +60,12 @@ type Facts struct {
 	// however far the pagination follows, so the commits past it are
 	// unreachable, not absent, and any one could carry the deciding sigil.
 	truncated []int
+	// truncatedTags is, under [[packages]], the tag that takes the truncated
+	// pulls out of each line whose range holds a merge point of theirs, as
+	// lineTags words a wedge's: a commit past the cap may touch any line, and
+	// a bare tag is no line's. "" on the single line, whose one tag needs no
+	// naming.
+	truncatedTags string
 	// shallow: this checkout is a --depth clone, so git cannot answer the
 	// footprint question at all — a commit it does not HAVE is
 	// indistinguishable from one that never landed on the released branch.
@@ -78,6 +91,24 @@ type Facts struct {
 	// packages are declared.
 	filesUnknown []unreadListing
 }
+
+// UnknownCommit is one commit GitHub had not indexed, by its full sha, and
+// the arm of the fallback it took: ArmMessage, ArmUnclaimed, ArmMerge or
+// ArmExcluded.
+type UnknownCommit struct {
+	SHA string `json:"sha"`
+	Arm string `json:"arm"`
+}
+
+// The lag arms an UnknownCommit names. Only ArmMessage counted anything; the
+// other three are each one of fallback's "nothing was counted from it"
+// warnings, and ArmMerge and ArmUnclaimed are dropped as well.
+const (
+	ArmMessage   = "message"   // read from its own message, which a pattern claims
+	ArmUnclaimed = "unclaimed" // no pattern claims its own message
+	ArmMerge     = "merge"     // a merge commit: the pull it may have merged could not be resolved
+	ArmExcluded  = "excluded"  // an exclude_authors author's: a pull it may have merged could not be resolved
+)
 
 // unreadListing is one commit whose file listing GitHub did not give whole,
 // as the shortfall names it: its short sha, the pull it was expanded from,
@@ -157,9 +188,10 @@ func (f Facts) Shortfall(owner, repo string) string {
 // Remedy is release's next step for what Shortfall names, chosen from the same
 // facts and never from its text: first a tag cut past what no re-run can read
 // (a capped listing is capped again on every run — DESIGN §4's wedge escape;
-// the capped file listings' clause names its tags itself), then the re-run
-// that clears the rest — API lag, and the --repo and checkout fixes whose
-// clauses carry their own remedy. Each step once.
+// the capped file listings' clause names its tags itself; under [[packages]]
+// the truncated pulls' step names its tag per line, truncatedTags), then the
+// re-run that clears the rest — API lag, and the --repo and checkout fixes
+// whose clauses carry their own remedy. Each step once.
 func (f Facts) Remedy() string {
 	var steps []string
 	if len(f.truncated) > 0 {
@@ -167,7 +199,11 @@ func (f Facts) Remedy() string {
 		for i, n := range f.truncated {
 			at[i] = fmt.Sprintf("merged pull request #%d's merge point", n)
 		}
-		steps = append(steps, "cut a tag at or past what the walk cannot read, "+strings.Join(at, " and "))
+		step := "cut a tag at or past what the walk cannot read, " + strings.Join(at, " and ")
+		if f.truncatedTags != "" {
+			step = "cut a tag on every line whose range holds what the walk cannot read, " + strings.Join(at, " and ") + " — " + f.truncatedTags
+		}
+		steps = append(steps, step)
 	}
 	if len(f.filesCapped) > 0 {
 		steps = append(steps, "cut the tags the capped file listings name")

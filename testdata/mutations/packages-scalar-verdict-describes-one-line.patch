@@ -1,12 +1,13 @@
 diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+index c5bc4fe..7d10f7f 100644
 --- a/internal/cli/cmd_bump.go
 +++ b/internal/cli/cmd_bump.go
-@@ -161,7 +161,7 @@
+@@ -191,7 +191,7 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
  		}
  		pkgs = append(pkgs, pv)
  	}
--	res := bumpResult{Commits: rows, Packages: pkgs, Reason: packagesReason(pkgs, len(tags))}
-+	res := bumpResult{Current: pkgs[0].Current, Level: pkgs[0].Level, Next: pkgs[0].Next, Commits: rows, Packages: pkgs, Reason: packagesReason(pkgs, len(tags))}
+-	res := bumpResult{Commits: rows, Packages: pkgs, Unknown: w.Facts.Unknown, Reason: packagesReason(pkgs, len(tags))}
++	res := bumpResult{Current: pkgs[0].Current, Level: pkgs[0].Level, Next: pkgs[0].Next, Commits: rows, Packages: pkgs, Unknown: w.Facts.Unknown, Reason: packagesReason(pkgs, len(tags))}
  	if len(cfg.Packages) == 0 {
  		one := pkgs[0]
- 		res = bumpResult{Current: one.Current, Level: one.Level, Next: one.Next, Commits: rows, Reason: one.Reason}
+ 		res = bumpResult{Current: one.Current, Level: one.Level, Next: one.Next, Commits: rows, Unknown: w.Facts.Unknown, Reason: one.Reason}

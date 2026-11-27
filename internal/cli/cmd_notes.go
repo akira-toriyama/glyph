@@ -19,10 +19,13 @@ import (
 // each line renders its own body (DESIGN §4.1), and the top-level sections
 // describe no one line, exactly as bump's scalars describe no one line.
 // reason appears only on an empty verdict — it explains why nothing rendered.
+// unknown is bump's: the commits GitHub had not indexed, absent when none.
 type notesResult struct {
 	Sections []notes.Section `json:"sections"`
 	Packages []packageNotes  `json:"packages,omitempty"`
 	Reason   string          `json:"reason,omitempty"`
+
+	Unknown []walk.UnknownCommit `json:"unknown,omitempty"`
 }
 
 // packageNotes is one line's rendered notes inside notesResult.packages.
@@ -65,8 +68,8 @@ func newNotesCmd() *cobra.Command {
 			"stdout is the Markdown body\n" +
 			"(pipe it into a release step); a --since-tag body closes with the range's\n" +
 			"compare link (compare/<base tag>...<HEAD sha>; none when the walk has no\n" +
-			"tag base, and none from --range or --pr). --json emits {sections,reason} —\n" +
-			"no link. When no commit lands in any [[note.sections]] entry there is\n" +
+			"tag base, and none from --range or --pr). --json emits\n" +
+			"{sections,reason,unknown} — no link; unknown is bump's (see bump --help). When no commit lands in any [[note.sections]] entry there is\n" +
 			"nothing to write: no body, exit 1 (soft no-release).\n\n" +
 			"On a repository declaring [[packages]] the body is per line: stdout is one\n" +
 			"body per line under a `# <path>` heading (bare when a tag selects one\n" +
@@ -87,7 +90,7 @@ func newNotesCmd() *cobra.Command {
 	cmd.Flags().IntVar(&f.pull, "pr", 0, "render notes from a pull request's individual (pre-squash) commits, read over the API")
 	addSinceTagFlag(cmd, &f.tag, "render notes from")
 	cmd.Flags().StringVar(&f.repo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {sections,reason}; with [[packages]] declared sections is empty and packages[] carries one body per line")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {sections,reason,unknown}; with [[packages]] declared sections is empty and packages[] carries one body per line")
 	markInputSourceFlags(cmd)
 	return cmd
 }
@@ -157,12 +160,12 @@ func notesRun(ctx context.Context, o notesOptions) error {
 		}
 		reason := noNotesReason(cfg, n, w.Source)
 		if o.json {
-			printCompact(notesVerdict(cfg, pkgs, reason))
+			printCompact(notesVerdict(cfg, pkgs, w.Facts.Unknown, reason))
 		}
 		return core.NoReleasef("%s", reason).Quiet(o.json)
 	}
 	if o.json {
-		printCompact(notesVerdict(cfg, pkgs, ""))
+		printCompact(notesVerdict(cfg, pkgs, w.Facts.Unknown, ""))
 		return nil
 	}
 	var owner, repo, head string
@@ -189,11 +192,11 @@ func notesRun(ctx context.Context, o notesOptions) error {
 // sections is EMPTY and packages[] carries one body per line; without, the
 // bare line's sections are the top level and packages is absent. reason
 // rides only on an empty verdict.
-func notesVerdict(cfg *config.Config, pkgs []packageNotes, reason string) notesResult {
+func notesVerdict(cfg *config.Config, pkgs []packageNotes, unknown []walk.UnknownCommit, reason string) notesResult {
 	if len(cfg.Packages) == 0 {
-		return notesResult{Sections: pkgs[0].Sections, Reason: reason}
+		return notesResult{Sections: pkgs[0].Sections, Unknown: unknown, Reason: reason}
 	}
-	return notesResult{Sections: []notes.Section{}, Packages: pkgs, Reason: reason}
+	return notesResult{Sections: []notes.Section{}, Packages: pkgs, Unknown: unknown, Reason: reason}
 }
 
 // noNotesReason is the empty verdict's reason line: the count is bump's
