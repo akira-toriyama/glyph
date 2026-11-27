@@ -15,12 +15,10 @@ the reasons and the incidents that ratified them follow.
   for how far to verify first.
 
 Why: every fleet repo runs this binary as its commit-lint gate and merge-preview verdict, but
-only at **the tag it pins**. No single mechanism moves all six pin sites — `fleet-sync`
-byte-copies two, `glyph-pin-rewrite` opens a pull request for the other four (they live in
-files each repo owns: the release reusable, the install action and its `version:`, and the
-release-notes action), and `fleet-automerge` arms auto-merge on those pulls below a major — a
-major's pin pulls are a human merge. So a wrong answer is wrong in this repo until a tag is
-cut, then wrong fleet-wide until the pins move back.
+only at **the tag it pins**, and no single mechanism moves all six pin sites (the runbook names
+what moves each, and that a major's pin pulls are a human merge). So a wrong
+answer is wrong in this repo until a tag is cut, then wrong fleet-wide until the pins move
+back.
 
 ## Where the facts live
 
@@ -50,16 +48,15 @@ cut, then wrong fleet-wide until the pins move back.
 
 - Treat a new exit code as a breaking change; the integers are frozen.
 - **Assert the exact code, never truthiness** — `if glyph …; then` cannot tell `3` from `2`.
-- Do not add another prose copy: implemented once in `internal/core/errors.go`, spelled out in
-  README.md's Exit codes section, DESIGN §5 and glossary §6, which
-  `internal/workflows/exitcodes_test.go` holds lockstep. `glyph doctor --help`'s Exit
-  paragraph is doctor's own subset (its `4` is a check that could not run), and no test holds
-  it — renumbering a code means editing it by hand.
+- Do not add another prose copy: implemented once in `internal/core/errors.go`; the copies
+  `internal/workflows/exitcodes_test.go` holds lockstep are listed in
+  `internal/workflows/doc.go`'s header. `glyph doctor --help`'s Exit paragraph is doctor's own
+  subset (its `4` is a check that could not run), and no test holds it — renumbering a code
+  means editing it by hand.
 
 Why: every out-of-Go consumer `TestOutOfGoConsumersBranchOnTheContractIntegers` inventories
-(the reusables, the release-notes action, the installed hooks, `scripts/smoke.sh`,
-`scripts/fleet-preflight.sh`) branches on the exact value. `lint --stdin=false` once exited
-`3`, telling a CI gate that a commit violated the convention when none had been submitted.
+branches on the exact value. `lint --stdin=false` once exited `3`, telling a CI gate that a
+commit violated the convention when none had been submitted.
 
 ## `glyph` on PATH is not your working tree
 
@@ -72,61 +69,48 @@ Why: the wrapper `git archive`s the **hardcoded** clone's `origin/main`
 (`/Volumes/workspace/github.com/akira-toriyama/glyph`; its header has the mechanism) and
 builds that, never any working tree — so in every checkout, your unpushed work is not what
 runs, and it reports success. The installed hooks call the same wrapper and block **only** on
-exit 3: any other failure, a wrapper that could not build included, is one stderr line and an
-exit-0 pass-through by design, so a broken local gate never looks like a verdict.
+exit 3, waving every other failure through by design (DESIGN §7, `commit-msg-hook-fires`), so
+a broken local gate never looks like a verdict.
 
 ## Verification
 
 - Run **`sh scripts/check.sh`** for the full local run — the only thing that reproduces CI
   without pushing (nothing in the repo invokes it, which is why it is named here). Read the
   final line, not the absence of errors: `✓ N/N mirrored gates passed — NOT mirrored: …`
-  (it declares its gates in a manifest at the top and **reconciles** at the end — a mirrored
-  gate that did not run means no `✓` line and a non-zero exit).
-  - It exits 2 on a dirty tree; `ALLOW_DIRTY=1` runs anyway and says so in the final line
-    (a green over uncommitted work is a claim about nothing reproducible).
-  - A missing tool is a failure, not a skip — `nix develop` supplies `golangci-lint`.
-    govulncheck is not a local tool: the run fetches `@latest` as CI does, so it needs the
-    network.
+  (check.sh's header says why a gate that did not run withholds it).
+  - Missing tools and govulncheck: check.sh's header and its go-vuln comment say what
+    supplies each; govulncheck is fetched `@latest`, so the run needs the network.
   - Concurrent runs each need their own `TMPDIR` as well as their own `GOLANGCI_LINT_CACHE`:
     golangci-lint's run lock lives in `TMPDIR`, so two runs sharing it fail one with
     `parallel golangci-lint is running`.
-  - It reads the hub (`akira-toriyama/.github`, the clone beside this repo or
-    `GLYPH_FLEET_HUB`) up front, at the tag the callers pin, for three gates: bite, the lint
-    floor and repo-policy. The tag is fetched from the clone's origin into the run's own
-    temporary repository, so the clone is read and never written; offline, the clone's copy
-    of the tag judges and the final line says so. bite reads **committed** history only — an
-    uncommitted test is invisible to it.
-  - Do not "fix" these two gaps: `-count=1` is absent because `go-ci.yml` omits it too (add
-    it by hand only when chasing a flake), and `taplo` is unmirrored for the same reason
-    actionlint is — the hub's reusable pins the tool version, so a local run would judge with
-    a different formatter.
+  - It reads the hub at the tag the callers pin for three gates: bite, the lint floor and
+    repo-policy (where it finds the hub and how it fetches the tag: check.sh's `hub_at`
+    comment). Offline, the clone's copy of the tag judges and the final line says so. bite
+    reads **committed** history only — an uncommitted test is invisible to it.
+  - Do not "fix" its two deliberate gaps, `-count=1` and `taplo`: check.sh says why at its
+    `go test` line and in its NOT-mirrored manifest.
 - Run **`sh scripts/mutations.sh`** to prove fixes by re-breaking them — each
   `testdata/mutations/*.patch` breaks one argued decision and the ledger names the test that
   must then fail. Adding a decision? Add a row (`testdata/mutations/README.md` says how).
   When a patch stops applying, re-derive it — deleting the row is how a decision loses its
   only defender.
 - Run **`sh scripts/fleet-preflight.sh <candidate-binary>`** before cutting a tag, not before
-  pushing (`sh build.sh` first; needs `gh`, `jq`, a token and the fleet cloned as siblings —
-  which is why it is not a `check.sh` gate: check.sh mirrors CI, and no CI job asks this).
+  pushing (`sh build.sh` first; its header and refusals say what it needs, and the header why
+  it is not a `check.sh` gate).
   It answers what the runbook cannot: of the repos that pin glyph, how many does this release
   change the verdict for? Read its output as the runbook's step 0 says.
   - Two corrections not to re-make: the lint differential compares the **finding set**, not
     the exit code (lint has only two answer codes, so a repo already at `3` could never
     register a move — that hid eight repos), and the bump probe runs `--since-tag`, the walk
-    `release.yml` actually performs, not `--range` (they disagree wherever a squash subject
-    is itself unclaimed: `--range` judges the subject and refuses the range at `3`, while
-    `--since-tag` resolves the merge point to its pull and folds the inner commits — DESIGN
-    §4; measured 2026-11-04, a `:robot: sync … (#2)` squash over a `:robot:=` commit).
+    `release.yml` actually performs, not `--range` (the script's header, at its `bump` probe,
+    says where they disagree).
 - Fire live ammunition in **`glyph-test`** — it is this repo's permanent live-fire harness
   (user-ratified 2026-08-27), so real PRs, releases and force-pushed branches there are fair
   game. Do not wipe its history or tags: `e2e-v2.yml` and `livefire.yml` reference old tags
   as frozen coordinates, and the rollout runbook names it as the canary.
 - Fire **packages** ammunition in **`glyph-monorepo-test`** (created 2026-09-10, the same
-  standing as glyph-test): several declared lines (its README lists them), `travel/onsen`
-  nested in `travel`, one rolling draft per line. Its `release.yml` is the reusable's per-line
-  read-back on every push, its `e2e.yml` (`glyph-ref=<ref>`) fires the §4.1 rules on a fixture and at a frozen coordinate,
-  and its `artifact-probe.yml` is **expected to fail** at the reusable's refusal. Its README
-  lists the pulls and the merge commit that are frozen; do not rewrite them.
+  standing as glyph-test). Its README lists its lines, what each workflow does and the pulls
+  and merge commit that are frozen; do not rewrite them.
 - Patch both harnesses first when a change narrows the `glyph.toml` schema — a frozen
   coordinate carries the `glyph.toml` of its day, so the change reds both walk tiers until
   each harness edits its frozen copy (glyph-test#130, glyph-monorepo-test#43) — and dispatch
@@ -138,26 +122,18 @@ exit-0 pass-through by design, so a broken local gate never looks like a verdict
   equality). Edit the source — `internal/config/presets/gemoji.toml`, or
   `internal/config/presets/packages.snippet` for the commented `[[packages]]` paragraph every
   preset carries — then regenerate with `go run ./cmd/glyph init --gemoji --force`.
-- Rewriting an `-update` golden (any `*.golden.*` under a `testdata/` — `GOLDEN_PATTERN` in
-  `scripts/golden-gate.sh`) requires a `Golden-change: <reason>` trailer on every non-merge
-  commit (golden-gate). Read the golden diff as the format spec it is before committing it —
-  `-update` makes a rendering bug look intentional.
 - Treat `testdata/fuzz` as a regression corpus, not scratch: a **new** file there is the
   engine reporting an input the code fails. Rename it after the defect (Go replays any
   filename in the target directory) and commit it; never delete one to go green.
   `git ls-files '*testdata/fuzz/*'` lists the committed entries, and plain `go test` replays
-  each as a named subtest. A new `Fuzz` target needs no CI or check.sh edit —
-  `scripts/fuzz-smoke.sh`, which both run, discovers targets.
+  each as a named subtest. A new `Fuzz` target needs no CI or check.sh edit
+  (`scripts/fuzz-smoke.sh`'s header says why).
 
 ## `internal/emoji/table.json` is hand-edited, in order
 
-- Insert a new kind where its specificity puts it — specific above broad, location above kind —
-  because the dictionary is **ordered, first fit wins**, and `glyph emoji` prints the file byte
-  for byte. Give it a `name` no other entry has (that uniqueness is the one-meaning-one-emoji
-  rule), write the `description` as when-to-pick-it with its borders, list the gitmoji codes it
-  takes over under `absorbs`, and leave `emoji` as `"?"`: `go test ./internal/emoji` then prints
-  the code points GitHub maps the shortcode to, rejects a code GitHub does not draw, and names the
-  first line off canonical form.
+- Insert a new kind where its specificity puts it — DESIGN §2, "The gemoji dictionary", says
+  the order and what each field carries — and leave `emoji` as `"?"`:
+  `go test ./internal/emoji` then prints the code points GitHub maps the shortcode to.
 - The oracle is `internal/emoji/testdata/gemoji.tsv`, a dated `GET /emojis` snapshot — refresh
   it with the command in its header, never by hand. Nothing regenerates the table and nothing
   else reads it; the argued decisions (what is deliberately absent, and why) are DESIGN §2,
@@ -165,28 +141,20 @@ exit-0 pass-through by design, so a broken local gate never looks like a verdict
 
 ## CI gates that fail for reasons the diff does not show
 
-- **bite** — runs the tests a PR adds or changes against the pre-PR source. To waive it, give
-  a reason in one of the two accepted places: `bite-exempt: <reason>` in the test's doc
-  comment, or a `Bite-exempt: <reason>` **git trailer** on every non-merge commit (a real
-  trailer, parsed by `git interpret-trailers` — a line inside a body paragraph waives
-  nothing). Its verdict is "**at least one** bites", so it is weaker than it sounds — and
-  weaker than `scripts/mutations.sh`, which requires every named test to fail.
-  Rationale: [`docs/go-bite.md`](https://github.com/akira-toriyama/.github/blob/main/docs/go-bite.md).
-- **dist-gate** — a distribution-layer change needs an added or modified `internal/workflows`
-  `*_test.go` in the same PR, or a `Dist-gate-exempt: <reason>` trailer on every non-merge
-  commit; a same-action SHA pin swap (dependabot's bump) needs neither and stands the gate
-  down. The term, its file set and the incident behind it: glossary §7.
-- **`internal/workflows`** — tests the workflow YAML itself (the install action's single
-  source, `fetch-depth: 0` on the walking reusables, the `sed -n '/^[{]/,$p'` envelope sieve
-  a step needs before `jq`). Read its failure messages; they carry the incident. Keep the
-  `@vX.Y.Z` placeholder in a **commented** caller stub (a tag is cut on an already-frozen
-  tree, so a concrete version in a comment is stale on arrival) and pin a real `vX.Y.Z` in
-  every **executable** `uses:` — it fails you for fixing the placeholder. When you add a
-  guard that asserts an absence, copy the **positive control** shape of
-  `TestNaiveGrepSeesNoPinInTheReusables`: a regex guard with no canary proving the pattern
-  still matches a real instance is how a fleet invariant dies green.
-- **zizmor** — full-SHA pin third-party actions (`actions/*` and `akira-toriyama/*` may ride
-  tags); give any new `actions/checkout` an explicit `persist-credentials:`.
+- **bite** — runs the tests a PR adds or changes against the pre-PR source. Its two waivers,
+  and the exact form each must take, are in
+  [`docs/go-bite.md`](https://github.com/akira-toriyama/.github/blob/main/docs/go-bite.md).
+  Its verdict is "**at least one** bites", so it is weaker than it sounds — and weaker than
+  `scripts/mutations.sh`, which requires every named test to fail.
+- **`internal/workflows`** — tests the workflow YAML itself; `internal/workflows/doc.go` says
+  what it holds, the `@vX.Y.Z` placeholder in commented stubs among it. Read its failure
+  messages; they carry the incident. When you add a guard that asserts an absence, copy the
+  **positive control** shape of `TestNaiveGrepSeesNoPinInTheReusables`: a regex guard with no
+  canary proving the pattern still matches a real instance is how a fleet invariant dies
+  green.
+- **zizmor** — full-SHA pin third-party actions (`.github/zizmor.yml`'s `unpinned-uses`
+  policy names the ones that may ride tags); give any new `actions/checkout` an explicit
+  `persist-credentials:`.
 
 ## Files that are not yours to edit
 
@@ -195,9 +163,9 @@ exit-0 pass-through by design, so a broken local gate never looks like a verdict
   The canonical set is the Files list in
   [`fleet/README.md`](https://github.com/akira-toriyama/.github/blob/main/fleet/README.md),
   not a copy kept here.
-- Exception: `.github/dependabot.yml` is **assembled**, not copied — a base plus one
-  `dependabot.d/<ecosystem>.yml` block per manifest present — so glyph's copy legitimately
-  differs from the hub's, and a base-only overwrite erases a repo's real ecosystems.
+- Exception: `.github/dependabot.yml` is **assembled**, not copied — its header says how, and
+  why a base-only overwrite erases a repo's real ecosystems — so glyph's copy legitimately
+  differs from the hub's.
 - Never let a caller share a filename with a reusable. glyph **defines** `lint.yml` /
   `release.yml` / `pr-verdict.yml` and **consumes** them as `commit-lint.yml` /
   `version-preview.yml`; ignoring the split once overwrote `pr-verdict.yml`.
