@@ -1,0 +1,32 @@
+# CLAUDE.md rule ledger (glyph)
+
+Target = **glyph's repo CLAUDE.md** ([`CLAUDE.md`](../CLAUDE.md)). The global CLAUDE.md keeps its own ledger in dotfiles ([`docs/claude-md-ledger.md`](https://github.com/akira-toriyama/dotfiles/blob/main/docs/claude-md-ledger.md)), which scopes each repository's CLAUDE.md to a ledger of the same format under that repository's docs/; this is glyph's.
+
+**Rule bodies are not transcribed here** — CLAUDE.md is their canonical source. The deletion log alone is the exception: its canonical source is gone, so this is the only record left.
+
+## Deletion log (2026-11-28, e-b76m, old version = `0e7b638`)
+
+Restore a row verbatim with `git show 0e7b638:CLAUDE.md`. Every home below was read at `0e7b638` before the pointer replaced the text.
+
+| Deleted rule/description | Kind | Why deleted | Original incident / revival condition |
+|---|---|---|---|
+| check.sh exits 2 on a dirty tree, `ALLOW_DIRTY=1` runs anyway and says so in the final line (Verification section) | runtime self-describing | check.sh's own refusal (`scripts/check.sh` 185-188) exits 2 and names `ALLOW_DIRTY=1` and the final line | if a green over a dirty tree gets reported as a claim about HEAD |
+| A rewritten `-update` golden needs a `Golden-change: <reason>` trailer on every commit; read the golden diff as the format spec before committing (Generated and pinned data section) | runtime self-describing | golden-gate's `::error` (`scripts/golden-gate.sh` 67) names the trailer and says the diff is the spec change to read as one; check.sh mirrors the gate, so it fires before the push | if a golden rendering bug lands with the trailer on it |
+| dist-gate wants an added or modified `internal/workflows` test or a `Dist-gate-exempt` trailer, a same-action SHA pin swap stands it down, glossary §7 has the term (CI gates section) | runtime self-describing | dist-gate's `::error` (`scripts/dist-gate.sh` 157) names both ways out, the stand-down announces itself (139), and check.sh mirrors the gate | if the refusal text loses either way out |
+| Which mechanism moves which of the six pins, and that below a major fleet-automerge merges them (Blast radius, Why) | canon duplicate | the hub's `docs/glyph-rollout-runbook.md` pin table and the paragraph under it (24-42) | — (the pointer survives) |
+| README's Exit codes section, DESIGN §5 and glossary §6 as the copies held lockstep (Exit codes section) | canon duplicate | `internal/workflows/doc.go` header (17-22) | — (the pointer survives) |
+| The list of out-of-Go consumers: the reusables, the release-notes action, the hooks, `smoke.sh`, `fleet-preflight.sh` (Exit codes, Why) | canon duplicate | `TestOutOfGoConsumersBranchOnTheContractIntegers` is the inventory (`internal/workflows/exitcodes_test.go` 326) | — (the test's name survives) |
+| Any hook failure but 3, an unbuildable wrapper included, is one stderr line and an exit-0 pass-through (PATH section, Why) | canon duplicate | DESIGN §7, `commit-msg-hook-fires` (`docs/DESIGN.md` 5356-5360) | — (the pointer survives) |
+| check.sh declares its gates in a manifest and reconciles at the end, a gate that did not run withholds the ✓ line (Verification) | canon duplicate | `scripts/check.sh` header (1-7) | — (the order to read the final line survives) |
+| A missing tool fails rather than skips, `nix develop` supplies golangci-lint, govulncheck is fetched `@latest` (Verification) | canon duplicate | check.sh header (7), its refusal (475), its go-vuln comment (482) | — (that the run needs the network survives) |
+| Where check.sh finds the hub (the sibling clone or `GLYPH_FLEET_HUB`), the tag fetched into a private repository, the clone never written (Verification) | canon duplicate | check.sh's `hub_at` comment (126-140) | — (the gates it judges, the offline line and bite's committed-history rule survive) |
+| `-count=1` is absent because go-ci.yml omits it, taplo is unmirrored for actionlint's reason (Verification) | canon duplicate | check.sh at its `go test` line (300) and its NOT-mirrored manifest (60-74) | — (the order not to "fix" them survives) |
+| fleet-preflight needs `gh`, `jq`, a token and sibling clones, which is why it is not a check.sh gate (Verification) | canon duplicate | `scripts/fleet-preflight.sh` header (108-111) and its refusals (174, 247) | — (the pointer survives) |
+| Where `--since-tag` and `--range` disagree: a squash subject nobody claims, measured 2026-11-04 (Verification) | canon duplicate | fleet-preflight.sh header, its bump probe (32-57) | — (the finding-set correction stays: no home states it) |
+| glyph-monorepo-test's lines, the nested `travel/onsen`, rolling drafts, what release / e2e / artifact-probe do (Verification) | canon duplicate | glyph-monorepo-test `README.md` (5-16, 62-71) | — (the order not to rewrite its frozen coordinates survives) |
+| fuzz-smoke discovers targets and both CI and check.sh run it (Generated and pinned data) | canon duplicate | `scripts/fuzz-smoke.sh` header (2-4) | — (that a new target needs no CI edit survives) |
+| table.json: specific above broad, location above kind, a unique `name`, a `description` with its borders, `absorbs`; the test rejects a code GitHub does not draw and a non-canonical line (table.json section) | canon duplicate | DESIGN §2 "The gemoji dictionary" (958-971) and `internal/emoji/emoji_test.go`'s failure messages | — (insert by specificity and the `"?"` trick survive) |
+| bite's two waivers and that a trailer must parse under `git interpret-trailers` (CI gates section) | canon duplicate | the hub's `docs/go-bite.md` (73-96) | — ("at least one bites", weaker than mutations.sh, survives) |
+| What `internal/workflows` tests (the install action's single source, `fetch-depth: 0`, the envelope sieve) and the `@vX.Y.Z` placeholder in commented stubs (CI gates section) | canon duplicate | `internal/workflows/doc.go` header (1-15) and the package's failure messages | — (the positive-control order survives) |
+| `actions/*` and `akira-toriyama/*` may ride tags (CI gates section, zizmor) | canon duplicate | `.github/zizmor.yml` `unpinned-uses` policy (11-22) | — (the pinning order survives) |
+| dependabot.yml is a base plus one `dependabot.d/<ecosystem>.yml` block per manifest, and a base-only overwrite erases ecosystems (Files section) | canon duplicate | `.github/dependabot.yml` header (1-8), the hub's `fleet/README.md` (22-28) | — (that glyph's copy legitimately differs survives) |
