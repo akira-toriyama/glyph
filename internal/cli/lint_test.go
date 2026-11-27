@@ -12,6 +12,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -600,6 +601,47 @@ func TestLintPRTitle(t *testing.T) {
 			}
 		})
 	}
+
+	// A listing at github.PullCommitsCap may be truncated, so one commit besides
+	// merge commits in it does not establish the exemption: the title is judged
+	// whatever the listing counts, and a refusal names the cap, not a count.
+	capped := make([]string, github.PullCommitsCap)
+	capped[0] = commit
+	for i := 1; i < len(capped); i++ {
+		capped[i] = apiMergeCommit(fmt.Sprintf("m%03d", i), "akira-toriyama", "Merge branch 'main' into topic")
+	}
+	cappedListing := "[" + strings.Join(capped, ",") + "]"
+	t.Run("capped listing of one commit and merge commits, bad title", func(t *testing.T) {
+		srv := walkServer(t, map[string]string{
+			pullPath(7):        apiOnePullBody("add a menu without a gitmoji", "akira-toriyama"),
+			pullCommitsPath(7): cappedListing,
+		})
+		usePR(t, srv)
+		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
+		if code != 3 || stdout != "" || !strings.Contains(stderr, "::error::glyph: ") || strings.Contains(stderr, "::notice::") {
+			t.Fatalf("lint --pr on a capped listing = %d, want 3 with the title judged and no notice — a truncated listing "+
+				"cannot establish exactly one commit besides merge commits\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		if want := fmt.Sprintf("returned the maximum %d commits", github.PullCommitsCap); !strings.Contains(env.Message, want) {
+			t.Errorf("the refusal must name the cap (%q), got %q", want, env.Message)
+		}
+		if strings.Contains(env.Message, "holds") || strings.Contains(env.Message, "records this title") {
+			t.Errorf("a capped listing's count is not known, so the refusal claims no count and no landing, got %q", env.Message)
+		}
+	})
+	t.Run("capped listing of one commit and merge commits, good title", func(t *testing.T) {
+		srv := walkServer(t, map[string]string{
+			pullPath(7):        apiOnePullBody(":bug:(lint)~ fix a crash", "akira-toriyama"),
+			pullCommitsPath(7): cappedListing,
+		})
+		usePR(t, srv)
+		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
+		if code != 0 || stdout != "" || stderr != "" {
+			t.Fatalf("lint --pr with a good title on a capped listing = %d, stdout %q, stderr %q — want a silent 0: "+
+				"the title is judged, and it passes", code, stdout, stderr)
+		}
+	})
 }
 
 // TestLintPRTitleExcludesBots pins the exclusion side: the squash attributes

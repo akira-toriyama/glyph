@@ -2061,8 +2061,8 @@ released on every line, the answer §4.1 gives a first sighting there.
 The identity is the listed sha, the one the walk-wide set already judges a stacked
 duplicate by, so a new commit that repeats a released message is new work
 (`TestSinceTagRepeatedMessageOfAReleasedCommitStillCounts`). Three others were
-rejected. **The messages behind the base** cannot hold on a squash: a multi-commit
-pull's subject is its title, and the inner subjects sit only in a body GitHub
+rejected. **The messages behind the base** cannot hold on a squash: the subject of a pull of
+two or more commits besides merge commits is its title, and the inner subjects sit only in a body GitHub
 writes under one `squash_merge_commit_message` (`glyph-test-2`#6 landed as `:bug:~
 stacked probe base pull titled apart from its inner commits (#6)`, its commits as
 bullets below it), which is §1's reason to read the API at all; matching the
@@ -4670,7 +4670,9 @@ when exactly one of them is not a merge commit (more than one parent) it exits
 commit the range step judged. At every other count the title is judged: two or
 more land the title, and for none — an empty listing, or merge commits only —
 nothing is measured, so the exemption, which rests on a measurement, does not
-reach it. The pull's own count is not that
+reach it; nor can a listing of 250 commits, where GitHub truncates it, establish
+exactly one, so there the title is judged at any count and its refusal claims no
+count. The pull's own count is not that
 number: on glyph-test-2 #27 (2026-11-24) one authored commit plus the
 `Merge branch 'main'` that update-branch added landed the commit's subject,
 while `gh pr view --json commits` and REST `.commits` both said 2; #28, the
@@ -4680,7 +4682,8 @@ the same rule. The step re-fires when the count moves: a second commit pushed
 (#29) and a force-push back to one (#30) each re-ran the workflow. Judging every
 title instead was rejected: it reds a single-commit pull over a title that never
 lands, §7's reason against failing over what the fleet cannot act on. Pinned by
-`TestLintPRTitle`; mutation row `lint-pr-title-counts-merge-commits`.
+`TestLintPRTitle`; mutation rows `lint-pr-title-counts-merge-commits` and
+`lint-pr-title-unjudged-on-a-truncated-listing`.
 
 Two behaviours of the shipped workflows are contract, not implementation
 detail. `lint.yml` carries a second, annotate-only arm (#140): a caller may add

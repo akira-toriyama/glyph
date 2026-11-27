@@ -10,6 +10,7 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/cleanup"
 	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
 	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v6/internal/hook"
 	"github.com/akira-toriyama/glyph/v6/internal/walk"
@@ -64,7 +65,9 @@ func newLintCmd() *cobra.Command {
 			"or more commits besides merge commits, a squash merge (COMMIT_OR_PR_TITLE)\n" +
 			"records the title as the landed commit's subject; with exactly one it lands\n" +
 			"that commit's own subject, which --range judges, so --pr gives the title no\n" +
-			"verdict and says so in a notice; with none the title is judged too.\n" +
+			"verdict and says so in a notice; with none the title is judged too, and so it\n" +
+			"is at any count once the listing returns 250 commits, where GitHub truncates\n" +
+			"it and the count is no longer known.\n" +
 			"--message and --stdin lint one message at authoring\n" +
 			"time — the commit-msg hook path — where a message an unlandable pattern\n" +
 			"claims passes with its reason as a warning (the shipped presets claim git's\n" +
@@ -312,9 +315,10 @@ func lintOne(message, author string, cfg *config.Config) error {
 // the listing's one-parent commits, never the pull's own count), a commit
 // --range already judged, so the title gets a notice and no verdict. The
 // exemption rests on that measurement alone, so zero — an empty listing, or
-// merge commits only — is judged like two or more. When it lands, the title
-// is the only landed subject the range can never see — it exists nowhere as a
-// commit until the squash mints it.
+// merge commits only — is judged like two or more, and so is any count in a
+// listing of github.PullCommitsCap entries, where GitHub truncates it. When it
+// lands, the title is the only landed subject the range can never see — it
+// exists nowhere as a commit until the squash mints it.
 //
 // The PR's author stands in for the commit author (a squash attributes the
 // landed commit to the pull's author), so an exclude_authors title —
@@ -337,7 +341,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 		return err
 	}
 	v := cfg.Lint(pull.Title, pull.Author)
-	authored := 0
+	authored, capped := 0, false
 	if !v.Excluded {
 		commits, err := gh.PullCommits(ctx, owner, repo, number)
 		if err != nil {
@@ -348,7 +352,8 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 				authored++
 			}
 		}
-		if authored == 1 {
+		capped = len(commits) >= github.PullCommitsCap
+		if authored == 1 && !capped {
 			noticef("%s/%s#%d title not judged: the pull holds one commit besides merge commits, so a squash merge (COMMIT_OR_PR_TITLE) lands that commit's own subject, which --range judges",
 				owner, repo, number)
 			return nil
@@ -364,9 +369,14 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	// the same producer contract lintRangeRun holds (t-sws7).
 	errorf("%s/%s#%d title: %s", owner, repo, number, v.Reason)
 	// Zero is judged because the exemption is measured for one alone, not because
-	// any squash of zero was seen to land the title — so it claims no landing.
+	// any squash of zero was seen to land the title — so it claims no landing. A
+	// capped listing is judged because it cannot establish the one, so it claims
+	// no count.
 	why := fmt.Sprintf("the pull holds %d commits besides merge commits, so a squash merge records this title as the landed commit's subject", authored)
-	if authored == 0 {
+	switch {
+	case capped:
+		why = fmt.Sprintf("the pull's commit listing returned the maximum %d commits, and GitHub truncates it there, so the count of commits besides merge commits is not known and the title is judged", github.PullCommitsCap)
+	case authored == 0:
 		why = "a title goes unjudged only on a pull with exactly one commit besides merge commits, whose own subject a squash merge lands, and this pull holds none, so the title is judged"
 	}
 	return core.Lintf("1 commit-convention violation in the title of %s/%s#%d — %s",
