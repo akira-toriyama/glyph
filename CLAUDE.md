@@ -78,15 +78,16 @@ a broken local gate never looks like a verdict.
   without pushing (nothing in the repo invokes it, which is why it is named here). Read the
   final line, not the absence of errors: `✓ N/N mirrored gates passed — NOT mirrored: …`
   (check.sh's header says why a gate that did not run withholds it).
-  - Missing tools and govulncheck: check.sh's header and its go-vuln comment say what
-    supplies each; govulncheck is fetched `@latest`, so the run needs the network.
+  - Missing tools and govulncheck: check.sh's golangci-lint refusal and its go-vuln comment
+    say what supplies each; govulncheck is fetched `@latest`, so the run needs the network.
   - Concurrent runs each need their own `TMPDIR` as well as their own `GOLANGCI_LINT_CACHE`:
     golangci-lint's run lock lives in `TMPDIR`, so two runs sharing it fail one with
     `parallel golangci-lint is running`.
   - It reads the hub at the tag the callers pin for three gates: bite, the lint floor and
     repo-policy (where it finds the hub and how it fetches the tag: check.sh's `hub_at`
-    comment). Offline, the clone's copy of the tag judges and the final line says so. bite
-    reads **committed** history only — an uncommitted test is invisible to it.
+    comment). When the hub's origin cannot be reached, the clone's copy of the tag judges
+    and the final line says so. bite reads **committed** history only — an uncommitted
+    test is invisible to it.
   - Do not "fix" its two deliberate gaps, `-count=1` and `taplo`: check.sh says why at its
     `go test` line and in its NOT-mirrored manifest.
 - Run **`sh scripts/mutations.sh`** to prove fixes by re-breaking them — each
@@ -100,8 +101,7 @@ a broken local gate never looks like a verdict.
   It answers what the runbook cannot: of the repos that pin glyph, how many does this release
   change the verdict for? Read its output as the runbook's step 0 says.
   - Two corrections not to re-make: the lint differential compares the **finding set**, not
-    the exit code (lint has only two answer codes, so a repo already at `3` could never
-    register a move — that hid eight repos), and the bump probe runs `--since-tag`, the walk
+    the exit code (fleet-preflight.sh's `probe_lint` comment says why), and the bump probe runs `--since-tag`, the walk
     `release.yml` actually performs, not `--range` (the script's header, at its `bump` probe,
     says where they disagree).
 - Fire live ammunition in **`glyph-test`** — it is this repo's permanent live-fire harness
@@ -146,9 +146,9 @@ a broken local gate never looks like a verdict.
   [`docs/go-bite.md`](https://github.com/akira-toriyama/.github/blob/main/docs/go-bite.md).
   Its verdict is "**at least one** bites", so it is weaker than it sounds — and weaker than
   `scripts/mutations.sh`, which requires every named test to fail.
-- **`internal/workflows`** — tests the workflow YAML itself; `internal/workflows/doc.go` says
-  what it holds, the `@vX.Y.Z` placeholder in commented stubs among it. Read its failure
-  messages; they carry the incident. When you add a guard that asserts an absence, copy the
+- **`internal/workflows`** — tests the workflow YAML itself; `internal/workflows/doc.go` names
+  its chief guards, the `@vX.Y.Z` placeholder in commented stubs among them; its failure
+  messages name the rest and carry the incident. When you add a guard that asserts an absence, copy the
   **positive control** shape of `TestNaiveGrepSeesNoPinInTheReusables`: a regex guard with no
   canary proving the pattern still matches a real instance is how a fleet invariant dies
   green.
