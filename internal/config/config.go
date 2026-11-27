@@ -93,7 +93,7 @@ func parseSigil(s string) (Sigil, error) {
 	case "%":
 		return SigilPromote, nil
 	}
-	return 0, fmt.Errorf("invalid semver_sigil %q: the alphabet is [=~^!%%]", s)
+	return 0, fmt.Errorf("invalid semver_sigil %q: the alphabet is = none / ~ patch / ^ minor / ! major / %% promote to 1.0.0", s)
 }
 
 func (s Sigil) String() string { return string(rune(s)) }

@@ -108,8 +108,9 @@ func TestLintViolationQuotesTheForm(t *testing.T) {
 	if !strings.Contains(got.Reason, form) {
 		t.Errorf("Reason = %q, want it to quote the template's first line %q", got.Reason, form)
 	}
-	if !strings.Contains(got.Reason, "= ~ ^ ! or %") {
-		t.Errorf("Reason = %q, want the sigil alphabet, the part a refused subject most often lacks", got.Reason)
+	const alphabet = "= none / ~ patch / ^ minor / ! major / % promote to 1.0.0"
+	if !strings.Contains(got.Reason, alphabet) {
+		t.Errorf("Reason = %q, want each sigil given with its level (%q): the sigil is the part a refused subject most often lacks, and a bare alphabet does not say which one is right", got.Reason, alphabet)
 	}
 
 	bare := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]) '\n")

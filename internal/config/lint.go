@@ -109,7 +109,7 @@ func (c *Config) unclaimedReason(m Match, authoring bool) string {
 	if form == "" {
 		return "message " + reason + " — write it to match one (see glyph.toml)" + exclude
 	}
-	return fmt.Sprintf("message %s — write it as %s with a semver_sigil of = ~ ^ ! or %% (commit.template in glyph.toml)%s", reason, form, exclude)
+	return fmt.Sprintf("message %s — write it as %s (commit.template in glyph.toml) with a semver_sigil of = none / ~ patch / ^ minor / ! major / %% promote to 1.0.0%s", reason, form, exclude)
 }
 
 // subjectForm is the first non-blank line of commit.template — the shape of

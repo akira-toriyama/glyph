@@ -395,8 +395,9 @@ pattern says it means:
 - **A refusal quotes the form** (mutation row
   `lint-violation-forgets-the-form.patch`, t-s1q0): the no-pattern-matches
   violation carries the first line of `commit.template` verbatim — `write it
-  as <:code:>[(scope: a-z 0-9 -)]<semver_sigil> <subject> with a semver_sigil
-  of = ~ ^ ! or %` — so the refused author is told the shape instead of
+  as <:code:>[(scope: a-z 0-9 -)]<semver_sigil> <subject> (commit.template in
+  glyph.toml) with a semver_sigil of = none / ~ patch / ^ minor / ! major / %
+  promote to 1.0.0` — so the refused author is told the shape instead of
   re-deriving it from the winning regex on every failure (measured: the
   envelope said only "see glyph.toml", while the window warning then sitting
   next to it already spelled the line). The template stays unparsed: glyph

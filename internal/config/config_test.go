@@ -544,9 +544,12 @@ func TestParseSigil(t *testing.T) {
 			t.Errorf("parseSigil(%q) = %v, want %v", c.in, got, c.want)
 		}
 	}
+	const alphabet = "= none / ~ patch / ^ minor / ! major / % promote to 1.0.0"
 	for _, bad := range []string{"", "+", "==", "≈", "major"} {
 		if _, err := parseSigil(bad); err == nil {
 			t.Errorf("parseSigil(%q) succeeded, want error", bad)
+		} else if !strings.Contains(err.Error(), alphabet) {
+			t.Errorf("parseSigil(%q) = %v, want the error to give each sigil its level (%q)", bad, err, alphabet)
 		}
 	}
 }
