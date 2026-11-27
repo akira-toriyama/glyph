@@ -225,17 +225,20 @@ func releaseSteps(t *testing.T, raw string) []releaseStep {
 // it is conditional. Over a published tag the job therefore succeeds having
 // built, uploaded, attested and published nothing, and the cask job runs —
 // the one path that finishes a release whose cask job failed after the
-// publish, where a refusal left the cask unpushable by any re-run. The
-// refusal to rebuild exists because of `replace_existing_artifacts` — there
-// for the draft a failed run leaves — which over a PUBLISHED release would
-// swap the public assets for a rebuild's differently stamped bytes. A lookup
-// that fails, or answers without the repository or with nothing, fails the
-// step before anything is built: `gh release view` would have reported
-// "release not found" over a REST failure on a published tag (cli/cli
-// FetchRelease v2.103.3 answers with whichever of its two lookups succeeds
-// and reports not-found only when both fail, and the draft lookup fails that
-// way for every non-draft), and the job would have minted a second release
-// on a published tag. Two of the fail-closed legs are shell, not jq, and are
+// publish, where a refusal left the cask unpushable by any re-run. A rebuild
+// over a PUBLISHED release leaves its assets alone and mints a second one:
+// `use_existing_draft` looks only among the drafts (GoReleaser v2.20.3
+// findDraftRelease), so GoReleaser POSTs a draft onto the released tag —
+// GitHub accepts it (measured 2026-11-08 on glyph-test-2) — the attest step
+// signs bytes nobody ships, and the publish step's gh answers the published
+// release, leaving the second a draft. A lookup that fails, or answers
+// without the repository or with nothing, fails the step before anything is
+// built: `gh release view` would have reported "release not found" over a
+// REST failure on a published tag (cli/cli FetchRelease v2.103.3 answers
+// with whichever of its two lookups succeeds and reports not-found only when
+// both fail, and the draft lookup fails that way for every non-draft), and
+// the job would have run that rebuild. Two of the fail-closed legs are
+// shell, not jq, and are
 // held by their own cases: `pipefail`, for a gh that exits 1 over a body jq
 // can still map, and the `*)` arm, for an empty body that maps to no word.
 func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
@@ -269,7 +272,7 @@ func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
 				"step run on every attempt", label, cond)
 		case i > split && cond != buildCondition:
 			t.Errorf("step %q carries `if: %s`, want exactly `%s`: over a published tag it would run — a rebuild "+
-				"over public assets, an attest over an empty dist, a publish of nothing — or never run", label, cond, buildCondition)
+				"onto a second draft on the released tag, an attest over an empty dist, a publish of nothing — or never run", label, cond, buildCondition)
 		}
 	}
 	if n := len(steps) - split - 1; n != 6 {

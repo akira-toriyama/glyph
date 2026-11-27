@@ -56,14 +56,26 @@ name: goreleaser
 #     cask, pushing it or finding the tap already carries it.
 # So "re-run failed jobs", "re-run all jobs" and a fresh run on the tag all
 # finish a release the cask job never completed, and nothing ever rebuilds
-# over a published release: a rebuild is the same bytes only under the
-# GoReleaser that built it. .goreleaser.yaml takes every time from the commit,
-# but the tool floats on `~> 2`, and over one commit v2.19.0 and v2.20.2
-# write the same archives and another cask (measured 2026-11-15) — so a later
-# one could replace public assets with bytes the shipped attestation does not
-# name, and an identical upload gains nothing. The cask job reads the
-# release, not an artifact of its own run, so the path is the same in a
-# re-run attempt and in a new run.
+# over a published release. A rebuild there would leave the public assets
+# alone and add a stray release: `use_existing_draft` looks only among the
+# drafts (GoReleaser v2.20.3 findDraftRelease), so GoReleaser would POST a
+# second draft onto the released tag — GitHub accepts one (measured
+# 2026-11-08 on glyph-test-2) — and upload onto it, the attest step would
+# sign bytes nobody ships (over one commit v2.19.0 and v2.20.2 write the same
+# archives and another cask, measured 2026-11-15), and the publish step's gh
+# would answer the published release, leaving the second one a draft. The
+# cask job reads the release, not an artifact of its own run, so the path is
+# the same in a re-run attempt and in a new run.
+#
+# Rehearsed end to end on glyph-test-2 (t-txke, 2026-11-27; this file with
+# TAP_URL pointed at the harness, GoReleaser v2.20.3): public 2s after the
+# attestation's Rekor entry and 7s before the tap commit (run 45983946222);
+# a draft left by a cancel during attest reused by "re-run all jobs" — same
+# release id, all six assets replaced on 422 — and "re-run failed jobs"
+# re-running the cask job alone over the release job's carried outputs (run
+# 45984636528); over a published tag, "re-run all jobs" and a
+# workflow_dispatch on the tag ref skipping the six build steps green (runs
+# 45983946222, 45984425875); an older tag's cask job refusing a newer tap.
 #
 # Requires the HOMEBREW_TAP_DEPLOY_KEY secret (private half of homebrew-tap's write
 # deploy key) for the cask push — fleet-sync fans it out, gated on this file
@@ -162,12 +174,9 @@ jobs:
 
       # The one question every later step of this job hangs on: none, a draft,
       # or published. A published release is this job's finished work and must
-      # not be rebuilt over: GoReleaser replaces an asset that already exists
-      # (.goreleaser.yaml `replace_existing_artifacts`, there for the draft a
-      # failed run leaves), and a rebuild is held to the published bytes only
-      # under the GoReleaser that built them (the header), so the public assets
-      # could be swapped for bytes the shipped attestation and the tap's cask
-      # do not name. So every step from setup-go
+      # not be rebuilt over: GoReleaser would POST a second draft onto the
+      # released tag and the attest step sign bytes nobody ships (the header).
+      # So every step from setup-go
       # to the publish carries `if: steps.existing.outputs.release !=
       # 'published'` as its LAST key — one rule, and the key never neighbours
       # a dependabot-owned `uses:` pin, so the ledger's patches over these
@@ -186,7 +195,8 @@ jobs:
       # for every non-draft), so a REST failure there would read as no release.
       # Here any failure of the lookup — gh, the API, an answer without the
       # repository, an empty answer — fails the step before anything is built,
-      # and a re-run asks again. Two shapes need the shell's help: gh prints
+      # and a re-run asks again: read as none over a published tag, it would
+      # run that rebuild. Two shapes need the shell's help: gh prints
       # the body of an errors[] answer and exits 1, and that body can still
       # map to a word (`release: null` beside a FORBIDDEN error), so the
       # pipeline's status must be gh's (`pipefail`); and an empty body maps to
