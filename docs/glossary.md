@@ -562,10 +562,13 @@ Residue`,
 
 **published floor** — the highest **published** (non-draft) house-shaped version
 on the line.
-The next version must be *strictly* greater, or the draft could never be
-published: its tag is taken, or permanently burned if a published release was
-deleted. Fails loud (4) rather than creating an unpublishable draft.
-`internal/draftplan/floor.go: CheckPublishedFloor, highestPublished`
+The next version must be *strictly* greater: an equal version's tag is taken,
+and a lower one would regress below a published release. Fails loud (4) before
+anything is written, and the refusal names every published release at or above
+the computed version and how to clear each. A deleted published release is
+invisible to the floor, and where immutable releases are on its tag name is
+burned for good.
+`internal/draftplan/floor.go: CheckPublishedFloor, highestPublished, publishedAtOrAbove`
 (`internal/bump/semver.go: HouseTagOn` decides the shape)
 
 **pending** — what is already merged on the base branch but **not yet released**:

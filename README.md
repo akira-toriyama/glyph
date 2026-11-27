@@ -293,10 +293,14 @@ macOS runner. Each input's `description:` in `release.yml` is its contract.
 
 The draft is always one a human can publish. Every published release sets a
 **floor** (per line under `[[packages]]`), wherever its commit sits: a
-computed version that is not strictly greater than the highest of them — equal included, because that
-tag is taken, or burned for good if its release was deleted — is refused at
-exit 4 before anything is written, `--dry-run` included, with both versions
-named. DESIGN §4 has the rule and its prices.
+computed version that is not strictly greater than the highest of them — equal
+included, because that tag is taken — is refused at exit 4 before anything is
+written, `--dry-run` included. The refusal names every published release at or
+above the computed version and how to clear each: one released off the default
+branch by landing its tagged commit with a merge commit, one published by
+mistake by deleting it with its tag. Where immutable releases are on, that
+deletion burns the tag name for good, and the line can never publish that
+version. DESIGN §4 has the rule and its prices.
 
 A tag-push job — a GoReleaser step rendering the body of the tag it was just
 handed — cannot walk with a bare `--since-tag`: at that moment the new tag is

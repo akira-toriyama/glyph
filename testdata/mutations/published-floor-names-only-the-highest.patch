@@ -1,0 +1,11 @@
+diff --git a/internal/draftplan/floor.go b/internal/draftplan/floor.go
+index 6accc66..6582c1f 100644
+--- a/internal/draftplan/floor.go
++++ b/internal/draftplan/floor.go
+@@ -72,5 +72,5 @@ func publishedAtOrAbove(l config.Line, next bump.Version, releases []Draft) []st
+ 	for i, v := range inTheWay {
+ 		tags[i] = v.TagOn(l.Prefix)
+ 	}
+-	return tags
++	return tags[len(tags)-1:]
+ }

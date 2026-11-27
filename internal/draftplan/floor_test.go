@@ -115,3 +115,62 @@ func TestCheckPublishedFloorRefusesAtFour(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckPublishedFloorNamesEveryReleaseInTheWay: the refusal lists every
+// published release at or above the computed version, ascending and spelled
+// as the line spells its tags, because a reader who clears the highest alone
+// meets the next one on the following run (t-hrfr R3). A release below the
+// computed version, a draft and another line's release are no obstacle, so
+// none is named. It offers only escapes that have a means (the merge for a
+// release off this branch, the deletion with its tag for one published by
+// mistake, the read that says whether a deletion burns the name) and not the
+// unconditional burn nor a bump no flag or sigil can make.
+func TestCheckPublishedFloorNamesEveryReleaseInTheWay(t *testing.T) {
+	cases := []struct {
+		name     string
+		line     config.Line
+		releases []Draft
+		want     string
+		absent   []string
+	}{
+		{"bare", config.Line{}, []Draft{
+			{ID: 4, TagName: "v0.4.0", Draft: true},
+			{ID: 3, TagName: "v0.3.0"},
+			{ID: 1, TagName: "v0.1.0"},
+			{ID: 2, TagName: "v0.2.0"},
+		}, "(published at or above v0.1.1: v0.2.0, v0.3.0).", []string{"v0.1.0", "v0.4.0"}},
+		{"prefixed", config.Line{Prefix: "haiku/"}, []Draft{
+			{ID: 6, TagName: "haiku/v0.4.0", Draft: true},
+			{ID: 5, TagName: "curry/v0.5.0"},
+			{ID: 4, TagName: "v0.5.0"},
+			{ID: 3, TagName: "haiku/v0.3.0"},
+			{ID: 1, TagName: "haiku/v0.1.0"},
+			{ID: 2, TagName: "haiku/v0.2.0"},
+		}, "(published at or above haiku/v0.1.1: haiku/v0.2.0, haiku/v0.3.0).", []string{"haiku/v0.1.0", "v0.4.0", "v0.5.0"}},
+	}
+	commands := []string{
+		"`git merge -s ours <tag>`",
+		"`gh release delete <tag> --cleanup-tag`",
+		"`gh api repos/{owner}/{repo}/immutable-releases`",
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := CheckPublishedFloor(c.line, bump.Version{Minor: 1, Patch: 1}, c.releases)
+			ce, ok := errors.AsType[*core.Error](err)
+			if !ok || ce.Code != core.CodeAPI {
+				t.Fatalf("err = %v, want *core.Error with CodeAPI (exit 4)", err)
+			}
+			t.Log(err)
+			for _, want := range append([]string{c.want}, commands...) {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("refusal %q is missing %q", err, want)
+				}
+			}
+			for _, gone := range append([]string{"permanently burned", "bump past it"}, c.absent...) {
+				if strings.Contains(err.Error(), gone) {
+					t.Errorf("refusal %q names %q", err, gone)
+				}
+			}
+		})
+	}
+}

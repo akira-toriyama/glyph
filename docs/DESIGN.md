@@ -1680,6 +1680,32 @@ none is refused there whenever the release it runs behind was published from
 glyph's own verdict: the max-fold is monotone, and that release's range held
 this one.
 
+What the refusal says is the operator's only guide off the floor, and its old
+text misled (t-hrfr case R4, 2026-11-27, on glyph-test-2: stray published
+releases v6.90.0 and v6.91.0 above a v0.1.x line). It said a deleted release's
+tag is permanently burned and offered "bump past it", which has no means: no
+flag sets the version, and no sigil steps a 0.1.x line past v6.91.0. One of
+three cold readers acted correctly — one refused to delete because of the burn
+and planned a bump to v6.92.0, one handed the decision back, one deleted
+v6.91.0 alone and left v6.90.0 as the next refusal. The burn is conditional:
+with immutable releases off, deleting a stray with its tag clears the floor
+(measured the same day on glyph-test-2: `release --dry-run` after the deletion
+drafted v0.1.1 at exit 0); with them on, a deleted release's tag name can never
+be reused (GitHub's rule; the hub's `docs/immutable-releases-hardening.md`), and
+the floor, reading only the releases listing, cannot see a burned name. So the
+refusal lists every published release at or above the computed version, since
+one cleared alone leaves the next to refuse on the following run, and gives
+each escape that has a means: a run behind them (a re-run at an older commit)
+needs nothing, one the line released off its branch is landed with a merge
+commit (`git merge -s ours`, below), one published by mistake is deleted with
+its tag. It names the read that tells the two deletions apart (`gh api
+repos/{owner}/{repo}/immutable-releases`, measured `"enabled":false` on glyph
+and glyph-test-2 and `true` on facet) instead of making it: the read needs admin
+access the release job's token lacks (GitHub's docs, not measured), so in CI it
+would add a failure mode and an "unknown" arm for wording alone, and whether a
+listed release is the line's own or a mistake is a question glyph cannot answer
+whatever the setting says.
+
 The rule has three prices, each measured 2026-09-29 on a stand-in API:
 
 - **A topic branch answers as of its fork point.** Forked between v1.0.0 and
@@ -2270,7 +2296,8 @@ that genuinely holds nothing, and glyph acted on both alike: it deleted
 the rolling draft on the very reading it had just told the operator to re-run
 (t-441z), and, where one commit *did* classify, it retagged an existing v1.0.0
 draft down to v0.1.1 out of a fold missing the `:boom:` pull — exit 0, green,
-and a human publishing that draft burns the tag forever. So an incomplete walk
+and a human publishing that draft spends its tag (for good where immutable
+releases are on, even once the release is deleted). So an incomplete walk
 **fails loud (4)** before the releases listing is even fetched: no delete, no
 retag, no draft, no verdict — the same refusal to judge an unread range that
 the wedge, the covered pull and the published floor have always made (ratified
@@ -2344,8 +2371,9 @@ the footer would keep it, at the price of a new layout for every comment that
 carries notes, and the cut would still fall inside the block with the notice
 folded away — so the block is closed, and the layout stays.) A next version
 not strictly above the highest published release on the line — the maximum
-version, not the one published last — fails loud (an unpublishable draft; a
-deleted published release's tag is burned forever).
+version, not the one published last — fails loud (an unpublishable draft;
+where immutable releases are on, a deleted published release's tag is burned
+forever).
 
 The refusals above are about evidence — a range glyph could not read. One is
 about **authority**, and it is the only release-time refusal a dry run does not
