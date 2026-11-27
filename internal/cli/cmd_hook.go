@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v6/internal/core"
@@ -97,7 +98,9 @@ func newHookInstallCmd() *cobra.Command {
 			"Naming no kind installs every hook glyph writes (commit-msg, pre-push).\n" +
 			"Name kinds to install a subset — the escape when one of them is somebody\n" +
 			"else's file. Nothing is written unless every named kind can be: a run that\n" +
-			"refused halfway would report failure over a tree that had already changed.",
+			"refused halfway would report failure over a tree that had already changed.\n" +
+			"A refusal's error envelope carries the report as its details, one\n" +
+			"{kind,path,action,existed} per kind saying what became of its file.",
 		Args: hookKindArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kinds, err := resolveHookKinds(args)
@@ -106,8 +109,9 @@ func newHookInstallCmd() *cobra.Command {
 			}
 			// One script or none: two concatenated shell scripts are not a
 			// script, and writing them out as if they were is worse than
-			// refusing.
-			if o.print && len(args) != 1 {
+			// refusing. Counted after the dedupe — a kind named twice is the
+			// one script.
+			if o.print && (len(args) == 0 || len(kinds) > 1) {
 				return core.Usagef("--print writes ONE hook script; name the kind (one of %s)", strings.Join(hook.KindNames(), ", "))
 			}
 			o.kinds = kinds
@@ -154,7 +158,7 @@ func hookInstallRun(ctx context.Context, o hookInstallOptions) error {
 	}
 	rep, ierr := hook.Install(hooksDir, o.force, o.kinds...)
 	if ierr != nil {
-		return ierr
+		return ierr // the report is its details: hook.Install attached it
 	}
 	if o.json {
 		printCompact(rep)
@@ -177,18 +181,21 @@ func hookKindArgs(_ *cobra.Command, args []string) error {
 // resolveHookKinds maps the command's positional arguments to hook kinds. No
 // argument means every kind glyph writes — bare `glyph hook install` is the
 // invocation the fleet's CONTRIBUTING points at, so it must keep working AND
-// must not quietly omit a gate that was added after it was written.
+// must not quietly omit a gate that was added after it was written. A kind
+// named twice is one kind, written and reported once.
 func resolveHookKinds(args []string) ([]hook.Kind, error) {
 	if len(args) == 0 {
 		return hook.Kinds(), nil
 	}
 	kinds := make([]hook.Kind, 0, len(args))
-	for _, name := range args {
+	for i, name := range args {
 		k, ok := hook.KindByName(name)
 		if !ok {
 			return nil, core.Usagef("glyph writes no %q hook; the kinds are %s", name, strings.Join(hook.KindNames(), ", "))
 		}
-		kinds = append(kinds, k)
+		if !slices.Contains(args[:i], name) {
+			kinds = append(kinds, k)
+		}
 	}
 	return kinds, nil
 }

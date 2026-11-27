@@ -1,0 +1,72 @@
+diff --git a/internal/cli/hookdrift.go b/internal/cli/hookdrift.go
+index 363b5f2..fb92ba2 100644
+--- a/internal/cli/hookdrift.go
++++ b/internal/cli/hookdrift.go
+@@ -34,5 +34,5 @@ func warnIfHookStale(ctx context.Context, k hook.Kind) {
+ 	}
+ 	warnf("the installed %s hook was written by glyph and no longer matches this binary's — "+
+ 		"everything it decides was frozen then, including the exit code it treats as a violation, "+
+-		"and it fails silently (exit 0). Refresh it: glyph hook install %[1]s", k.Name)
++		"and it fails silently (exit 0). Refresh it: glyph hook install", k.Name)
+ }
+diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
+index 3fcffe9..3439672 100644
+--- a/internal/doctor/hook.go
++++ b/internal/doctor/hook.go
+@@ -66,7 +66,7 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
+ 		c.Status = StatusPass
+ 		c.Observed = "no " + k.Name + " hook at " + path + ", so none can be stale"
+ 		c.Message = "the local gate is opt-in and CI is the authority, so its absence costs a round trip rather than a " +
+-			"wrong verdict. `glyph hook install " + k.Name + "` adds it: it holds no copy of the rules (it shells back to " +
++			"wrong verdict. `glyph hook install` adds it: it holds no copy of the rules (it shells back to " +
+ 			"`" + k.Asks + "`) and blocks for a real convention violation and nothing else"
+ 	case hook.Current:
+ 		c.Status = StatusPass
+@@ -81,14 +81,14 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
+ 			"treats as a convention violation (glyph interpolates that from core.CodeLint precisely because a stale copy " +
+ 			"waves every violation through) and the arguments it hands `glyph lint`. A hook that judges a message by rules " +
+ 			"other than this binary's is the hook-green/CI-red split, and it fails in the quiet direction — exit 0"
+-		c.Fix = "glyph hook install " + k.Name + " (re-installing over a glyph-written hook is a no-questions refresh)"
++		c.Fix = "glyph hook install (re-installing over a glyph-written hook is a no-questions refresh)"
+ 	case hook.Foreign:
+ 		c.Status = StatusAdvice
+ 		c.Observed = fmt.Sprintf("%s exists and glyph did not write it (no `%s` marker)", path, hook.Marker)
+ 		c.Message = "glyph never silently overwrites somebody else's hook, so this is a standing choice and not drift. What " +
+ 			"it costs is that nothing here is known to lint the convention locally; if this hook does call glyph, it does " +
+ 			"so on terms this binary cannot see"
+-		c.Fix = "inspect it, then `glyph hook install --force " + k.Name + "` to replace it with the generated hook"
++		c.Fix = "inspect it, then `glyph hook install --force` to replace it with the generated hook"
+ 	}
+ 	return c
+ }
+diff --git a/internal/hook/hook.go b/internal/hook/hook.go
+index db42041..2c6a268 100644
+--- a/internal/hook/hook.go
++++ b/internal/hook/hook.go
+@@ -60,7 +60,7 @@ func commitMsgScript() string {
+ # glyph, which holds the rules. Do not add a regex here: a local copy of the
+ # convention is exactly what drifts out of lockstep when the rules move.
+ #
+-# Regenerate with: glyph hook install commit-msg
++# Regenerate with: glyph hook install
+ if ! command -v glyph >/dev/null 2>&1; then
+ 	echo "glyph: not on PATH — skipping the commit-msg lint (CI still enforces it)" >&2
+ 	exit 0
+@@ -101,7 +101,7 @@ func prePushScript() string {
+ # owns the range arithmetic and the rules. Do not compute a range here and do
+ # not add a regex: this file is installed once and nothing ever refreshes it.
+ #
+-# Regenerate with: glyph hook install pre-push
++# Regenerate with: glyph hook install
+ if ! command -v glyph >/dev/null 2>&1; then
+ 	echo "glyph: not on PATH — skipping the pre-push lint (CI still enforces it)" >&2
+ 	exit 0
+@@ -397,7 +397,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
+ 		res.Action = "refused"
+ 		return res, "", core.Usagef(
+ 			"the %[1]s hook %[2]s already exists and was not written by glyph — refusing to overwrite it, "+
+-				"so nothing was written. Inspect it, then run glyph hook install --force %[1]s to replace it (its "+
++				"so nothing was written. Inspect it, then re-run with --force to replace it (its "+
+ 				"rules, if any, are superseded: the new hook calls glyph)", k.Name, in.Path)
+ 	}
+ }

@@ -857,6 +857,15 @@ handling, its Latin-1 fix-up under the default and iconv's whole table under
 any other setting (`golang.org/x/text/encoding`), a dependency and a second
 copy of git's rules bought for patterns no preset ships. Stated, not fixed.
 
+And a git older than **`core.commentString`** (t-9zef): it ignores the key while
+the hook reads it as the prefix (below), so under `core.commentChar=';'` then
+`core.commentString=//` an editor commit's `;` template above the subject is
+stripped by git and judged as the subject at the hook (hook 3, CI 0). Measured:
+git 2.39.5 ignores the key (`git -c core.commentString=// stripspace -c`
+prefixes `#`); Apple 2.50.1, 2.53, 2.54 and 2.56 read it. Only a key that git
+does nothing with reaches it, and the hook does not probe git for the key; the
+tests whose oracle is that answer skip under such a git.
+
 Three ways to close the editor and `--no-verbose` cells were measured and not
 taken. Judging the uncut text whenever the cut leaves nothing closes every cell
 where the typed cut line opens the message — since under `-v` git aborts an
@@ -5151,9 +5160,12 @@ The severities are the argued part:
   code from `core.CodeLint` so a renumbered constant cannot leave behind a hook
   comparing against a code glyph no longer emits — one that waves every
   violation through. That holds for the hook glyph *writes*; it holds for
-  nothing already on disk. Hooks are untracked, so no pull, no fleet-sync and no
-  CI job refreshes one, and everything it decides — the gate code, the arguments
-  it hands `lint` — was frozen by whichever glyph was on PATH that day. It fails
+  nothing already on disk. A hook under `.git/hooks` is untracked, so no pull, no
+  fleet-sync and no CI job refreshes one; a tracked `core.hooksPath` (below)
+  moves only when someone re-installs and commits, and a pull then delivers that
+  commit's bytes, not the running glyph's. Either way everything it decides — the
+  gate code, the arguments it hands `lint` — was frozen by whichever glyph ran
+  the install. It fails
   in the quiet direction: a stale hook still exits 0, which is what a clean
   message looks like. Hence the one artefact here that glyph itself wrote is
   also the one nothing else can notice going wrong.

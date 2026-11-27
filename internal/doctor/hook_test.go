@@ -173,8 +173,13 @@ func TestEveryHookKindIsCheckedTheSameWay(t *testing.T) {
 	ids := map[string]string{"commit-msg": idCommitMsgHook, "pre-push": idPrePushHook}
 	for _, k := range hook.Kinds() {
 		t.Run(k.Name, func(t *testing.T) {
-			if c := checkHook(k, ids[k.Name], installedWith(t, k, ""), nil, nil); c.Status != StatusPass {
-				t.Errorf("no %s hook installed reported %q, want pass — absence is opt-out, not drift", k.Name, c.Status)
+			absent := checkHook(k, ids[k.Name], installedWith(t, k, ""), nil, nil)
+			if absent.Status != StatusPass {
+				t.Errorf("no %s hook installed reported %q, want pass — absence is opt-out, not drift", k.Name, absent.Status)
+			}
+			if want := "`glyph hook install " + k.Name + "` adds it"; !strings.Contains(absent.Message, want) {
+				t.Errorf("the absent %s message is %q, want it to contain %q — beside a foreign hook of the other kind a "+
+					"plain install refuses and writes nothing", k.Name, absent.Message, want)
 			}
 
 			stale := installedWith(t, k, "#!/bin/sh\n# "+hook.Marker+"\nexit 0\n")
@@ -185,6 +190,15 @@ func TestEveryHookKindIsCheckedTheSameWay(t *testing.T) {
 			}
 			if c.ID != ids[k.Name] {
 				t.Errorf("check id = %q, want %q — each kind carries its own observed/expected pair", c.ID, ids[k.Name])
+			}
+			foreign := checkHook(k, ids[k.Name], installedWith(t, k, "#!/bin/sh\nexit 0\n"), nil, nil)
+			if want := "`glyph hook install --force " + k.Name + "`"; !strings.Contains(foreign.Fix, want) {
+				t.Errorf("the foreign %s fix is %q, want it to contain %q — a plain --force also replaces a foreign hook "+
+					"of the other kind, one this check never asked the reader to inspect", k.Name, foreign.Fix, want)
+			}
+			if want := "glyph hook install " + k.Name + " "; !strings.HasPrefix(c.Fix, want) {
+				t.Errorf("the stale %s fix is %q, want it to start %q — beside a foreign hook of the other kind a "+
+					"plain install refuses and writes nothing, so only an install naming this kind refreshes it", k.Name, c.Fix, want)
 			}
 		})
 	}

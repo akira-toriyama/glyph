@@ -34,5 +34,5 @@ func warnIfHookStale(ctx context.Context, k hook.Kind) {
 	}
 	warnf("the installed %s hook was written by glyph and no longer matches this binary's — "+
 		"everything it decides was frozen then, including the exit code it treats as a violation, "+
-		"and it fails silently (exit 0). Refresh it: glyph hook install", k.Name)
+		"and it fails silently (exit 0). Refresh it: glyph hook install %[1]s", k.Name)
 }

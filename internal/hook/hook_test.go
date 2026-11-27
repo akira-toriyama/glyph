@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -220,6 +221,97 @@ func TestInstallRefreshesAnOlderGlyphHook(t *testing.T) {
 	}
 }
 
+// The header is the one instruction a developer reads off the hook itself, and
+// an install of its kind refreshes a glyph-written hook. Naming --force there
+// sent the reader to the flag that also clobbers a foreign hook of the other
+// kind in the same run; naming the plain install sent them to a run that
+// refuses at that foreign hook and writes nothing.
+func TestEveryKindsScriptNamesItsOwnKindsInstallToRegenerateIt(t *testing.T) {
+	for _, k := range Kinds() {
+		if !strings.Contains(k.Script, "\n# Regenerate with: glyph hook install "+k.Name+"\n") {
+			t.Errorf("%s script does not name `glyph hook install %s` as its regeneration", k.Name, k.Name)
+		}
+		if strings.Contains(k.Script, "--force") {
+			t.Errorf("%s script names --force, which also replaces a hook glyph did not write", k.Name)
+		}
+	}
+}
+
+// The state the header has to survive: a stale glyph hook of one kind beside a
+// foreign hook of the other. The command is read off the header and run as the
+// CLI runs it (no kind named means every kind), so a header naming the plain
+// install fails here at the refusal that leaves the stale hook stale.
+func TestTheHeadersCommandRefreshesAStaleHookBesideAForeignOne(t *testing.T) {
+	const foreign = "#!/bin/sh\necho somebody else wrote this\n"
+	for _, k := range Kinds() {
+		t.Run(k.Name, func(t *testing.T) {
+			dir := t.TempDir()
+			stale := k.Script + "# stale\n"
+			seed := map[string]string{}
+			for _, o := range Kinds() {
+				seed[o.Name] = foreign
+			}
+			seed[k.Name] = stale
+			for name, body := range seed {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil { //nolint:gosec
+					t.Fatalf("seeding %s: %v", name, err)
+				}
+			}
+			read := func(name string) string {
+				t.Helper()
+				b, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil {
+					t.Fatalf("reading %s: %v", name, err)
+				}
+				return string(b)
+			}
+
+			if _, err := Install(dir, false, Kinds()...); err == nil {
+				t.Fatal("a plain install over a foreign hook succeeded, want the refusal this test is about")
+			}
+			if read(k.Name) != stale {
+				t.Fatalf("the refused plain install rewrote the stale %s hook; it plans every kind and writes nothing", k.Name)
+			}
+
+			const prefix = "# Regenerate with: glyph hook install"
+			var named []Kind
+			found := false
+			for line := range strings.SplitSeq(k.Script, "\n") {
+				rest, ok := strings.CutPrefix(line, prefix)
+				if !ok {
+					continue
+				}
+				found = true
+				for arg := range strings.FieldsSeq(rest) {
+					kk, ok := KindByName(arg)
+					if !ok {
+						t.Fatalf("the %s header names %q, which is not a hook kind", k.Name, arg)
+					}
+					named = append(named, kk)
+				}
+			}
+			if !found {
+				t.Fatalf("the %s script has no %q line", k.Name, prefix)
+			}
+			if len(named) == 0 {
+				named = Kinds()
+			}
+			if _, err := Install(dir, false, named...); err != nil {
+				t.Fatalf("the command the %s header names did not refresh it beside a foreign hook: %v", k.Name, err)
+			}
+			for name, body := range seed {
+				want := body
+				if name == k.Name {
+					want = k.Script
+				}
+				if read(name) != want {
+					t.Errorf("after the header's command, %s holds the wrong bytes (refreshed want %v)", name, name == k.Name)
+				}
+			}
+		})
+	}
+}
+
 // The repos this targets track a real commit-msg hook in git. Clobbering one
 // unasked would stage a content change the developer never requested, so a
 // foreign hook is a refusal — and specifically a usage refusal, since the fix
@@ -244,6 +336,28 @@ func TestInstallRefusesAForeignHook(t *testing.T) {
 	}
 	if got := readHook(t, dir); got != foreign {
 		t.Error("foreign hook was modified despite the refusal")
+	}
+}
+
+// The refusal's advice forces the kind it told the reader to inspect and no
+// other: a plain --force also replaces a foreign hook of the other kind, one
+// the refusal never named. Each kind is seeded foreign alone and the run asks
+// for every kind, as a bare install does.
+func TestARefusalAdvisesForcingTheKindItNamed(t *testing.T) {
+	for _, k := range Kinds() {
+		t.Run(k.Name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, k.Name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil { //nolint:gosec
+				t.Fatalf("seeding %s: %v", k.Name, err)
+			}
+			_, err := Install(dir, false, Kinds()...)
+			if err == nil {
+				t.Fatalf("Install overwrote a foreign %s hook without --force", k.Name)
+			}
+			if want := "glyph hook install --force " + k.Name + " "; !strings.Contains(err.Error(), want) {
+				t.Errorf("the refusal of a foreign %s hook does not advise %q: %v", k.Name, want, err)
+			}
+		})
 	}
 }
 
@@ -277,6 +391,78 @@ func TestInstallWritesNothingWhenALaterKindRefuses(t *testing.T) {
 	}
 	if got, rerr := os.ReadFile(filepath.Join(dir, kinds[1].Name)); rerr != nil || string(got) != foreign {
 		t.Errorf("the foreign pre-push hook was modified despite the refusal: %v", rerr)
+	}
+}
+
+// refusalDetails is the report a refusal of Install carries as its details.
+func refusalDetails(t *testing.T, err error) []Result {
+	t.Helper()
+	ce, ok := errors.AsType[*core.Error](err)
+	if !ok {
+		t.Fatalf("Install = %v, want a *core.Error refusal", err)
+	}
+	d, ok := ce.Details.([]Result)
+	if !ok {
+		t.Fatalf("refusal details = %#v, want the report, one Result per kind", ce.Details)
+	}
+	return d
+}
+
+// TestARefusalCarriesTheReport: a refusal's details are the report, one entry
+// per kind saying what happened to its file before the run stopped. The
+// absent commit-msg hook is planned before the foreign pre-push one refuses,
+// and nothing is written, so its entry is "skipped" — an "installed" there
+// (the plan's Action, set before the write) claims a write that never
+// happened — and no summary line renders an entry the run did not write, or
+// an empty Action, as installed.
+func TestARefusalCarriesTheReport(t *testing.T) {
+	dir := t.TempDir()
+	foreign := "#!/bin/sh\n# hand-written house rules\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(dir, "pre-push"), []byte(foreign), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("seeding the foreign pre-push hook: %v", err)
+	}
+
+	_, err := Install(dir, false, Kinds()...)
+	got := refusalDetails(t, err)
+	want := []Result{
+		{Kind: "commit-msg", Path: filepath.Join(dir, "commit-msg"), Action: "skipped", Existed: false},
+		{Kind: "pre-push", Path: filepath.Join(dir, "pre-push"), Action: "refused", Existed: true},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("refusal details = %+v, want %+v", got, want)
+	}
+	if !strings.Contains(err.Error(), "the pre-push hook") || !strings.Contains(err.Error(), "nothing was written") {
+		t.Errorf("refusal = %q, want it naming the pre-push hook and saying nothing was written", err)
+	}
+	for _, r := range append(got, Result{Kind: "commit-msg", Path: "p"}) {
+		if s := r.summary(); strings.Contains(s, "installed") {
+			t.Errorf("summary of %+v = %q, a write that did not happen", r, s)
+		}
+	}
+}
+
+// TestAFailedWriteMidwayCarriesTheReport: a write that fails after another
+// succeeded reports through the same details — the written kind as written,
+// the failed one as failed — instead of an empty report over a tree that
+// changed.
+func TestAFailedWriteMidwayCarriesTheReport(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where file modes do not stop a write")
+	}
+	dir := t.TempDir()
+	stale := "#!/bin/sh\n# glyph pre-push hook — " + Marker + "\nexec glyph hook pre-push --old-flag\n"
+	if err := os.WriteFile(filepath.Join(dir, "pre-push"), []byte(stale), 0o444); err != nil { //nolint:gosec
+		t.Fatalf("seeding the read-only pre-push hook: %v", err)
+	}
+
+	_, err := Install(dir, false, Kinds()...)
+	got := refusalDetails(t, err)
+	want := []Result{
+		{Kind: "commit-msg", Path: filepath.Join(dir, "commit-msg"), Action: "installed", Existed: false},
+		{Kind: "pre-push", Path: filepath.Join(dir, "pre-push"), Action: "failed", Existed: true},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("refusal details = %+v, want %+v", got, want)
 	}
 }
 
@@ -423,12 +609,15 @@ func TestSetHeadRemedyRunsPasted(t *testing.T) {
 
 // TestInstallNamesARefusedPathOnce: a read or a write the filesystem refuses
 // hands its *fs.PathError over as it is — it already names the operation and
-// the path — behind what did not happen, as a no-answer refusal (DESIGN §5).
+// the path — behind what did not happen, as a no-answer refusal (DESIGN §5),
+// and carries the report through the details every refusal does: the mkdir
+// failures write nothing and say so, and each kind's entry says which of its
+// file's read, write or creation failed or never ran.
 func TestInstallNamesARefusedPathOnce(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("running as root, where file modes do not stop a read or a write")
 	}
-	check := func(t *testing.T, err error, path string) {
+	check := func(t *testing.T, err error, path, action string) {
 		t.Helper()
 		var ce *core.Error
 		if !errors.As(err, &ce) || ce.Code != core.CodeAPI {
@@ -436,6 +625,12 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		}
 		if n := strings.Count(err.Error(), path); n != 1 || !strings.Contains(err.Error(), "permission denied") {
 			t.Errorf("Install = %q, want the refusal naming %s once (got %d)", err, path, n)
+		}
+		if got := refusalDetails(t, err); len(got) != 1 || got[0].Action != action {
+			t.Errorf("refusal details = %+v, want one entry, action %q", got, action)
+		}
+		if action == "skipped" && !strings.Contains(err.Error(), "nothing was written") {
+			t.Errorf("Install = %q, want it saying nothing was written", err)
 		}
 	}
 	t.Run("an unreadable hook", func(t *testing.T) {
@@ -445,7 +640,11 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := Install(dir, false, Kinds()[0])
-		check(t, err, path)
+		check(t, err, path, "failed")
+		// It exists; it could not be read. The entry must not claim it absent.
+		if got := refusalDetails(t, err); len(got) != 1 || !got[0].Existed {
+			t.Errorf("refusal details = %+v, want the unreadable hook reported as existing", got)
+		}
 	})
 	t.Run("an unwritable hooks directory", func(t *testing.T) {
 		dir := t.TempDir()
@@ -454,7 +653,7 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 		_, err := Install(dir, false, Kinds()[0])
-		check(t, err, filepath.Join(dir, "commit-msg"))
+		check(t, err, filepath.Join(dir, "commit-msg"), "failed")
 	})
 	t.Run("an uncreatable hooks directory", func(t *testing.T) {
 		parent := t.TempDir()
@@ -464,7 +663,7 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
 		hooksDir := filepath.Join(parent, "hooks")
 		_, err := Install(hooksDir, false, Kinds()[0])
-		check(t, err, hooksDir)
+		check(t, err, hooksDir, "skipped")
 	})
 	t.Run("a hooks directory under an ancestor that cannot be made", func(t *testing.T) {
 		parent := t.TempDir()
@@ -475,7 +674,7 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		ancestor := filepath.Join(parent, "a")
 		hooksDir := filepath.Join(ancestor, "hooks")
 		_, err := Install(hooksDir, false, Kinds()[0])
-		check(t, err, hooksDir)
+		check(t, err, hooksDir, "skipped")
 		if !strings.Contains(err.Error(), "mkdir "+ancestor+":") {
 			t.Errorf("Install = %q, want the ancestor's refused mkdir beside the hooks directory", err)
 		}
