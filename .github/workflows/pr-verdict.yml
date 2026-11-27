@@ -7,13 +7,13 @@ name: glyph-pr-verdict
 #
 # `glyph preview --pr` does all of it: the verdict comes from the PR's
 # INDIVIDUAL commits (pure API — squash-safe by the same mechanism as the
-# release walk), never from the PR title, which a multi-commit PR's squash
-# subject would have replaced; it folds in what is already merged but
-# unreleased so the comment can distinguish "this PR escalates the next
-# release to vX.Y.Z" from "it stays vX.Y.Z — a same-or-higher bump is already
-# pending"; it skips that second walk on a repo with no v* tag (the walk is
-# the only unbounded input here, and skipping it is what makes fleet-wide
-# distribution safe); and it renders the body, marker included.
+# release walk), never from the PR title, which a squash lands as its subject
+# when the PR holds two or more commits besides merge commits; it folds in what
+# is already merged but unreleased so the comment can distinguish "this PR
+# escalates the next release to vX.Y.Z" from "it stays vX.Y.Z — a same-or-higher
+# bump is already pending"; it skips that second walk on a repo with no v* tag
+# (the walk is the only unbounded input here, and skipping it is what makes
+# fleet-wide distribution safe); and it renders the body, marker included.
 #
 # This workflow is therefore two steps: run it, post it. That is deliberate —
 # the fold is a VERSION decision internal/bump owns, and a jq fold here would
