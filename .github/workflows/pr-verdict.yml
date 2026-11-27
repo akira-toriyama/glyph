@@ -282,8 +282,19 @@ jobs:
             # unmatched brace in a BRE is POSIX-undefined; sed, not grep,
             # because a grep that matches nothing exits 1 and would kill the
             # step under `set -o pipefail` on every Silent error.
-            sed -n '/^[{]/,$p' "$RUNNER_TEMP/preview.err" \
-              | jq -r '"::error::glyph preview: \(.error.message)"' || true
+            #
+            # FRAMED ONLY WHEN glyph ANNOTATED NOTHING. A refusal with commit
+            # rows already wrote one `::error::` per refused commit onto the
+            # stream replayed above (glyph's only `::error::` writer here), and
+            # its message's first sentence names the first of them, so framing
+            # it would annotate that commit twice. The message is still in the
+            # log, inside the replayed envelope; an error glyph did not
+            # annotate (an API failure, a refusal with no commit rows) has the
+            # frame as its only headline.
+            if ! grep -q '^::error::' "$RUNNER_TEMP/preview.err"; then
+              sed -n '/^[{]/,$p' "$RUNNER_TEMP/preview.err" \
+                | jq -r '"::error::glyph preview: \(.error.message)"' || true
+            fi
             exit "$status"
           fi
 

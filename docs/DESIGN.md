@@ -4247,7 +4247,10 @@ rejects `/v6@v6.0.0` and serves v5.1.0 for `/v5/@latest`) — since
 is the one place that holds both the tag and the tree. Rejected: a `doctor`
 check (t-nag8, 2026-09-15 — glyph reads no manifest, §4.1, and no workflow in
 the fleet runs `doctor`). Subcommands: everything `glyph --help` prints except
-cobra's own `completion` and `help` — not retyped here, because the retyped
+cobra's own `completion` and `help`, which glyph keeps but guards, `completion`
+with its own `noArgs` and `help` by handing the words after its topic to that
+topic's own Args (`glyph completion zshh` and `glyph help nosuch` are usage, 2,
+as `glyph nosuch` is) — not retyped here, because the retyped
 list rotted once (t-0cqs, §8); the tree below is held to `internal/` by
 `TestDesignTreeNamesEveryInternalPackage`.
 
@@ -4330,7 +4333,18 @@ the API or the filesystem, or a refusal to hand down a verdict glyph will not
 stand behind (`core.CodeAPI`'s doc lists the refusals) · `130` interrupted.
 
 Errors are classified at the source into `*core.Error`; `ExitCode` funnels
-everything (unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
+everything (unclassified ⇒ API, never usage). The CLI's funnel holds the same
+default — cobra's parse errors are made usage where cobra raises them, not by
+elimination, save the MinimumNArgs(1) of the `__complete` and
+`__completeNoDesc` commands cobra builds during execution, which leaves a bare
+`glyph __complete` at `4` because no completion script reaches it (zsh, bash
+and fish each pass a word) — and a stdout write that returns an error is `4` on
+every command, the payload a caller reads being what went missing; a write into a
+pipe whose reader has gone never returns, because Go ends the process by SIGPIPE
+(`141` in a shell). A run the user interrupted is
+`130` whatever other code its command reached, because a read that takes no
+context (a plain file, stdin) carries no signal and lets the command run on to
+its own; one that finished with `0` keeps it, its verdict delivered. `3` is the *gate* code — what glyph was asked
 to judge does not conform: a commit message under `lint`, a repository's own
 configuration under `doctor`. Same class, different subject; no new integer.
 
@@ -4467,13 +4481,19 @@ invisible.
 
 The same incident settled who *renders* a finding: the binary that computed it.
 `lint --range` writes one `::error::` per violation onto the stream before the
-envelope, so a consumer's whole job is `cat` — replay the stream verbatim and
-frame only the summary (`.error.message`). Rebuilding the per-finding lines out
+envelope, and a `bump`, `notes`, `preview` or `release` refusal writes the same
+line, through the same function (`annotateFindings`), for each commit row in its
+details, whatever the input; so a consumer's whole job is `cat` — replay the
+stream verbatim and frame only the summary (`.error.message`), and only where the binary annotated
+nothing: a refusal's message opens on its first refused commit, so pr-verdict.yml frames it only
+when the stream carries no `::error::` of glyph's (`TestVerdictReusablesAnnotateEachRefusedCommitOnce`).
+Rebuilding the per-finding lines out
 of `.error.details` in a caller's jq is exactly the reconstruction that vanished
 under `|| true`, on the fleet's side of the pin where no test here could see it,
 so `internal/workflows` bans the read itself
 (`TestNoWorkflowRebuildsPerFindingAnnotations`) and the mutation ledger holds the
-producer half (`lint-findings-lose-their-annotations`).
+producer half (`lint-findings-lose-their-annotations`,
+`verdict-refusals-annotate-only-their-first-commit`).
 
 **What stderr warns about, stdout carries** (t-xr9d). A walk's API-lag
 `::warning::` lines — the ones saying a commit `is not known to GitHub yet`
@@ -5253,7 +5273,11 @@ The severities are the argued part:
   claim (`commit-msg-hook-fires`, below). Two failures end the run before
   doctor judges anything: a repository it cannot name (no `--repo`,
   `$GITHUB_REPOSITORY` or GitHub `origin`, or a malformed one — usage, 2), and
-  an interrupt in any read.
+  an interrupt in any read that takes the context, the remote listing that
+  names the repository included (130). The plain file reads — `glyph.toml`, the
+  hooks, the workflow and action files — take none: an interrupt landing in one
+  lets the report finish, and the run is `130` unless it finished with `0`
+  (§5, the CLI's funnel).
 - **The byte-identical hook is also FIRED (`commit-msg-hook-fires`).** Current
   bytes prove the script; they prove nothing about the glyph the script resolves
   on PATH at run time, and the script blocks only on the gate code and waves
@@ -5345,10 +5369,10 @@ The severities are the argued part:
   2.54.0 and 2.56.0). The remedy is
   `git remote set-head <remote> -a` only where git can record a head at all:
   a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
-  set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote
+  set-head exit 129 unquoted and 1 quoted (git 2.54). `git remote
   rename` is no remedy either: with git's usual fetch refspec it dies on that
   refspec (rc=128), and with the url alone the renamed remote has no refspec
-  for set-head to read (rc=1; review u6b-1, re-measured). So for a name
+  for set-head to read (rc=1, re-measured). So for a name
   `git check-ref-format refs/remotes/<name>/HEAD` refuses, doctor's fix and
   the hook's own warning both offer "pick a name git accepts for
   `<new-name>`, then" `git config --rename-section`, a rewritten fetch
@@ -5356,7 +5380,7 @@ The severities are the argued part:
   with the placeholder filled (`TestSetHeadRemedyRunsPasted`). No sanitised
   name is computed: that would reimplement git's ref rules. Both arms
   single-quote the old name, since `git remote add` accepts names a shell
-  splits (`a;b`, `it's`; review u6b-2) (`hook.SetHeadRemedy`,
+  splits (`a;b`, `it's`) (`hook.SetHeadRemedy`,
   `gitsource.RemoteCanRecordHead`). Firing pre-push itself
   — a `PrePushProbe` beside the commit-msg one — stays unbuilt. It would carry
   a fabricated push into a read-only diagnosis: a scratch repository, a bare

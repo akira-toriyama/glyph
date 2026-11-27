@@ -1,10 +1,10 @@
 diff --git a/.github/actions/release-notes/action.yml b/.github/actions/release-notes/action.yml
-index 56f0deb..2e75ea0 100644
+index 8c9f45c..c4fa57c 100644
 --- a/.github/actions/release-notes/action.yml
 +++ b/.github/actions/release-notes/action.yml
-@@ -116,8 +116,10 @@ runs:
-         # job leaves the escape tag with no release assets (t-bcdz). Every
-         # other exit is a real failure and keeps its code: 4 clears on a
+@@ -118,8 +118,10 @@ runs:
+         # continues, which is intended: the warning below points at them.
+         # Every other exit is a real failure and keeps its code: 4 clears on a
          # re-run, 2 is a broken invocation.
 +        prev="$(git tag --list 'v*' --sort=v:refname |
 +          awk -v cur="$tag" '$0 == cur { exit } { last = $0 } END { print last }')"

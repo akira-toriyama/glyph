@@ -36,8 +36,8 @@ func newDoctorCmd() *cobra.Command {
 			"reads are invisible from inside a release run, so when one drifts the workflows\n" +
 			"stay green and the verdict is simply wrong, and nothing says a word.\n\n" +
 			"It is READ-ONLY: nothing about the repository, the checkout or the workflows is\n" +
-			"ever modified. Each failing check prints the command that fixes it and leaves\n" +
-			"running it to you.\n\n" +
+			"ever modified. Each failing check prints the command or edit that fixes it\n" +
+			"and leaves making it to you.\n\n" +
 			"The checks, each independent — one it cannot run never stops the others:\n\n" +
 			"  - glyph.toml exists at the checkout's top level and LOADS (valid schema,\n" +
 			"    compilable patterns, a semver_sigil for every match): the config is what\n" +
@@ -77,7 +77,7 @@ func newDoctorCmd() *cobra.Command {
 			"    squash_merge_commit_message=COMMIT_MESSAGES: these decide whether the commit\n" +
 			"    that lands on main carries a subject the repository's patterns can classify\n" +
 			"  - every `uses: akira-toriyama/glyph/…` in the LOCAL workflows and in every\n" +
-			"    action.yml in the checkout (submodules included) pins a\n" +
+			"    action.yml / action.yaml in the checkout (submodules included) pins a\n" +
 			"    concrete @vX.Y.Z tag (whether the pin is the LATEST release is deliberately\n" +
 			"    NOT checked — glyph-pin-audit.yml in akira-toriyama/.github already owns\n" +
 			"    that question fleet-wide, and two answers to it would be one too many)\n" +
@@ -114,8 +114,9 @@ func newDoctorCmd() *cobra.Command {
 			"checkout, because a pin is a fact about the tree in front of you — pointing\n" +
 			"--repo elsewhere diagnoses that repository's settings and THIS checkout's pins.\n\n" +
 			"Every check carries a stable machine id — branch on that, never on the prose.\n" +
-			"Exit: 0 = every check passed / 2 = the invocation itself was wrong (a\n" +
-			"malformed --repo, rejected before any request goes out) / 3 = a check\n" +
+			"Exit: 0 = every check passed / 2 = the invocation itself was wrong, rejected\n" +
+			"before any request goes out (no repository to diagnose: no --repo, no\n" +
+			"$GITHUB_REPOSITORY, no GitHub origin; or a malformed --repo) / 3 = a check\n" +
 			"failed (the repository violates a convention glyph enforces, the same class\n" +
 			"as a lint violation) / 4 = every runnable check passed but one could not\n" +
 			"run, which is unverified, not fine / 130 = interrupted.\n" +
@@ -224,7 +225,7 @@ func glyphResolves(ctx context.Context) bool {
 // Current — the one arm whose pass this qualifies — so a checkout with no
 // hook, which is every CI runner, pays no subprocess. nil with a nil error
 // means not read. refless marks the unrecorded remotes whose name git cannot
-// place in a ref, for which set-head is no remedy (review u6-2).
+// place in a ref, for which set-head is no remedy (DESIGN §7).
 func readRemoteHeads(ctx context.Context, prePush hook.Installed) (heads map[string]string, refless map[string]bool, err error) {
 	if prePush.State != hook.Current {
 		return nil, nil, nil
@@ -361,11 +362,12 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 	// returns, and the probe — whose fire and claim reads hand none back —
 	// through ctx itself (probeAbort). The plain file reads — glyph.toml
 	// (cfgErr), the two hooks, and doctor.Run's own workflow and action files —
-	// take no ctx and carry no signal, so they are not asked. Left unasked, an
-	// interrupted ctx read renders the abort as its check's could-not-run
-	// (exit 4), and an interrupted claim read lets the report finish (exit 0
-	// or 3) — codes the fleet's wrappers read as retryable infra, success or a
-	// violation, on a run the operator stopped.
+	// take no ctx and carry no signal, so they are not asked: a signal landing
+	// in one lets the report finish, and run (root.go) answers 130 for any
+	// code but 0. Left unasked, an interrupted ctx read renders the abort as
+	// its check's could-not-run, and an interrupted claim read lets the report
+	// finish — a report written over a run the operator stopped, which at 0
+	// the fleet's wrappers read as success.
 	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, headsErr, probeAbort); err != nil {
 		return err
 	}

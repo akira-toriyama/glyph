@@ -48,12 +48,12 @@ func checkGivenEmpty(cmd *cobra.Command, name, noun, hint string) error {
 // diagnosed the same way whichever command received it.
 const (
 	repoHint    = "omit --repo to use $GITHUB_REPOSITORY (else the origin remote), or name one with --repo=owner/name"
-	currentHint = "omit --current to step from the default (the tag the walk named, else the highest v* tag HEAD contains), or name one with --current=vX.Y.Z"
+	currentHint = "omit --current to step from the default (the tag the walk named, else the highest parseable version tag HEAD contains), or name one with --current=vX.Y.Z"
 )
 
 // currentFlagUsage is the --help line for --current, shared by bump and release
 // because they share currentVersion and therefore share the default.
-const currentFlagUsage = "the version to step from (default: the tag the walk named, else the highest parseable v* tag HEAD contains, else v0.0.0)"
+const currentFlagUsage = "the version to step from (default: the tag the walk named, else the highest parseable version tag HEAD contains, else v0.0.0)"
 
 // checkNamingFlags rejects the empty form of each named flag, before any git or
 // API work. Flags that select the INPUT SOURCE (--range, --pr, --since-tag)
@@ -119,7 +119,7 @@ func checkExclusive(cmd *cobra.Command, names ...string) error {
 // named tag must be attached with = (--since-tag=v1.2.3).
 func addSinceTagFlag(cmd *cobra.Command, target *string, verb string) {
 	cmd.Flags().StringVar(target, "since-tag", "",
-		verb+" every merged PR's individual (pre-squash) commits on main since a tag (bare --since-tag: the highest v* tag HEAD contains; --since-tag=TAG names one; --since-tag=below:TAG resolves the highest version tag HEAD contains strictly below TAG)")
+		verb+" every merged PR's individual (pre-squash) commits on main since a tag (bare --since-tag, which is --since-tag=auto: the highest parseable version tag HEAD contains, its v optional; --since-tag=TAG names one, a tag literally named auto as refs/tags/auto; --since-tag=below:TAG resolves the highest parseable version tag HEAD contains strictly below TAG)")
 	cmd.Flags().Lookup("since-tag").NoOptDefVal = walk.Auto
 }
 

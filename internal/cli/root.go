@@ -26,6 +26,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -48,7 +49,37 @@ func Execute() int {
 		<-ctx.Done()
 		stop()
 	}()
-	return finish(newRootCmd().ExecuteContext(ctx))
+	return finish(run(ctx, newRootCmd()))
+}
+
+// run executes root with every stdout byte behind one payload latch (output.go)
+// and answers CodeAPI when a write failed, in place of the success or the Silent
+// verdict the command returned: the payload a caller reads — a version piped
+// into a tag step, a verdict.json — is exactly what went missing. An error that
+// renders its own envelope, and the user's own interrupt, keep their code.
+//
+// A run whose context was cancelled and that ended in any code but success is
+// the interrupt, 130: a read that takes no context (a plain file, stdin)
+// carries no signal, so the code it lets the command reach — a usage refusal,
+// a gate verdict — is not an answer to the run the operator stopped. A run
+// that finished with 0 delivered its verdict and keeps it
+// (TestACancelledRunIsInterruptedUnlessItSucceeded).
+func run(ctx context.Context, root *cobra.Command) error {
+	p := &payload{w: out}
+	saved := out
+	out = p
+	defer func() { out = saved }()
+	err := root.ExecuteContext(ctx)
+	if err != nil && errors.Is(ctx.Err(), context.Canceled) {
+		err = core.Interrupted()
+	}
+	if p.err == nil || core.IsInterrupted(err) {
+		return err
+	}
+	if ce := core.AsError(err); err != nil && (ce == nil || !ce.Silent) {
+		return err
+	}
+	return core.APIf("writing the payload to stdout: %v", p.err)
 }
 
 // finish maps a returned error to the exit-code contract and renders the stderr
@@ -57,18 +88,22 @@ func Execute() int {
 //
 // It CLASSIFIES and then delegates: the number itself always comes from
 // core.ExitCode, so the contract has one implementation rather than two that
-// agree by inspection. The classification rests on a fact only this layer
-// knows: cobra is silenced in newRootCmd, so a bare error arriving here is a
-// parse/usage problem and nothing else — core.ExitCode, which cannot know
-// that, reads an unclassified error as CodeAPI. That fact belongs where it is
-// knowable, and the mapping belongs in core.
+// agree by inspection. An unclassified error is CodeAPI here as in core
+// (DESIGN §5): cobra's parse errors are made usage where cobra raises them —
+// the flag-error func, the Args validators, and the root's PersistentPreRunE
+// for required flags and flag groups (newRootCmd) — so a bare error reaching
+// finish is one nobody classified, never usage by elimination. The one
+// exception is the MinimumNArgs(1) of the __complete and __completeNoDesc
+// commands cobra builds during execution, which leaves a bare glyph __complete
+// at 4 because no completion script reaches it (zsh, bash and fish each pass
+// a word).
 func finish(err error) int {
 	if err == nil {
 		return int(core.CodeOK)
 	}
 	ce := core.AsError(err)
 	if ce == nil {
-		ce = core.Usagef("%s", err.Error())
+		ce = core.APIf("%s", err.Error())
 	}
 	if !ce.Silent {
 		renderError(ce)
@@ -85,11 +120,12 @@ func newRootCmd() *cobra.Command {
 			"under the repository's own glyph.toml — your regex patterns decide the\n" +
 			"grammar; the named group semver_sigil is the only input to version\n" +
 			"calculation — and derives the semantic-version bump and release notes from\n" +
-			"the individual commits inside a pull request, so a squash-merge (which\n" +
-			"rewrites the squash subject to the PR title) can never lose the per-commit\n" +
-			"sigils. One binary lints commits, computes the next version, and renders\n" +
-			"notes. `glyph init --gemoji` (or --conventional) writes a starting\n" +
-			"glyph.toml; everything else reads the one at the repository root.",
+			"the individual commits inside a pull request, so a squash-merge of two or\n" +
+			"more commits besides merge commits (which rewrites the squash subject to the\n" +
+			"PR title) can never lose the per-commit sigils. One binary lints commits,\n" +
+			"computes the next version, and renders notes. `glyph init --gemoji` (or\n" +
+			"--conventional) writes a starting glyph.toml; lint, bump, notes, preview,\n" +
+			"release, doctor and hook pre-push read the one at the repository root.",
 		Args:          noArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -99,8 +135,27 @@ func newRootCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
+		// cobra checks required flags and flag groups after every pre-run and
+		// returns plain errors, which finish reads as 4; the same two checks
+		// run here first, so their refusal is usage. No subcommand may define
+		// its own PersistentPreRunE: cobra runs only the nearest one.
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if err := cmd.ValidateRequiredFlags(); err != nil {
+				return core.Usagef("%s", err.Error())
+			}
+			if err := cmd.ValidateFlagGroups(); err != nil {
+				return core.Usagef("%s", err.Error())
+			}
+			return nil
+		},
 	}
 	root.SetVersionTemplate("glyph {{.Version}}\n")
+	// Before InitDefaultCompletionCmd: the shell subcommands capture the
+	// root's writer once, there, so it must already be the funnel to out.
+	root.SetOut(stdoutFunnel{})
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return core.Usagef("%s", err.Error())
+	})
 	root.AddCommand(newVersionCmd(), newLintCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd(), newInitCmd(), newEmojiCmd())
 
 	// `completion` is cobra's, and the root's noArgs cannot reach it: cobra
@@ -110,12 +165,42 @@ func newRootCmd() *cobra.Command {
 	// the shell sources. A help RunE makes it runnable; noArgs, swapped in for
 	// cobra's NoArgs so the refusal points at `glyph completion --help` like
 	// every other parent's, then rejects the argument at 2, and bare
-	// `glyph completion` still prints help at 0, as `glyph hook` does.
+	// `glyph completion` still prints help at 0, as `glyph hook` does. The
+	// shells get noArgs too: cobra's NoArgs refuses with a plain error.
 	root.InitDefaultCompletionCmd()
 	for _, c := range root.Commands() {
 		if c.Name() == "completion" {
 			c.Args = noArgs
 			c.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
+			for _, shell := range c.Commands() {
+				shell.Args = noArgs
+			}
+		}
+	}
+
+	// `help` is cobra's too, and it gives it no Args: its Run resolves the
+	// topic with Find, which returns the deepest command plus the words left
+	// over without error whenever that command has Args set — every glyph
+	// command does — so `glyph help nosuch` printed the root's help at 0 and
+	// `glyph help lint extra` lint's. This guard hands the leftover words to
+	// the topic's own Args, so they are judged as the same words without help
+	// are: `glyph help nosuch` and `glyph help lint extra` refuse at 2 with the
+	// message `glyph nosuch` or `glyph lint extra` gives, and a command that
+	// takes positionals keeps them — `glyph help hook install pre-push` is
+	// install's help at 0, `glyph help hook install nosuch` install's own
+	// refusal. Not noArgs: it refused every word, positionals included.
+	// InitDefaultHelpCmd is idempotent: the call cobra makes again at Execute
+	// keeps this same command.
+	root.InitDefaultHelpCmd()
+	for _, c := range root.Commands() {
+		if c.Name() == "help" {
+			c.Args = func(cmd *cobra.Command, args []string) error {
+				topic, rest, err := cmd.Root().Find(args)
+				if err != nil {
+					return err
+				}
+				return topic.ValidateArgs(rest)
+			}
 		}
 	}
 	return root

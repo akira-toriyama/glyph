@@ -111,11 +111,21 @@ func (c *Config) Match(message string) (Match, error) {
 // submatch is what group gi captured in loc, FindStringSubmatchIndex's
 // answer: "" for no group (gi < 0, participant's answer when none took part)
 // as for one that captured nothing.
+//
+// A capture that ends at a line end leaves that line's CR behind, the rule
+// bump.FirstLine applies to the subject line. A `.` matches `\r`, so over a
+// CRLF message (git keeps the CR only under --cleanup=verbatim) the presets'
+// `(?P<subject>… .+)` would otherwise hand the notes line a subject the
+// FirstLine readers (bump --json, the envelope) never print.
 func submatch(message string, loc []int, gi int) string {
 	if gi < 0 || loc[2*gi] < 0 {
 		return ""
 	}
-	return message[loc[2*gi]:loc[2*gi+1]]
+	start, end := loc[2*gi], loc[2*gi+1]
+	if end > start && message[end-1] == '\r' && (end == len(message) || message[end] == '\n') {
+		end--
+	}
+	return message[start:end]
 }
 
 // participant is the group called name that took part in the match loc

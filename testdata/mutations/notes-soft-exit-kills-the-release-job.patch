@@ -1,9 +1,9 @@
 diff --git a/.github/actions/release-notes/action.yml b/.github/actions/release-notes/action.yml
-index 56f0deb..2eceb08 100644
+index 8c9f45c..e7562c0 100644
 --- a/.github/actions/release-notes/action.yml
 +++ b/.github/actions/release-notes/action.yml
-@@ -117,17 +117,7 @@ runs:
-         # other exit is a real failure and keeps its code: 4 clears on a
+@@ -119,17 +119,7 @@ runs:
+         # Every other exit is a real failure and keeps its code: 4 clears on a
          # re-run, 2 is a broken invocation.
          status=0
 -        "$GLYPH" notes --since-tag="below:$tag" > "$out" || status=$?

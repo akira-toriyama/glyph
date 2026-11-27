@@ -117,7 +117,7 @@ func newPreviewCmd() *cobra.Command {
 			"commits read over the API, and what is already merged but unreleased on\n" +
 			"the checked-out branch. Both step from the same tag, so the answer is the\n" +
 			"`next` of whichever folds higher — no caller ever does version arithmetic.\n\n" +
-			"A base branch whose history holds no v* tag skips the pending walk: it\n" +
+			"A base branch whose history holds no version tag skips the pending walk: it\n" +
 			"would resolve the whole history at one API round-trip per commit to\n" +
 			"answer a question that cannot matter (nothing is unreleased when nothing\n" +
 			"was released), so the PR's own verdict stands alone and the body says so.\n" +
@@ -135,7 +135,8 @@ func newPreviewCmd() *cobra.Command {
 			"{current,untagged,level,next,pr,pending,body,unknown} — unknown is bump's,\n" +
 			"from the walk behind pending (see bump --help).\n" +
 			"Unlike bump and notes, a none verdict is a normal answer here and exits 0:\n" +
-			"'this PR moves nothing' is exactly what a reviewer asked.\n\n" +
+			"'this PR moves nothing' is exactly what a reviewer asked. A pull commit no\n" +
+			"pattern claims is refused at exit 3, while the branch can still be fixed.\n\n" +
 			"On a repository declaring [[packages]] the body carries one headline per\n" +
 			"line the pull touches (versions spelled as tags: haiku/v0.1.0 →\n" +
 			"haiku/v0.2.0; a line with no tag names its first release, never a\n" +
@@ -145,13 +146,13 @@ func newPreviewCmd() *cobra.Command {
 			"[{path,current,untagged,level,next,pr,pending}] with the scalars\n" +
 			"current/level/pr/pending EMPTY, untagged false and next absent. A commit\n" +
 			"no line can carry (a version sigil on shared files with no package scope)\n" +
-			"is refused at exit 3 here, while the branch can still be fixed.",
+			"is refused at exit 3 the same way.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
 				return err
 			}
-			return previewRun(cmd.Context(), o)
+			return annotateRefusal(previewRun(cmd.Context(), o))
 		},
 	}
 	cmd.Flags().IntVar(&o.pr, "pr", 0, "the pull request to preview, read over the API (required)")

@@ -528,8 +528,8 @@ func readHook(t *testing.T, dir string) string {
 
 // TestSetHeadRemedyText pins both arms' wording: the name single-quoted in
 // both (a name `git remote add` accepts — `a;b`, `it's` — pasted raw ran
-// something else, review u6b-2), and for a name git cannot place in a ref the
-// chain review u6b-1 measured at rc=0, behind a placeholder the reader fills
+// something else), and for a name git cannot place in a ref the chain DESIGN
+// §7 measured at rc=0, behind a placeholder the reader fills
 // once. No sanitised name is computed: that would reimplement git's ref rules.
 func TestSetHeadRemedyText(t *testing.T) {
 	for _, tc := range []struct {

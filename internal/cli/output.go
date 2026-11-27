@@ -3,11 +3,13 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/akira-toriyama/glyph/v6/internal/bump"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
@@ -28,6 +30,35 @@ var (
 	errOut io.Writer = os.Stderr
 	in     io.Reader = os.Stdin
 )
+
+// payload is the one place a stdout write error is seen. run installs it as
+// out for the length of a command, and cobra's own stdout bytes (help, the
+// version template, completion scripts) reach it through stdoutFunnel, so no
+// call site checks a write. It keeps the first error and reports success to
+// every caller — cobra's help and version paths otherwise print the error as
+// a raw stderr line, outside the stream contract — and drops every byte after
+// it: a payload with a hole is worse than a short one. run turns the kept
+// error into CodeAPI.
+type payload struct {
+	w   io.Writer
+	err error
+}
+
+func (p *payload) Write(b []byte) (int, error) {
+	if p.err == nil {
+		if _, err := p.w.Write(b); err != nil {
+			p.err = err
+		}
+	}
+	return len(b), nil
+}
+
+// stdoutFunnel is the root command's output writer (newRootCmd's SetOut): it
+// writes to whatever out is at write time, because cobra's completion shells
+// capture their writer when the tree is built, before run installs payload.
+type stdoutFunnel struct{}
+
+func (stdoutFunnel) Write(b []byte) (int, error) { return out.Write(b) }
 
 // printCompact writes v as one JSON line.
 func printCompact(v any) {
@@ -67,6 +98,32 @@ func warnf(format string, a ...any) {
 // and the `sed -n '/^[{]/,$p'` sieve still recovers the envelope whole.
 func errorf(format string, a ...any) {
 	fmt.Fprintln(errOut, "::error::glyph: "+oneLine(fmt.Sprintf(format, a...)))
+}
+
+// annotateFindings is the one rendering of a refused commit: one error
+// annotation per row — lint --range's findings, and the rows a verdict
+// command's refusal carries in details (annotateRefusal). The envelope's
+// message names only the first row, and no caller may rebuild the rest from
+// details (TestNoWorkflowRebuildsPerFindingAnnotations), so a row this skips
+// reaches no workflow log.
+func annotateFindings(rows []bump.Refusal) {
+	for _, f := range rows {
+		errorf("commit %.7s: %s", f.SHA, f.Detail)
+	}
+}
+
+// annotateRefusal renders err's details through annotateFindings when err is a
+// gate refusal (3) whose details are commit rows, and returns err unchanged.
+// bump, notes, preview and release wrap their run in it, so every input
+// (--range, --pr, --since-tag) annotates the same way.
+func annotateRefusal(err error) error {
+	var ce *core.Error
+	if errors.As(err, &ce) && ce.Code == core.CodeLint {
+		if rows, ok := ce.Details.([]bump.Refusal); ok {
+			annotateFindings(rows)
+		}
+	}
+	return err
 }
 
 // noticef emits one GitHub Actions notice annotation (::notice::) to the

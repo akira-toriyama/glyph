@@ -89,10 +89,11 @@ func newBumpCmd() *cobra.Command {
 			"There are three input sources, exactly one of which is required.\n" +
 			"--range reads a local git revision range; --pr reads a pull request's\n" +
 			"INDIVIDUAL commits over the API, which is what makes the verdict\n" +
-			"squash-safe (a squash-merge rewrites the subject to the PR title and would\n" +
-			"otherwise erase every per-commit sigil); --since-tag walks main's merge\n" +
-			"points since a tag and expands each back into the pull it merged — the\n" +
-			"release-time source, and what glyph's own release job uses.\n" +
+			"squash-safe (a squash-merge of two or more commits besides merge commits\n" +
+			"rewrites the subject to the PR title and would otherwise erase every\n" +
+			"per-commit sigil); --since-tag walks main's merge points since a tag and\n" +
+			"expands each back into the pull it merged — the release-time source, the\n" +
+			"walk `glyph release` runs.\n" +
 			"stdout is the bare next version\n" +
 			"(pipe it into a tag step); --json emits\n" +
 			"{current,level,next,commits,reason,unknown} — unknown lists the commits\n" +
@@ -112,11 +113,13 @@ func newBumpCmd() *cobra.Command {
 			"(haiku/v0.1.1, travel/onsen/v0.0.1), the major folded on a /vN path\n" +
 			"(pubsub/v2 → pubsub/v2.1.0), bare for the root package — present exactly\n" +
 			"when next is, so a line at none carries neither and an all-none walk is a\n" +
-			"full array with no tag in it. --pr is refused there (exit 2: a pull's\n" +
-			"listing carries messages and no files, so nothing can be attributed to a\n" +
-			"line), and --current is refused (exit 2) unless the walk selects one line\n" +
-			"(--since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
-			"prefix: haiku/, or nothing for the root package).",
+			"full array with no tag in it. A --since-tag tag names a line:\n" +
+			"<prefix>vX.Y.Z (an rc tag too) or below:<prefix>vX.Y.Z walks that one\n" +
+			"line, <prefix> being its tag prefix (haiku/, or nothing for the root\n" +
+			"package), and a line no [[packages]] entry declares is refused (exit 2).\n" +
+			"--pr is refused there (exit 2: a pull's listing carries messages and no\n" +
+			"files, so nothing can be attributed to a line), and --current is refused\n" +
+			"(exit 2) unless the walk selects one line.",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
@@ -125,7 +128,7 @@ func newBumpCmd() *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			return bumpRun(cmd.Context(), bumpOptions{source: sourceOf(cmd, f), current: current, json: asJSON})
+			return annotateRefusal(bumpRun(cmd.Context(), bumpOptions{source: sourceOf(cmd, f), current: current, json: asJSON}))
 		},
 	}
 	cmd.Flags().StringVar(&f.rng, "range", "", "fold every commit in a git revision range (BASE..HEAD)")

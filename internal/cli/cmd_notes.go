@@ -72,18 +72,23 @@ func newNotesCmd() *cobra.Command {
 			"{sections,reason,unknown} — no link; unknown is bump's (see bump --help). When no commit lands in any [[note.sections]] entry there is\n" +
 			"nothing to write: no body, exit 1 (soft no-release).\n\n" +
 			"On a repository declaring [[packages]] the body is per line: stdout is one\n" +
-			"body per line under a `# <path>` heading (bare when a tag selects one\n" +
-			"line), each --since-tag body closed by its own line's compare link (none\n" +
+			"body per line under a `# <path>` heading (bare when the walk covers one\n" +
+			"line: a tag selecting it, or a single declared package), each --since-tag\n" +
+			"body closed by its own line's compare link (none\n" +
 			"for a line with no tag); --json carries\n" +
 			"packages: [{path,sections}] with the top-level\n" +
-			"sections EMPTY. --pr is refused there (exit 2: a pull's listing carries\n" +
+			"sections EMPTY. A --since-tag tag names a line: <prefix>vX.Y.Z (an rc tag\n" +
+			"too) or below:<prefix>vX.Y.Z walks that one line, <prefix> being its tag\n" +
+			"prefix (haiku/, or nothing for the root package), and a line no\n" +
+			"[[packages]] entry declares is refused (exit 2). --pr is refused there\n" +
+			"(exit 2: a pull's listing carries\n" +
 			"messages and no files, so nothing can be attributed to a line).",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
 				return err
 			}
-			return notesRun(cmd.Context(), notesOptions{source: sourceOf(cmd, f), json: asJSON})
+			return annotateRefusal(notesRun(cmd.Context(), notesOptions{source: sourceOf(cmd, f), json: asJSON}))
 		},
 	}
 	cmd.Flags().StringVar(&f.rng, "range", "", "render notes for every commit in a git revision range (BASE..HEAD)")

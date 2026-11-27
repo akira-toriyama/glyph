@@ -428,9 +428,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
 		warnf("commit %.7s: %s", w.SHA, w.Detail)
 	}
 	if len(findings) > 0 {
-		for _, f := range findings {
-			errorf("commit %.7s: %s", f.SHA, f.Detail)
-		}
+		annotateFindings(findings)
 		return core.Lintf("%d commit-convention violation(s)", len(findings)).WithDetails(findings)
 	}
 	if checked == 0 {

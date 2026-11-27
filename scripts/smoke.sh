@@ -37,10 +37,9 @@ fi
 # `completion` is cobra's command, and its output is redirected into a file the
 # shell SOURCES — so an unknown shell reporting success is not a cosmetic exit
 # code: a `glyph completion zshh > _glyph` that exits 0 writes the parent's
-# English help where a completion script belongs. Both halves are asserted here
-# rather than in a Go test because cobra binds the completion writer once, when
-# the command tree is built, so an in-process test cannot observe which stream
-# the script went to (see internal/cli/root_test.go).
+# English help where a completion script belongs. Both halves are asserted here,
+# against the real binary's stdout, because cobra binds the completion writer
+# once, when the command tree is built (see internal/cli/root_test.go).
 echo "→ smoke: completion writes a script, or refuses"
 "$BIN" completion zsh | head -1 | grep -q '^#compdef' || {
   echo "  expected 'completion zsh' to write a zsh script to stdout" >&2
@@ -54,6 +53,14 @@ if [ "$status" -ne 2 ]; then
 fi
 if [ -n "$out" ]; then
   echo "  'completion bogus' wrote to stdout, which is what a caller redirects into a sourced file" >&2
+  exit 1
+fi
+# `help` is cobra's too: a topic it cannot resolve is usage, as the same words
+# without `help` are — not the root's help at 0.
+status=0
+"$BIN" help nosuch >/dev/null 2>&1 || status=$?
+if [ "$status" -ne 2 ]; then
+  echo "  expected exit 2 (usage) for an unknown help topic, got $status" >&2
   exit 1
 fi
 

@@ -406,7 +406,7 @@ func TestSinceTagWedgeEscapeIsTheOffendingCommit(t *testing.T) {
 			if tc.wantCode != 3 {
 				return
 			}
-			env := decodeErrorEnvelope(t, stderr)
+			env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "\n{")+1:])
 			if !strings.Contains(env.Message, bad[:7]) {
 				t.Errorf("the error must still name the offending commit %.7s:\n%s", bad, env.Message)
 			}
