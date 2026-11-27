@@ -115,15 +115,12 @@ func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "glyph",
 		Short: "sigil-driven commit-lint, semver, and release notes for squash-merge repos",
-		Long: "glyph reads each commit's version sigil (= none / ~ patch / ^ minor / ! major /\n" +
-			"% promote to 1.0.0)\n" +
-			"under the repository's own glyph.toml — your regex patterns decide the\n" +
-			"grammar; the named group semver_sigil is the only input to version\n" +
-			"calculation — and derives the semantic-version bump and release notes from\n" +
-			"the individual commits inside a pull request, so a squash-merge of two or\n" +
-			"more commits besides merge commits (which rewrites the squash subject to the\n" +
-			"PR title) can never lose the per-commit sigils. One binary lints commits,\n" +
-			"computes the next version, and renders notes. `glyph init --gemoji` (or\n" +
+		Long: "glyph reads the version sigil (= none / ~ patch / ^ minor / ! major / % promote\n" +
+			"to 1.0.0) each commit yields under the repository's own glyph.toml — your\n" +
+			"regex patterns decide the grammar; the sigil a pattern yields (its semver_sigil\n" +
+			"group's capture, or its fixed semver_sigil key when the group captures none) is\n" +
+			"the only input to version calculation — and derives the bump and release notes\n" +
+			"from the individual commits inside a pull request. `glyph init --gemoji` (or\n" +
 			"--conventional) writes a starting glyph.toml; lint, bump, notes, preview,\n" +
 			"release, doctor and hook pre-push read the one at the repository root.",
 		Args:          noArgs,

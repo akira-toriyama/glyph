@@ -56,9 +56,6 @@ func newLintCmd() *cobra.Command {
 			"message must match one of the file's patterns and yield a version sigil\n" +
 			"(= none / ~ patch / ^ minor / ! major / % promote) — or be claimed by a skip\n" +
 			"pattern.\n" +
-			"That is the whole check: which prefixes exist, where the sigil sits and\n" +
-			"what a subject looks like are the pattern file's decisions, and glyph has\n" +
-			"no opinion on combinations (a docs commit carrying ! is the author's call).\n" +
 			"--range lints every commit on its way into main (exclude_authors are\n" +
 			"skipped, and so is anything a skip pattern claims — merge commits under the\n" +
 			"shipped presets). --pr lints a pull request's TITLE over the API: with two\n" +

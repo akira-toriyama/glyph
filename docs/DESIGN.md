@@ -682,7 +682,11 @@ matching and a non-matching message at both gates; mutation row
 SAME verdict on one commit; a gap is glyph lying in one of two directions, and
 the two are not equally bad. Blessing a message CI will reject costs a round
 trip. Refusing one CI would accept costs the commit — the only way past the hook
-is `--no-verify`, which turns the whole gate off.
+is `--no-verify`, which turns the whole gate off. That cost is why the pre-push
+hook only warns off the remote's default branch. Off it the finding is real but
+the consequence is not — a repository's patterns may bless a WIP shape
+mid-branch that its gate rejects at the merge — and refusing a legal mid-branch
+commit would leave the branch unpushable without `--no-verify`.
 
 **One gap is argued rather than accidental: a message an `unlandable`
 pattern claims** (§2). The hook passes it and CI refuses it, deliberately,

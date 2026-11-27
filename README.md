@@ -220,14 +220,11 @@ glyph hook install commit-msg      # or name the ones you want
 ```
 
 Two hooks, one gate. `commit-msg` runs `glyph lint --stdin` on the message being
-written. `pre-push` hands git's ref list to `glyph hook pre-push`, which lints the
-commits the push would add that the remote does not already have, and blocks
-**only** when the ref being written is the remote's default branch — anywhere
-else it warns and lets the push through (`glyph hook pre-push --help` says why).
-Neither hook holds a copy of the convention: `glyph hook --help` states what they
-call and what happens without glyph on `PATH`. The verdict `commit-msg` gives is
-the verdict CI will give: glyph
-reduces the message as git's cleanup will before linting it — from the
+written. `pre-push` hands git's ref list to `glyph hook pre-push`, whose --help
+says what it lints and when it blocks. Neither hook holds a copy of the
+convention: `glyph hook --help` states what they call and what happens without
+glyph on `PATH`. The verdict `commit-msg` gives is the verdict CI will give:
+glyph reduces the message as git's cleanup will before linting it — from the
 repository's `commit.cleanup`, `commit.verbose` and comment prefix
 (`core.commentChar`; `auto` is read as `#`), whether an editor runs, and whether
 the commit is a `git merge` (DESIGN §2.1). The gaps are stated rather
