@@ -94,17 +94,15 @@ func newReleaseCmd() *cobra.Command {
 		Use:   "release",
 		Short: "Upsert the rolling DRAFT release from one composed verdict",
 		Long: "release runs the squash-safe walk ONCE and derives both the next version\n" +
-			"and the release-notes body from that single commit set — calling bump and\n" +
-			"notes separately walks twice, and a merge landing between the walks could\n" +
-			"version one range and describe another. The walk defaults to the highest\n" +
-			"parseable version tag HEAD contains (release has exactly one input\n" +
-			"source, so no bare --since-tag is required). Bare release upserts the rolling DRAFT\n" +
-			"release: the one glyph-managed draft is created or updated (tag, notes\n" +
-			"body, target sha) FIRST, and stale drafts are then removed by release\n" +
-			"id; one that will not go leaves a warning rather than failing the\n" +
-			"release, because the notes have already landed and the next run\n" +
-			"converges it — no tag is created; GitHub tags the target commit when a\n" +
-			"human publishes.\n" +
+			"and the release-notes body from that single commit set. The walk defaults\n" +
+			"to the highest parseable version tag HEAD contains (release has exactly one\n" +
+			"input source, so no bare --since-tag is required). Bare release upserts the\n" +
+			"rolling DRAFT release: the one glyph-managed draft is created or updated\n" +
+			"(tag, notes body, target sha) FIRST, and stale drafts are then removed by\n" +
+			"release id; one that will not go leaves a warning rather than failing the\n" +
+			"release, because the notes have already landed and the next run converges\n" +
+			"it — no tag is created; GitHub tags the target commit when a human\n" +
+			"publishes.\n" +
 			"On a none verdict the run exits 1 (soft no-release): with draft_on_none\n" +
 			"off any residual glyph-managed draft is deleted (the draft state converges\n" +
 			"to the verdict); with it on, the draft converges to the Unreleased\n" +
@@ -119,9 +117,11 @@ func newReleaseCmd() *cobra.Command {
 			"indexed whose own message a pattern claims is read from that message\n" +
 			"and the walk stays complete: the version can come out lower for one\n" +
 			"run, and the next push corrects it. Exit 4 too, with nothing written: a\n" +
-			"real run (not --dry-run) from a ref other than the default branch, a\n" +
-			"body (footer included) over GitHub's 125000 characters, and a next\n" +
-			"version not greater than the highest published release.\n" +
+			"real run (not --dry-run) whose $GITHUB_REF is not the default branch while\n" +
+			"$GITHUB_REF or $GITHUB_EVENT_PATH is set (with neither set the ref is not\n" +
+			"judged and a ::notice:: says so), a body (footer included) over GitHub's\n" +
+			"125000 characters, and a next version not greater than the highest\n" +
+			"published release.\n" +
 			"The body's notes close with the range's compare link\n" +
 			"(compare/<base tag>...<target>; none when the walk has no tag base, the\n" +
 			"notes are empty, or --target is not a full sha), before the\n" +
@@ -135,10 +135,11 @@ func newReleaseCmd() *cobra.Command {
 			"audited after the fact; unknown is bump's (see bump --help).\n\n" +
 			"On a repository declaring [[packages]] release converges ONE rolling draft\n" +
 			"per line (haiku/v0.2.0 beside curry/v0.1.1), every line's upsert written\n" +
-			"before any stray is deleted, each draft's compare link from its own\n" +
-			"line's base tag, and --footer-file appended to each; exit 1\n" +
-			"means every line folded to none. --dry-run prints one block per line (tag\n" +
-			"line, blank line, body); --json carries packages:\n" +
+			"before any stray is deleted (a write that fails on the second line leaves\n" +
+			"the first standing and exits 4), each draft's compare link from its own\n" +
+			"line's base tag, and --footer-file appended to each; exit 1 means every\n" +
+			"line folded to none. --dry-run prints one block per line (tag line, blank\n" +
+			"line, body); --json carries packages:\n" +
 			"[{path,current,level,next,tag,body,action,url,commits,reason}] with the\n" +
 			"scalar current/level/action EMPTY, next/tag/body/url absent, and target shared\n" +
 			"(omitted, as on the single line, when no line has a draft to write). In a\n" +

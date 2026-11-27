@@ -2375,9 +2375,9 @@ the footer would keep it, at the price of a new layout for every comment that
 carries notes, and the cut would still fall inside the block with the notice
 folded away — so the block is closed, and the layout stays.) A next version
 not strictly above the highest published release on the line — the maximum
-version, not the one published last — fails loud (an unpublishable draft;
-where immutable releases are on, a deleted published release's tag is burned
-forever).
+version, not the one published last — fails loud (the draft would collide
+with or regress below a published release; where immutable releases are on, a
+deleted published release's tag is burned forever).
 
 The refusals above are about evidence — a range glyph could not read. One is
 about **authority**, and it is the only release-time refusal a dry run does not

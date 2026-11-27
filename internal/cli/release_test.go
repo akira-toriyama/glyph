@@ -1338,11 +1338,11 @@ func resolvablePatch(t *testing.T, dir string, routes map[string]string) {
 // measured doing damage: the none verdict deleted the rolling draft on the
 // very reading it had just told the operator to re-run (t-441z); a `:boom:`
 // pull lost to an unresolved merge point beside one ordinary `:bug:` retagged
-// an existing v1.0.0 draft down to v0.1.1 at exit 0, where a human publishing
-// it burns the tag forever; a listing GitHub truncated at its 250 cap read
-// "unreachable" as "absent"; and a shallow checkout graded itself on a
-// truncated history (actions/checkout's default fetch-depth: 1, so the shape a
-// release workflow produces by LOSING one line).
+// an existing v1.0.0 draft down to v0.1.1 at exit 0, where, with immutable
+// releases on, a human publishing it burns the tag forever; a listing GitHub
+// truncated at its 250 cap read "unreachable" as "absent"; and a shallow
+// checkout graded itself on a truncated history (actions/checkout's default
+// fetch-depth: 1, so the shape a release workflow produces by LOSING one line).
 //
 // The dry run takes the same gate: --dry-run skips the writes, not the reading,
 // and a preview of a verdict no real run would hand down is not a preview.
