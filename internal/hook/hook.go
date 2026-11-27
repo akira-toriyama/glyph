@@ -56,8 +56,8 @@ func commitMsgScript() string {
 	return fmt.Sprintf(`#!/bin/sh
 # glyph commit-msg hook — %s
 #
-# Lints the message being written against the repository's glyph.toml convention by calling
-# glyph, which holds the rules. Do not add a regex here: a local copy of the
+# Lints the message being written by calling glyph, which reads the repository's
+# glyph.toml at run time. Do not add a regex here: a local copy of the
 # convention is exactly what drifts out of lockstep when the rules move.
 #
 # Regenerate with: glyph hook install commit-msg
@@ -98,8 +98,9 @@ func prePushScript() string {
 # glyph pre-push hook — %s
 #
 # Hands git's pre-push protocol (four fields per line, on stdin) to glyph, which
-# owns the range arithmetic and the rules. Do not compute a range here and do
-# not add a regex: this file is installed once and nothing ever refreshes it.
+# owns the range arithmetic and reads the rules from glyph.toml. Do not compute
+# a range here and do not add a regex: this file is installed once and nothing
+# ever refreshes it.
 #
 # Regenerate with: glyph hook install pre-push
 if ! command -v glyph >/dev/null 2>&1; then
@@ -325,15 +326,27 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
 	}
 	var writes []write
 	var refusal *core.Error
+	foreign := -1 // the run's first refusal, when it is a foreign hook
 	for _, k := range kinds {
 		res, earns, err := plan(hooksDir, k, force)
 		if earns != "" {
 			writes = append(writes, write{at: len(rep.Hooks), kind: k, earns: earns})
 		}
-		rep.Hooks = append(rep.Hooks, res)
-		if err != nil && refusal == nil {
-			refusal = err
+		if refusal == nil && foreign < 0 {
+			if err != nil {
+				refusal = err
+			} else if res.Action == "refused" {
+				foreign = len(rep.Hooks)
+			}
 		}
+		rep.Hooks = append(rep.Hooks, res)
+	}
+	if foreign >= 0 {
+		rest := make([]string, 0, len(writes))
+		for _, w := range writes {
+			rest = append(rest, w.kind.Name)
+		}
+		refusal = refuseForeign(rep.Hooks[foreign], rest)
 	}
 	if refusal != nil {
 		return rep, refusal.WithDetails(rep.Hooks)
@@ -368,7 +381,9 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
 // read that answers the question — and, when that read fails, the lstat that
 // says whether glyph can see a file there. A kind to be written comes back
 // "skipped", with the Action its write earns beside it: Install sets that
-// Action only once the write has happened.
+// Action only once the write has happened. A foreign hook comes back "refused"
+// with no error: its refusal names the kinds the rest of the run earned writes
+// for, which only Install knows, so Install builds it (refuseForeign).
 func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
 	in, err := k.Read(hooksDir)
 	res := Result{Kind: k.Name, Path: in.Path}
@@ -395,11 +410,29 @@ func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
 		return res, "refreshed", nil
 	default:
 		res.Action = "refused"
-		return res, "", core.Usagef(
-			"the %[1]s hook %[2]s already exists and was not written by glyph — refusing to overwrite it, "+
-				"so nothing was written. Inspect it, then run glyph hook install --force %[1]s to replace it (its "+
-				"rules, if any, are superseded: the new hook calls glyph)", k.Name, in.Path)
+		return res, "", nil
 	}
+}
+
+// refuseForeign is the refusal of res, a hook glyph did not write. rest is the
+// kinds whose plan in the same run earned a write, in run order: the refusal
+// wrote them neither, so each command it gives names them too, or following it
+// leaves a kind the run asked for missing. rest never holds a foreign kind,
+// whose plan earns no write without --force: a command leaves alone every
+// foreign hook it does not name, and only the refused one is named.
+func refuseForeign(res Result, rest []string) *core.Error {
+	replace := "glyph hook install --force " + strings.Join(append([]string{res.Kind}, rest...), " ")
+	if len(rest) == 0 {
+		return core.Usagef(
+			"the %s hook %s already exists and was not written by glyph — refusing to overwrite it, so nothing "+
+				"was written. Inspect it, then run %s to replace it (its rules, if any, are superseded: the new "+
+				"hook calls glyph)", res.Kind, res.Path, replace)
+	}
+	return core.Usagef(
+		"the %s hook %s already exists and was not written by glyph — refusing to overwrite it, so nothing "+
+			"was written, %s included. Inspect it, then run %s to replace it and write the rest (its rules, if "+
+			"any, are superseded: the new hook calls glyph), or glyph hook install %s to keep it and write the rest",
+		res.Kind, res.Path, strings.Join(rest, " and "), replace, strings.Join(rest, " "))
 }
 
 // chmodAll re-asserts the execute bit on every hook that is present.

@@ -77,6 +77,42 @@ func TestHookInstallRefusesAForeignHookWithUsageCode(t *testing.T) {
 	}
 }
 
+// TestHookInstallRefusalNamesTheRestOfTheRun: a bare install beside a foreign
+// pre-push writes nothing, commit-msg included, so each command its refusal
+// gives names commit-msg too: one naming pre-push alone, followed, leaves the
+// clone without the commit-msg hook the run asked for. The --force command is
+// then run as the refusal prints it, and both hooks must be glyph's.
+func TestHookInstallRefusalNamesTheRestOfTheRun(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	writeExecutable(t, filepath.Join(dir, ".git", "hooks", "pre-push"), "#!/bin/sh\necho foreign\n")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "hook", "install")
+	if code != int(core.CodeUsage) {
+		t.Fatalf("exit = %d, want %d (usage)\nstderr: %s", code, core.CodeUsage, stderr)
+	}
+	msg := decodeErrorEnvelope(t, stderr).Message
+	t.Logf("refusal: %s", msg)
+	const replace = "glyph hook install --force pre-push commit-msg"
+	for _, want := range []string{
+		replace + " to replace it and write the rest",
+		"glyph hook install commit-msg to keep it and write the rest",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal does not say %q:\n%s", want, msg)
+		}
+	}
+
+	if code, _, stderr := runGlyph(t, strings.Fields(replace)[1:]...); code != int(core.CodeOK) {
+		t.Fatalf("%s exited %d, want 0\nstderr: %s", replace, code, stderr)
+	}
+	for _, k := range hook.Kinds() {
+		if in, err := k.Read(filepath.Join(dir, ".git", "hooks")); err != nil || in.State != hook.Current {
+			t.Errorf("after %s the %s hook's state is %v (read error: %v), want glyph's current hook", replace, k.Name, in.State, err)
+		}
+	}
+}
+
 // TestHookInstallRefusalCarriesTheReport: the refusal's envelope carries the
 // report as its details — one entry per kind, saying what happened to its
 // file — with --json and without, and --json writes nothing to stdout, as

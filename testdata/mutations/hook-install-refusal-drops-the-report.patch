@@ -1,9 +1,9 @@
 diff --git a/internal/hook/hook.go b/internal/hook/hook.go
-index b92b99a..162c820 100644
+index 7db27ef..356bd79 100644
 --- a/internal/hook/hook.go
 +++ b/internal/hook/hook.go
-@@ -332,7 +332,7 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
- 		}
+@@ -349,7 +349,7 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
+ 		refusal = refuseForeign(rep.Hooks[foreign], rest)
  	}
  	if refusal != nil {
 -		return rep, refusal.WithDetails(rep.Hooks)

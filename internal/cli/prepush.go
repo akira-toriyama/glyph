@@ -291,9 +291,14 @@ func prePushRun(ctx context.Context, args []string) error {
 	// Off the default branch the finding is real but the consequence is not: this
 	// is mid-branch by construction — a repo's patterns may bless a WIP shape
 	// here that its gate rejects at the merge — and a hook that refused it
-	// would make the branch unpushable.
-	warnf("%d commit-convention violation(s) in this push — not blocking off the default branch, but the commit-lint job will reject them: %s",
-		len(findings), summariseFindings(findings))
+	// would make the branch unpushable. With no default branch recorded the push
+	// may be to it, so the line gives no reason and the next warning the cause.
+	reason := " off the default branch"
+	if defaultBranch == "" {
+		reason = ""
+	}
+	warnf("%d commit-convention violation(s) in this push — not blocking%s, but the commit-lint job will reject them: %s",
+		len(findings), reason, summariseFindings(findings))
 	if defaultBranch == "" {
 		// Which remedy to name is all this read decides, so a git failure here
 		// keeps set-head rather than failing a push the findings above already

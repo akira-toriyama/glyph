@@ -40,11 +40,11 @@ index 3fcffe9..3439672 100644
  	return c
  }
 diff --git a/internal/hook/hook.go b/internal/hook/hook.go
-index db42041..2c6a268 100644
+index 7db27ef..bb89533 100644
 --- a/internal/hook/hook.go
 +++ b/internal/hook/hook.go
 @@ -60,7 +60,7 @@ func commitMsgScript() string {
- # glyph, which holds the rules. Do not add a regex here: a local copy of the
+ # glyph.toml at run time. Do not add a regex here: a local copy of the
  # convention is exactly what drifts out of lockstep when the rules move.
  #
 -# Regenerate with: glyph hook install commit-msg
@@ -52,21 +52,21 @@ index db42041..2c6a268 100644
  if ! command -v glyph >/dev/null 2>&1; then
  	echo "glyph: not on PATH — skipping the commit-msg lint (CI still enforces it)" >&2
  	exit 0
-@@ -101,7 +101,7 @@ func prePushScript() string {
- # owns the range arithmetic and the rules. Do not compute a range here and do
- # not add a regex: this file is installed once and nothing ever refreshes it.
+@@ -102,7 +102,7 @@ func prePushScript() string {
+ # a range here and do not add a regex: this file is installed once and nothing
+ # ever refreshes it.
  #
 -# Regenerate with: glyph hook install pre-push
 +# Regenerate with: glyph hook install
  if ! command -v glyph >/dev/null 2>&1; then
  	echo "glyph: not on PATH — skipping the pre-push lint (CI still enforces it)" >&2
  	exit 0
-@@ -397,7 +397,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
- 		res.Action = "refused"
- 		return res, "", core.Usagef(
- 			"the %[1]s hook %[2]s already exists and was not written by glyph — refusing to overwrite it, "+
--				"so nothing was written. Inspect it, then run glyph hook install --force %[1]s to replace it (its "+
-+				"so nothing was written. Inspect it, then re-run with --force to replace it (its "+
- 				"rules, if any, are superseded: the new hook calls glyph)", k.Name, in.Path)
- 	}
- }
+@@ -421,7 +421,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
+ // whose plan earns no write without --force: a command leaves alone every
+ // foreign hook it does not name, and only the refused one is named.
+ func refuseForeign(res Result, rest []string) *core.Error {
+-	replace := "glyph hook install --force " + strings.Join(append([]string{res.Kind}, rest...), " ")
++	replace := "glyph hook install --force"
+ 	if len(rest) == 0 {
+ 		return core.Usagef(
+ 			"the %s hook %s already exists and was not written by glyph — refusing to overwrite it, so nothing "+
