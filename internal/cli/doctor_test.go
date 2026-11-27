@@ -1668,13 +1668,12 @@ func TestDoctorHumanReportIsOneLinePerCheck(t *testing.T) {
 	}
 }
 
-// TestDoctorAdviceNoticeSaysHouseConventionOnce: the merge-method checks carry
-// "(house convention: squash-only)" in Expected, which is that phrase's one
-// home. A notice wrapping Expected in a second "(house convention: …)" prints
-// it twice in nested parentheses on every Actions run of a repository that is
-// not squash-only, and calls every other advice check's expectation
-// (token-write, the hooks, root-line tags) a house convention it is not.
-func TestDoctorAdviceNoticeSaysHouseConventionOnce(t *testing.T) {
+// TestDoctorAdviceNoticeSaysRecommendedOnce: the merge-method checks carry
+// "(recommended: squash-only)" in Expected, which is that phrase's one home. A
+// notice wrapping Expected in a second "(recommended: …)" prints it twice in
+// nested parentheses on every Actions run of a repository that is not
+// squash-only.
+func TestDoctorAdviceNoticeSaysRecommendedOnce(t *testing.T) {
 	permissive := `"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,` +
 		`"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"`
 	usePR(t, doctorServer(t, apiRepoObject(permissive)))
@@ -1694,8 +1693,8 @@ func TestDoctorAdviceNoticeSaysHouseConventionOnce(t *testing.T) {
 		if notice == "" {
 			t.Fatalf("no notice for %s:\n%s", id, stderr)
 		}
-		if n := strings.Count(notice, "house convention"); n != 1 {
-			t.Errorf("%s notice says \"house convention\" %d times, want once:\n%s", id, n, notice)
+		if n := strings.Count(notice, "recommended"); n != 1 {
+			t.Errorf("%s notice says \"recommended\" %d times, want once:\n%s", id, n, notice)
 		}
 	}
 }

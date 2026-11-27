@@ -339,7 +339,8 @@ func checkTokenAccess(in Input) Check {
 			"repository (a missing grant, an SSO authorization, an IP allow list), and GitHub answers 404 (not 403) for a " +
 			"private repository a credential cannot see, so a Not Found here usually names the token rather than the " +
 			"repository. Every setting below is unverifiable without this read, and a release run would fail the same way"
-		c.Fix = "set GITHUB_TOKEN (or GH_TOKEN) to a credential with read access — in Actions, pass token: ${{ github.token }}"
+		c.Fix = "set GITHUB_TOKEN (or GH_TOKEN) to a credential with read access — in Actions, on the step that runs " +
+			"glyph doctor: env: { GITHUB_TOKEN: \"${{ github.token }}\" }"
 		return c
 	}
 	c.Status = StatusPass
@@ -473,7 +474,7 @@ func checkSquashEnabled(in Input) Check {
 // lost-pull warning: if either goes, it moves to StatusFail (DESIGN §7, "The
 // merge-commit severity is downstream of that fix").
 func checkMergeCommit(in Input) Check {
-	c := Check{ID: idMergeCommit, Expected: "allow_merge_commit=false (house convention: squash-only)"}
+	c := Check{ID: idMergeCommit, Expected: "allow_merge_commit=false (recommended: squash-only)"}
 	if u, ok := available(in, c, "allow_merge_commit", in.RepoObject.AllowMergeCommit); !ok {
 		return u
 	}
@@ -502,7 +503,7 @@ func checkMergeCommit(in Input) Check {
 // release through the walk's refusal, internal/walk), so rebase merging costs one API round-trip
 // per replayed commit and a narrow lag window, not strictness (DESIGN §7).
 func checkRebaseMerge(in Input) Check {
-	c := Check{ID: idRebaseMerge, Expected: "allow_rebase_merge=false (house convention: squash-only)"}
+	c := Check{ID: idRebaseMerge, Expected: "allow_rebase_merge=false (recommended: squash-only)"}
 	if u, ok := available(in, c, "allow_rebase_merge", in.RepoObject.AllowRebaseMerge); !ok {
 		return u
 	}

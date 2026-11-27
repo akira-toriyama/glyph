@@ -76,7 +76,7 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf("%s was written by glyph and no longer matches this binary's hook (%s)", path, diffSummary(installed.Body, k.Script))
 		c.Message = "a hook is written once and refreshed only by a re-install — one under .git/hooks is untracked, and a " +
-			"tracked core.hooksPath moves only when someone re-installs and commits, so no fleet-sync and no CI job " +
+			"tracked core.hooksPath moves only when someone re-installs and commits, so no CI job " +
 			"updates one. Everything it decides was therefore frozen at install time: the exit code it " +
 			"treats as a convention violation (glyph interpolates that from core.CodeLint precisely because a stale copy " +
 			"waves every violation through) and the arguments it hands `glyph lint`. A hook that judges a message by rules " +
@@ -169,8 +169,9 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
 			"code and waves every other failure through by design, so a PATH wrapper building a different checkout " +
 			"or a source tree that does not compile turns the local gate into a silent no-op with clean-looking bytes. " +
 			"Every commit on this machine is going unlinted while CI still enforces the convention"
-		c.Fix = "run `glyph lint --message 'probe'` by hand and check what `command -v glyph` resolves to; " +
-			"repair the wrapper's source checkout (or the build) it points at"
+		c.Fix = fmt.Sprintf("run `glyph lint --message 'probe'` by hand — it must exit %d — and check what `command -v glyph` "+
+			"resolves to: put the glyph release that runs doctor on PATH, or, for a wrapper that builds glyph from a source "+
+			"checkout, repair that checkout or its build", gate)
 	default:
 		c.Status = StatusUnknown
 		c.Observed = fmt.Sprintf("the hook exited %d, a code the generated script never returns (it exits only 0 or %d)", probe.Exit, gate)

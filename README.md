@@ -204,13 +204,11 @@ it every verdict command refuses at exit 2), the squash-merge settings the
 walk assumes, a credential that can read the repository (and, for `release`,
 write it), workflow pins on release tags, caller workflows granting and
 passing what the pinned reusables declare, and the installed hooks (if any)
-written by *this* binary. `glyph doctor --help` lists every check and what
-each one guards. When one of those drifts nothing goes red — the verdict is
-just computed over a repository that no longer matches the model, which is
-exactly what `doctor` exists to catch. Nothing is ever modified. Its exit
-codes are its own subset of the contract, stated in `glyph doctor --help`: a
-failing check is a convention violation, a check that could not run is no
-trustworthy answer — unverified, which is not the same as fine.
+written by *this* binary. `glyph doctor --help` lists every check and its
+severity. When one of those drifts nothing goes red — the verdict is just
+computed over a repository that no longer matches the model, which is exactly
+what `doctor` exists to catch. Its exit codes are its own subset of the
+contract, stated in `glyph doctor --help`.
 
 **2. Move the lint to the moment you write the message:**
 
