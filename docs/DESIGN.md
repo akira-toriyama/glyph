@@ -4920,8 +4920,9 @@ The severities are the argued part:
   writes new shas that appear in no pull's listing, so a replayed commit
   classified during the lag is folded in again when the last one expands the
   pull. Which failures reach the fallback at all is §4's rule (a 422 only). The
-  cost of a dark API under squash is that a MULTI-commit squash carries the PR
-  title, so the fallback reads one subject the range walk never saw. `lint
+  cost of a dark API under squash is that a squash of TWO or more commits
+  besides merge commits carries the PR title, so the fallback reads one
+  subject the range walk never saw. `lint
   --pr` is that subject's own gate — CONTRIBUTING ratifies the title as a
   commit subject and lint.yml runs it beside the range — so the
   fallback now reads a *linted* subject, though only as reliably as the gate's
