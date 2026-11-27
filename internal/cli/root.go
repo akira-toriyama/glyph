@@ -92,7 +92,11 @@ func run(ctx context.Context, root *cobra.Command) error {
 // (DESIGN §5): cobra's parse errors are made usage where cobra raises them —
 // the flag-error func, the Args validators, and the root's PersistentPreRunE
 // for required flags and flag groups (newRootCmd) — so a bare error reaching
-// finish is one nobody classified, never usage by elimination.
+// finish is one nobody classified, never usage by elimination. The one
+// exception is the MinimumNArgs(1) of the __complete and __completeNoDesc
+// commands cobra builds during execution, which leaves a bare glyph __complete
+// at 4 because no completion script reaches it (zsh, bash and fish each pass
+// a word).
 func finish(err error) int {
 	if err == nil {
 		return int(core.CodeOK)
@@ -116,12 +120,12 @@ func newRootCmd() *cobra.Command {
 			"under the repository's own glyph.toml — your regex patterns decide the\n" +
 			"grammar; the named group semver_sigil is the only input to version\n" +
 			"calculation — and derives the semantic-version bump and release notes from\n" +
-			"the individual commits inside a pull request, so a multi-commit squash-merge\n" +
-			"(which rewrites the squash subject to the PR title) can never lose the\n" +
-			"per-commit sigils. One binary lints commits, computes the next version, and\n" +
-			"renders notes. `glyph init --gemoji` (or --conventional) writes a starting\n" +
-			"glyph.toml; lint, bump, notes, preview, release, doctor and hook pre-push\n" +
-			"read the one at the repository root.",
+			"the individual commits inside a pull request, so a squash-merge of two or\n" +
+			"more commits besides merge commits (which rewrites the squash subject to the\n" +
+			"PR title) can never lose the per-commit sigils. One binary lints commits,\n" +
+			"computes the next version, and renders notes. `glyph init --gemoji` (or\n" +
+			"--conventional) writes a starting glyph.toml; lint, bump, notes, preview,\n" +
+			"release, doctor and hook pre-push read the one at the repository root.",
 		Args:          noArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

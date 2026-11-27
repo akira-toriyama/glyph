@@ -81,10 +81,11 @@ func newBumpCmd() *cobra.Command {
 			"There are three input sources, exactly one of which is required.\n" +
 			"--range reads a local git revision range; --pr reads a pull request's\n" +
 			"INDIVIDUAL commits over the API, which is what makes the verdict\n" +
-			"squash-safe (a multi-commit squash-merge rewrites the subject to the PR\n" +
-			"title and would otherwise erase every per-commit sigil); --since-tag walks\n" +
-			"main's merge points since a tag and expands each back into the pull it\n" +
-			"merged — the release-time source, the walk `glyph release` runs.\n" +
+			"squash-safe (a squash-merge of two or more commits besides merge commits\n" +
+			"rewrites the subject to the PR title and would otherwise erase every\n" +
+			"per-commit sigil); --since-tag walks main's merge points since a tag and\n" +
+			"expands each back into the pull it merged — the release-time source, the\n" +
+			"walk `glyph release` runs.\n" +
 			"stdout is the bare next version\n" +
 			"(pipe it into a tag step); --json emits {current,level,next,commits,reason}.\n" +
 			"A none verdict prints no version and exits 1 (soft no-release).\n\n" +
