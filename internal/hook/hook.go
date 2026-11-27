@@ -60,7 +60,7 @@ func commitMsgScript() string {
 # glyph, which holds the rules. Do not add a regex here: a local copy of the
 # convention is exactly what drifts out of lockstep when the rules move.
 #
-# Regenerate with: glyph hook install --force
+# Regenerate with: glyph hook install commit-msg
 if ! command -v glyph >/dev/null 2>&1; then
 	echo "glyph: not on PATH — skipping the commit-msg lint (CI still enforces it)" >&2
 	exit 0
@@ -101,7 +101,7 @@ func prePushScript() string {
 # owns the range arithmetic and the rules. Do not compute a range here and do
 # not add a regex: this file is installed once and nothing ever refreshes it.
 #
-# Regenerate with: glyph hook install --force
+# Regenerate with: glyph hook install pre-push
 if ! command -v glyph >/dev/null 2>&1; then
 	echo "glyph: not on PATH — skipping the pre-push lint (CI still enforces it)" >&2
 	exit 0
@@ -255,10 +255,26 @@ func KindNames() []string {
 
 // Result reports what Install did to ONE hook, so the CLI can print an accurate
 // line and tests can assert the branch taken without re-reading the disk.
+//
+// Action is what happened to the file, and is set only once it has happened:
+//
+//   - "installed": written where no hook was
+//   - "refreshed": rewritten over a glyph hook, or over any hook under --force
+//   - "unchanged": already current, left as it was
+//   - "refused": a hook glyph did not write, left as it was (no --force)
+//   - "failed": reading or writing it failed (a failed write may leave it partly written)
+//   - "skipped": it was to be written, and the run stopped before writing it
+//
+// The last three appear only in a refusal's details, where the first two name
+// a write that happened before the run stopped.
+//
+// Existed says glyph saw a file at Path before the run. False is also what an
+// lstat that could not look reports (a hooks directory glyph cannot search),
+// so it is not proof that no file is there.
 type Result struct {
 	Kind    string `json:"kind"`
 	Path    string `json:"path"`
-	Action  string `json:"action"` // "installed" | "refreshed" | "unchanged"
+	Action  string `json:"action"`
 	Existed bool   `json:"existed"`
 }
 
@@ -296,72 +312,98 @@ func (r Report) Summary() string {
 // reports failure while the tree already carries a file the developer did not
 // ask for, and "exit 2, nothing happened" is what a caller reads that as.
 func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
-	var rep Report
-	plans := make([]Kind, 0, len(kinds))
+	// The report travels WITH every refusal, as its details: the caller's next
+	// question is which hook refused and what became of the others, and an
+	// emptied report answers it with silence while the error prose carries the
+	// path as text nobody can branch on. So a refusal still plans every kind,
+	// and each entry says what happened to its file before the run stopped.
+	rep := Report{Hooks: make([]Result, 0, len(kinds))}
+	type write struct {
+		at    int
+		kind  Kind
+		earns string
+	}
+	var writes []write
+	var refusal *core.Error
 	for _, k := range kinds {
-		res, write, err := plan(hooksDir, k, force)
-		// The partial report travels WITH the refusal: the caller's next
-		// question is which hook refused and what was found there, and an
-		// emptied report answers it with silence while the error prose carries
-		// the path as text nobody can branch on.
+		res, earns, err := plan(hooksDir, k, force)
+		if earns != "" {
+			writes = append(writes, write{at: len(rep.Hooks), kind: k, earns: earns})
+		}
 		rep.Hooks = append(rep.Hooks, res)
-		if err != nil {
-			return rep, err
-		}
-		if write {
-			plans = append(plans, k)
+		if err != nil && refusal == nil {
+			refusal = err
 		}
 	}
-	if len(plans) == 0 {
-		// Still re-assert the mode on everything that was already current: a
-		// hook that lost its execute bit is a hook git silently ignores.
-		return rep, chmodAll(hooksDir, kinds)
+	if refusal != nil {
+		return rep, refusal.WithDetails(rep.Hooks)
 	}
-	if mkErr := os.MkdirAll(hooksDir, 0o755); mkErr != nil { //nolint:gosec // git requires a traversable hooks dir
-		// MkdirAll names the directory it failed on, an ancestor when one is
-		// missing and cannot be made: only then is the hooks directory named too.
-		if pe, ok := errors.AsType[*fs.PathError](mkErr); ok && pe.Path != hooksDir {
-			return Report{}, core.APIf("%v — so the hooks directory %s could not be created", mkErr, hooksDir)
-		}
-		return Report{}, core.APIf("%v — the hooks directory could not be created", mkErr)
-	}
-	for _, k := range plans {
-		path := filepath.Join(hooksDir, k.Name)
-		if wErr := os.WriteFile(path, []byte(k.Script), 0o755); wErr != nil { //nolint:gosec // a hook must be executable
-			return Report{}, core.APIf("%v — the %s hook could not be written", wErr, k.Name)
+	if len(writes) > 0 {
+		if mkErr := os.MkdirAll(hooksDir, 0o755); mkErr != nil { //nolint:gosec // git requires a traversable hooks dir
+			// MkdirAll names the directory it failed on, an ancestor when one is
+			// missing and cannot be made: only then is the hooks directory named too.
+			if pe, ok := errors.AsType[*fs.PathError](mkErr); ok && pe.Path != hooksDir {
+				return rep, core.APIf("%v — so the hooks directory %s could not be created, and nothing was written", mkErr, hooksDir).WithDetails(rep.Hooks)
+			}
+			return rep, core.APIf("%v — the hooks directory could not be created, so nothing was written", mkErr).WithDetails(rep.Hooks)
 		}
 	}
-	return rep, chmodAll(hooksDir, kinds)
+	for _, w := range writes {
+		path := filepath.Join(hooksDir, w.kind.Name)
+		if wErr := os.WriteFile(path, []byte(w.kind.Script), 0o755); wErr != nil { //nolint:gosec // a hook must be executable
+			rep.Hooks[w.at].Action = "failed"
+			return rep, core.APIf("%v — the %s hook could not be written", wErr, w.kind.Name).WithDetails(rep.Hooks)
+		}
+		rep.Hooks[w.at].Action = w.earns
+	}
+	// Re-asserted on every hook present, the already-current included: a hook
+	// that lost its execute bit is a hook git silently ignores.
+	if cerr := chmodAll(hooksDir, kinds); cerr != nil {
+		return rep, cerr.WithDetails(rep.Hooks)
+	}
+	return rep, nil
 }
 
 // plan decides what one kind needs, without touching the filesystem beyond the
-// read that answers the question.
-func plan(hooksDir string, k Kind, force bool) (Result, bool, error) {
+// read that answers the question — and, when that read fails, the lstat that
+// says whether glyph can see a file there. A kind to be written comes back
+// "skipped", with the Action its write earns beside it: Install sets that
+// Action only once the write has happened.
+func plan(hooksDir string, k Kind, force bool) (Result, string, *core.Error) {
 	in, err := k.Read(hooksDir)
 	res := Result{Kind: k.Name, Path: in.Path}
 	if err != nil {
-		return res, false, core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
+		// A file that exists and cannot be read still existed, and Read reports
+		// absence without an error, so the lstat asks again. It can fail too:
+		// under a hooks directory glyph cannot search (mode 000) it cannot look,
+		// and Existed is then false for a file that is there.
+		_, serr := os.Lstat(in.Path)
+		res.Existed = serr == nil
+		res.Action = "failed"
+		return res, "", core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
 	}
 	res.Existed = in.State != Absent
 	switch {
 	case in.State == Absent:
-		res.Action = "installed"
+		res.Action = "skipped"
+		return res, "installed", nil
 	case in.State == Current:
 		res.Action = "unchanged"
-		return res, false, nil
+		return res, "", nil
 	case in.State == Stale, force:
-		res.Action = "refreshed"
+		res.Action = "skipped"
+		return res, "refreshed", nil
 	default:
-		return res, false, core.Usagef(
-			"%s already exists and was not written by glyph — refusing to overwrite it. "+
-				"Inspect it, then re-run with --force to replace it (its rules, if any, are "+
-				"superseded: the new hook calls glyph)", in.Path)
+		res.Action = "refused"
+		return res, "", core.Usagef(
+			"the %[1]s hook %[2]s already exists and was not written by glyph — refusing to overwrite it, "+
+				"so nothing was written. Inspect it, then run glyph hook install --force %[1]s to replace it (its "+
+				"rules, if any, are superseded: the new hook calls glyph)", k.Name, in.Path)
 	}
-	return res, true, nil
 }
 
 // chmodAll re-asserts the execute bit on every hook that is present.
-func chmodAll(hooksDir string, kinds []Kind) error {
+func chmodAll(hooksDir string, kinds []Kind) *core.Error {
 	for _, k := range kinds {
 		path := filepath.Join(hooksDir, k.Name)
 		if _, err := os.Stat(path); err != nil {
@@ -374,14 +416,18 @@ func chmodAll(hooksDir string, kinds []Kind) error {
 	return nil
 }
 
-// summary renders the one human line the CLI prints for a Result.
+// summary renders the one human line the CLI prints for a Result. An Action
+// outside the three a run that succeeded reports is spelled as it is, never
+// as one of them: a line must not claim a write that did not happen.
 func (r Result) summary() string {
 	switch r.Action {
+	case "installed":
+		return fmt.Sprintf("%s hook installed at %s", r.Kind, r.Path)
 	case "unchanged":
 		return fmt.Sprintf("%s hook already current at %s", r.Kind, r.Path)
 	case "refreshed":
 		return fmt.Sprintf("%s hook refreshed at %s", r.Kind, r.Path)
 	default:
-		return fmt.Sprintf("%s hook installed at %s", r.Kind, r.Path)
+		return fmt.Sprintf("%s hook at %s: action %q", r.Kind, r.Path, r.Action)
 	}
 }

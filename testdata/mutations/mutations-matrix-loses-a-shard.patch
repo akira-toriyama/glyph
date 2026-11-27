@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index c431924..b391baa 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -56,7 +56,7 @@ jobs:
+     strategy:
+       fail-fast: false
+       matrix:
+-        shard: [1, 2, 3, 4]
++        shard: [1, 2, 3]
+     env:
+       MUTATIONS_SHARD: ${{ matrix.shard }}/4
+     steps:
