@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index cb51e66..6c30738 100644
+index 92bdaa0..172d9a8 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -332,7 +332,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
+@@ -340,7 +340,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
  	if err != nil {
  		return err
  	}
 -	v := cfg.Lint(pull.Title, pull.Author)
 +	v := cfg.LintAuthoring(pull.Title, pull.Author)
- 	authored := 0
+ 	authored, capped := 0, false
  	if !v.Excluded {
  		commits, err := gh.PullCommits(ctx, owner, repo, number)

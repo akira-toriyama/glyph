@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index 92bdaa0..ab02221 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -353,7 +353,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
+ 			}
+ 		}
+ 		capped = len(commits) >= github.PullCommitsCap
+-		if authored == 1 && !capped {
++		if authored == 1 {
+ 			noticef("%s/%s#%d title not judged: the pull holds one commit besides merge commits, so a squash merge (COMMIT_OR_PR_TITLE) lands that commit's own subject, which --range judges",
+ 				owner, repo, number)
+ 			return nil
