@@ -627,6 +627,14 @@ path = "."              # optional: the root package keeps the bare vX.Y.Z line
 name = "core"           # its default "." is no preset scope's word: under the presets name is required
 ```
 
+`glyph init` writes this paragraph commented out, and uncommenting its
+entries where they stand is all a declaration takes: an entry anywhere below
+the file's top-level keys loads, while a `[[packages]]` header above them
+swallows them (`unknown keys packages.schema, …`, exit 2), and a header
+uncommented without its `path` does not load. Declaration order decides
+nothing about which line a commit moves — the longest path wins, below — and
+only orders the per-line output.
+
 A path must also be one git can tag: a segment `git check-ref-format`
 refuses (`a b`, `x.lock`, `.hidden`, `c~d`, …), or a leading `-`, which
 `git tag` refuses, does not load.
@@ -643,6 +651,12 @@ the release walk, and the pre-push hook on the default branch. DESIGN §4.1
 rules 1–3 are the full rule, with the escapes the refusal names. Files come
 from local git for every commit the branch holds and from the API for a
 squash-merged pull's inner commits, one request each.
+In a repository that declares no root package, that is every commit touching
+only root files: `:memo:= …` passes and moves no line, `:memo:(haiku)~ …`
+moves haiku, and `:memo:~ …` is refused at exit 3 by `lint --range`, `bump`
+and the pre-push hook on the default branch, the refusal naming the three
+ways out — name the line in the scope, write `=`, or declare `path = "."`
+with a `name`; off the default branch the pre-push hook warns and exits 0.
 
 `bump` and `notes` then answer per line. **A tag names a line**:
 `--since-tag=haiku/v0.1.0` or `--since-tag=below:haiku/v0.2.0` selects haiku
@@ -651,6 +665,9 @@ alone (what a tag-time notes step needs; a release candidate on the line,
 tag), a bare `--since-tag` walks every line from its own highest tag the
 released branch holds, and `--range` attributes from local git with every
 commit pending on every line.
+`--pr` reads a pull's messages, which carry no files: `bump --pr` and
+`notes --pr` refuse at exit 2 and name `--since-tag` and `--range`, while
+`preview --pr` answers per line, as below.
 A package with no tag yet walks its whole history, and the warning offers a
 baseline where one can be cut: `<prefix>v0.0.0` (`haiku/v0.0.0`) at the
 commit before its first change — `<prefix>vN.0.0` on a line whose path ends
@@ -661,6 +678,10 @@ commit before it and is offered none. Past the walk cap the refusal names
 the same tag. Each line answers separately on stdout and in `--json`
 (`glyph bump --help`, `glyph notes --help`); upload to a row's `tag`, never
 its `next`, and read an absent key as empty (`jq -r '.next // empty'`).
+The follow-up job that attaches per line sets `GH_TOKEN: ${{ github.token }}`
+and `GH_REPO: ${{ github.repository }}` — with no checkout, gh cannot tell
+which repository it is in — and runs with `contents: write`, which the
+caller stub grants workflow-wide.
 
 `release` keeps **one rolling draft per line** (`haiku/v0.2.0` beside
 `curry/v0.1.1`); `glyph release --help` states the upsert order, the per-line
