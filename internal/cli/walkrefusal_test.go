@@ -136,7 +136,7 @@ func TestSinceTagDirectPushUnmatchedNamesTheWedge(t *testing.T) {
 			// The claimed commits' fallback ::warning:: lines precede the
 			// envelope, as the fleet's sieve expects (output_test).
 			env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
-			for _, want := range []string{bad[:7], "AT OR PAST " + bad[:7], "AT OR PAST " + bad2[:7], "+1 more refused commit(s)", "at or past all of them", "--since-tag", "by hand", "released branch"} {
+			for _, want := range []string{bad[:7], "AT OR PAST " + bad[:7], "AT OR PAST " + bad2[:7], "+1 more refused commit(s)", "at or past all of them", "--since-tag", "by hand", "released branch", "On a branch that has not merged, reword each refused commit there instead"} {
 				if !strings.Contains(env.Message, want) {
 					t.Errorf("the wedge error must carry %q (the first commit, where it sits, the escape and the count):\n%s", want, env.Message)
 				}

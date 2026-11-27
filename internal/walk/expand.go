@@ -495,7 +495,7 @@ func (w *walk) judges(gov string) bool {
 // (Facts.dropped), not only a warning.
 func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 	if lag && len(raw.Parents) >= 2 {
-		w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+		w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit (a commit never pushed is indexed only once it is pushed)", raw.SHA)
 		w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmMerge})
 		w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 		return
@@ -506,7 +506,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 		// may be the squash of a pull someone else committed to, which no
 		// message of its own would say.
 		if lag {
-			w.Report.Warnf("commit %.7s, an exclude_authors author's, is not known to GitHub yet (API lag), so a pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+			w.Report.Warnf("commit %.7s, an exclude_authors author's, is not known to GitHub yet (API lag), so a pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit (a commit never pushed is indexed only once it is pushed)", raw.SHA)
 			w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmExcluded})
 		}
 		if raw.SHA == "" || !w.seen[raw.SHA] {
@@ -539,7 +539,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 		// Facts.dropped — release refuses to ACT on it, bump and notes
 		// report it, on stderr and in Facts.Unknown (DESIGN §4).
 		if row, ok := unclaimed(w.cfg, raw); ok {
-			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
+			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit (a commit never pushed is indexed only once it is pushed)", raw.SHA, row.Detail)
 			w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmUnclaimed})
 			w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 			return

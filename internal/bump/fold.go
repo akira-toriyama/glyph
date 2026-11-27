@@ -100,17 +100,15 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
 	var promote bool
 	levels := make([]Level, 0, len(commits))
 	var refusals []Refusal
-	remedy := ""
+	var remedies []string
 	for _, c := range commits {
 		if slices.Contains(cfg.ExcludeAuthors, c.Author) {
 			continue
 		}
 		m, u := Judge(cfg, c.SHA, c.Message)
 		if u != nil {
-			if len(refusals) == 0 {
-				remedy = u.Remedy
-			}
 			refusals = append(refusals, u.Row)
+			remedies = append(remedies, u.Remedy)
 			continue
 		}
 		if m.Skip {
@@ -128,14 +126,14 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
 		})
 	}
 	if len(refusals) > 0 {
-		return nil, Decision{}, RangeRefusal(refusals, remedy)
+		return nil, Decision{}, RangeRefusal(refusals, remedies)
 	}
 	return rows, Decision{Level: reduce(levels), promote: promote}, nil
 }
 
 // Unclaimed is a message the pattern file refuses, as Judge reads it: the
-// refusal's details row, and the clause RangeRefusal closes the sentence on
-// when this row is the range's only one.
+// refusal's details row, and the clause RangeRefusal closes the sentence on,
+// once per distinct remedy among the range's rows.
 type Unclaimed struct {
 	Row    Refusal
 	Remedy string
@@ -180,16 +178,26 @@ func Judge(cfg *config.Config, sha, message string) (config.Match, *Unclaimed) {
 // commits the caller may still rewrite — Fold's, and walk.Pending's, which
 // loads the grammar's rows (Judge) and attribution's into it in the order the
 // commits come: the first row's sentence, every row in details, and the count
-// of the rest when there is more than one. remedy closes a lone row's
-// sentence — Unclaimed.Remedy for the grammar's; attribution's sentence names
-// its own escapes, so it passes "" — and with several rows each one's detail
-// says its own.
-func RangeRefusal(rows []Refusal, remedy string) error {
-	msg := fmt.Sprintf("commit %.7s: %s; refusing to version the range%s", rows[0].SHA, rows[0].Detail, remedy)
+// of the rest when there is more than one. remedies[i] is rows[i]'s closing
+// clause — Unclaimed.Remedy for the grammar's; attribution's sentence names
+// its own escapes, so it passes "" — and the sentence closes on each distinct
+// one once, in row order: rows of one kind close as one of them alone does,
+// and unmatched rows beside unlandable ones get both, since the unmatched
+// remedy alone is how an unlandable refusal is defeated. Closed on the count
+// alone, several refused commits named no next step where one names it
+// (review G2-3).
+func RangeRefusal(rows []Refusal, remedies []string) error {
+	more := ""
 	if extra := len(rows) - 1; extra > 0 {
-		msg = fmt.Sprintf("commit %.7s: %s (+%d more violation(s), all in details); refusing to version the range", rows[0].SHA, rows[0].Detail, extra)
+		more = fmt.Sprintf(" (+%d more violation(s), all in details)", extra)
 	}
-	return core.Lintf("%s", msg).WithDetails(rows)
+	var closing []string
+	for _, r := range remedies {
+		if r != "" && !slices.Contains(closing, r) {
+			closing = append(closing, r)
+		}
+	}
+	return core.Lintf("commit %.7s: %s%s; refusing to version the range%s", rows[0].SHA, rows[0].Detail, more, strings.Join(closing, "")).WithDetails(rows)
 }
 
 // FirstLine returns a raw message's subject line (CR trimmed) — the one

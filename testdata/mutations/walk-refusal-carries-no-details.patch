@@ -1,11 +1,11 @@
 diff --git a/internal/walk/refusal.go b/internal/walk/refusal.go
-index e18c44b..60f016c 100644
+index 4db8095..c55fbb7 100644
 --- a/internal/walk/refusal.go
 +++ b/internal/walk/refusal.go
-@@ -136,7 +136,7 @@ func (w *walk) walkRefusal() error {
+@@ -157,7 +157,7 @@ func (w *walk) walkRefusal(attributed []placementRefusal) error {
  	}
  	return core.Lintf(
- 		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so %s. The walk must start AT OR PAST %s. %s",
+ 		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so %s. The walk must start AT OR PAST %s. %s. On a branch that has not merged, reword each refused commit there instead — these escapes are for commits already merged or pushed to the released branch.",
 -		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut).WithDetails(rows)
 +		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut)
  }

@@ -512,16 +512,18 @@ func attributionWedge(refused []placementRefusal, owner, repo string, lines []Li
 // rangeRefusal is the partition's refusal of commits read outside the walk —
 // a --range fold, a pull's listing — which the caller may still rewrite: both
 // stages' rows in the order the commits come, the first the headline, worded
-// as bump.Fold words its refusal of a range (bump.RangeRefusal) — a lone
-// grammar row with the grammar's remedy, a lone attribution row with the
+// as bump.Fold words its refusal of a range (bump.RangeRefusal) — each
+// distinct remedy among the grammar's rows once, an attribution row with the
 // escapes its own sentence names — never the walk's published branch or a
 // tag to cut (DESIGN §4: the authoring remedy is kept for --range; t-wjbs —
 // worded as the walk's, an unpushed commit is told to cut a tag on every
 // line).
 func rangeRefusal(refused []placementRefusal) error {
 	rows := make([]bump.Refusal, 0, len(refused))
+	remedies := make([]string, 0, len(refused))
 	for _, r := range refused {
 		rows = append(rows, r.row)
+		remedies = append(remedies, r.remedy)
 	}
-	return bump.RangeRefusal(rows, refused[0].remedy)
+	return bump.RangeRefusal(rows, remedies)
 }

@@ -110,6 +110,11 @@ func placeEscape(owner, repo string, number int, mergePoint, offending string) e
 // escape of both stages and the tags it names clear the range in one step.
 // Refused alone, the walk's wedges left attribution's refusal to the next red
 // run, past the tag the first one named (t-aveg, measured 2026-11-04).
+//
+// The closing sentence scopes every escape to the released branch: the walk
+// also runs over a branch that has not merged (bump --since-tag on a topic
+// branch, release --dry-run from a non-default ref), where the commit can
+// still be reworded and a hand-cut tag is the wrong way out (review G2-1).
 func (w *walk) walkRefusal(attributed []placementRefusal) error {
 	refused := slices.Clip(w.wedges)
 	for _, r := range attributed {
@@ -151,7 +156,7 @@ func (w *walk) walkRefusal(attributed []placementRefusal) error {
 		cut = fmt.Sprintf("Cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)", lineTags(w.ranges.lines, held))
 	}
 	return core.Lintf(
-		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so %s. The walk must start AT OR PAST %s. %s",
+		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so %s. The walk must start AT OR PAST %s. %s. On a branch that has not merged, reword each refused commit there instead — these escapes are for commits already merged or pushed to the released branch.",
 		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut).WithDetails(rows)
 }
 

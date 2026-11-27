@@ -1,12 +1,12 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 74d07b8..e544ad7 100644
+index d6ceb85..a0251af 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -529,9 +529,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+@@ -539,9 +539,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
  		// Facts.dropped — release refuses to ACT on it, bump and notes
  		// report it, on stderr and in Facts.Unknown (DESIGN §4).
  		if row, ok := unclaimed(w.cfg, raw); ok {
--			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
+-			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit (a commit never pushed is indexed only once it is pushed)", raw.SHA, row.Detail)
 -			w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmUnclaimed})
 -			w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 +			w.refuse(row, 0, "", raw.SHA)

@@ -1,19 +1,18 @@
 diff --git a/internal/bump/fold.go b/internal/bump/fold.go
-index f467043..3c55dec 100644
+index 067c2bc..2127a0e 100644
 --- a/internal/bump/fold.go
 +++ b/internal/bump/fold.go
-@@ -102,9 +102,6 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
+@@ -102,15 +102,15 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
  	var refusals []Refusal
- 	remedy := ""
+ 	var remedies []string
  	for _, c := range commits {
 -		if slices.Contains(cfg.ExcludeAuthors, c.Author) {
 -			continue
 -		}
  		m, u := Judge(cfg, c.SHA, c.Message)
  		if u != nil {
- 			if len(refusals) == 0 {
-@@ -113,6 +110,9 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
  			refusals = append(refusals, u.Row)
+ 			remedies = append(remedies, u.Remedy)
  			continue
  		}
 +		if slices.Contains(cfg.ExcludeAuthors, c.Author) {

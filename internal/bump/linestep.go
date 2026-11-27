@@ -36,10 +36,10 @@ func NextOn(l config.Line, current Version, dec Decision) (Version, error) {
 	where := fmt.Sprintf("%sv%d", l.Prefix, next.Major)
 	if l.Locked() {
 		return Version{}, core.Lintf(
-			"the %s line steps from %s to %s, a version off its line — the line is major %d by its directory (a Go major version subdirectory, go.dev/ref/mod), so no module claims %s; a %s-level change to it belongs in %s as its own [[packages]] entry. The commit that decides the level is already on a published branch, so this line wedges here until a %s tag at or past it is cut by hand (DESIGN §4.1)",
+			"the %s line steps from %s to %s, a version off its line — the line is major %d by its directory (a Go major version subdirectory, go.dev/ref/mod), so no module claims %s; a %s-level change to it belongs in %s as its own [[packages]] entry. If the commit that decides the level has not merged yet, rewrite it on its branch; once it is on a published branch, this line wedges here until a %s tag at or past it is cut by hand (DESIGN §4.1)",
 			l.Label(), current, next.TagOn(l.Prefix), l.Major, next.TagOn(l.Prefix), dec.Level, where, l.Label())
 	}
 	return Version{}, core.Lintf(
-		"the %s line steps from %s to %s, a version on the %s line, which this repository declares as its own package — the %s-level change belongs there. The commit that decides the level is already on a published branch, so this line wedges here until a %s tag at or past it is cut by hand (DESIGN §4.1)",
+		"the %s line steps from %s to %s, a version on the %s line, which this repository declares as its own package — the %s-level change belongs there. If the commit that decides the level has not merged yet, rewrite it on its branch; once it is on a published branch, this line wedges here until a %s tag at or past it is cut by hand (DESIGN §4.1)",
 		l.Label(), current, next.TagOn(l.Prefix), config.Line{Prefix: l.Prefix, Major: next.Major}.Label(), dec.Level, l.Label())
 }

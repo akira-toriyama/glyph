@@ -1,11 +1,11 @@
 diff --git a/internal/bump/fold.go b/internal/bump/fold.go
-index eea3932..df6ea22 100644
+index 067c2bc..0ddc98d 100644
 --- a/internal/bump/fold.go
 +++ b/internal/bump/fold.go
-@@ -111,7 +111,7 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
- 				remedy = u.Remedy
- 			}
+@@ -109,7 +109,7 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
+ 		if u != nil {
  			refusals = append(refusals, u.Row)
+ 			remedies = append(remedies, u.Remedy)
 -			continue
 +			break
  		}

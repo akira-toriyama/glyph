@@ -205,7 +205,7 @@ func TestSinceTagExcludedAuthorsCommitUnknownToGitHubIsSaid(t *testing.T) {
 		usePR(t, walkServer(t, map[string]string{commitPullsPath(s5): apiUnknownSHA}))
 		t.Chdir(dir)
 		code, _, stderr := runGlyph(t, "bump", "--since-tag")
-		want := "::warning::glyph: commit " + s5[:7] + ", an exclude_authors author's, is not known to GitHub yet (API lag), so a pull request it may have merged could not be resolved"
+		want := "::warning::glyph: commit " + s5[:7] + ", an exclude_authors author's, is not known to GitHub yet (API lag), so a pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit (a commit never pushed is indexed only once it is pushed)"
 		if code != 1 || !strings.Contains(stderr, want) {
 			t.Fatalf("bump --since-tag = exit %d, want 1 and the lag said:\n  %s\nstderr: %s", code, want, stderr)
 		}

@@ -1,0 +1,12 @@
+diff --git a/internal/bump/fold.go b/internal/bump/fold.go
+index 067c2bc..48c2f9c 100644
+--- a/internal/bump/fold.go
++++ b/internal/bump/fold.go
+@@ -190,6 +190,7 @@ func RangeRefusal(rows []Refusal, remedies []string) error {
+ 	more := ""
+ 	if extra := len(rows) - 1; extra > 0 {
+ 		more = fmt.Sprintf(" (+%d more violation(s), all in details)", extra)
++		remedies = nil
+ 	}
+ 	var closing []string
+ 	for _, r := range remedies {

@@ -155,6 +155,56 @@ func TestFoldNamesEveryRefusal(t *testing.T) {
 	}
 }
 
+// TestFoldSeveralUnmatchedRowsCarryTheUnmatchedRemedy: two commits no pattern
+// claims close on the remedy one of them alone gets. Closed on the count
+// alone, the usual red run (several bad commits) named no next step (mutation
+// row fold-several-refused-commits-name-no-remedy).
+func TestFoldSeveralUnmatchedRowsCarryTheUnmatchedRemedy(t *testing.T) {
+	cfg := testCfg(t)
+	_, _, err := Fold([]Commit{
+		{SHA: "aaa1", Author: "akira", Message: "fix: the first wrong grammar"},
+		{SHA: "bbb2", Author: "akira", Message: "fix: the second wrong grammar"},
+	}, cfg)
+	ce, ok := errors.AsType[*core.Error](err)
+	if !ok || ce.Code != core.CodeLint {
+		t.Fatalf("err = %v, want *core.Error with CodeLint (exit 3)", err)
+	}
+	if want := " (+1 more violation(s), all in details); refusing to version the range" + unmatchedRemedy; !strings.HasSuffix(ce.Msg, want) {
+		t.Errorf("refusal %q must close on the remedy one row alone gets (%q)", ce.Msg, want)
+	}
+}
+
+// TestFoldMixedRangeCarriesEachRemedyOnce: unmatched rows beside an
+// unlandable one close on both remedies, in row order, each once — the
+// unmatched remedy alone tells the unlandable commit to add a pattern or
+// exclude its author, which is how its refusal is defeated.
+func TestFoldMixedRangeCarriesEachRemedyOnce(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+
+[[patterns]]
+pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]) (?P<subject>.+)'
+
+[[patterns]]
+pattern = '^amend! '
+unlandable = 'rebase with --autosquash before it lands'
+`))
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	_, _, err = Fold([]Commit{
+		{SHA: "aaa1", Author: "akira", Message: "no gitmoji leads this subject"},
+		{SHA: "bbb2", Author: "akira", Message: "amend! :bug:~ fix b\n\n:boom:! fix b\n"},
+		{SHA: "ccc3", Author: "akira", Message: "nor this one"},
+	}, cfg)
+	ce, ok := errors.AsType[*core.Error](err)
+	if !ok || ce.Code != core.CodeLint {
+		t.Fatalf("err = %v, want *core.Error with CodeLint (exit 3)", err)
+	}
+	if want := " (+2 more violation(s), all in details); refusing to version the range" + unmatchedRemedy + unlandableRemedy; !strings.HasSuffix(ce.Msg, want) {
+		t.Errorf("refusal %q must close on each distinct remedy once, in row order (%q)", ce.Msg, want)
+	}
+}
+
 // TestFoldExcludesAuthorBeforeMatching asserts the exclusion ORDER:
 // exclude_authors exists for bots, whose messages are exactly the ones the
 // patterns do not describe, so the author check must run before the message
