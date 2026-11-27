@@ -505,8 +505,8 @@ func attributionWedge(refused []placementRefusal, owner, repo string, lines []Li
 		rows = append(rows, r.row)
 	}
 	return core.Lintf(
-		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)",
-		first.Raw.SHA, refused[0].row.Detail, more, where, lineTags(lines, held)).WithDetails(rows)
+		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1). %s",
+		first.Raw.SHA, refused[0].row.Detail, more, where, lineTags(lines, held), unmergedReword).WithDetails(rows)
 }
 
 // rangeRefusal is the partition's refusal of commits read outside the walk —

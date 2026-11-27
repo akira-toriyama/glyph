@@ -51,7 +51,9 @@ pattern says it means:
 
 - The named group **`semver_sigil`** must capture one of the five sigils
   (README "Commit format" spells the alphabet and what each means; the binary
-  holds it as `config.Sigil`), the only input to version calculation (§3). The
+  holds it as `config.Sigil`). The sigil a pattern yields (its `semver_sigil`
+  group's capture, or its fixed `semver_sigil` key, below, when the group
+  captures none) is the only input to version calculation (§3). The
   alphabet is fixed in the binary;
   everything else (where the sigil sits, what a prefix looks like, whether a
   scope exists) is the pattern file's decision. RE2 means no lookahead and no

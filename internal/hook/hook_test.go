@@ -340,9 +340,11 @@ func TestInstallRefusesAForeignHook(t *testing.T) {
 }
 
 // The refusal's advice forces the kind it told the reader to inspect and no
-// other: a plain --force also replaces a foreign hook of the other kind, one
-// the refusal never named. Each kind is seeded foreign alone and the run asks
-// for every kind, as a bare install does.
+// other foreign one: a plain --force also replaces a foreign hook of the other
+// kind, one the refusal never named. Each kind is seeded foreign alone and the
+// run asks for every kind, as a bare install does, so the --force command also
+// names the kinds that earned a write — none of them foreign, so --force
+// changes nothing for them.
 func TestARefusalAdvisesForcingTheKindItNamed(t *testing.T) {
 	for _, k := range Kinds() {
 		t.Run(k.Name, func(t *testing.T) {

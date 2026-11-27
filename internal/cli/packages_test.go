@@ -1608,6 +1608,7 @@ func TestSinceTagPackagesHandsDownEveryAttributionRefusalAtOnce(t *testing.T) {
 		"commit " + shas[0][:7] + ": its files (ci.yml) belong to no declared package",
 		"(+2 more refused commit(s), all in details)",
 		"cut a haiku/ tag at or past all of " + all + " / a curry/ tag at or past all of " + all + " by hand",
+		"(DESIGN §4.1). On a branch that has not merged, reword each refused commit there instead",
 	} {
 		if !strings.Contains(env.Message, want) {
 			t.Errorf("the refusal is missing %q:\n%s", want, env.Message)

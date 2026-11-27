@@ -528,13 +528,14 @@ func TestReleaseTargetOverride(t *testing.T) {
 	}
 }
 
-// TestReleaseRefusesToRegressBelowPublished is the deadlock guard (immutable
-// releases): a next version that is not STRICTLY greater than the latest
-// published release can never be published — its tag is taken (or burned, if
-// the release was deleted), so equality refuses exactly like regression. The
-// floor is the HIGHEST published version, wherever it sits in the listing.
+// TestReleaseRefusesToRegressBelowPublished is the floor guard: a next version
+// that is not STRICTLY greater than the highest published release has a tag
+// that would collide with or regress below a published release — an equal
+// version's tag is taken, so equality refuses exactly like regression (a
+// deleted release's tag name is burned only where immutable releases are on).
+// The floor is the HIGHEST published version, wherever it sits in the listing.
 // Fail loud (4), on the dry run too, naming both versions; never create the
-// unpublishable draft.
+// draft.
 func TestReleaseRefusesToRegressBelowPublished(t *testing.T) {
 	for name, releases := range map[string]struct {
 		json  string

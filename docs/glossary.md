@@ -575,8 +575,8 @@ burned for good.
 the walk's own verdict since the latest tag, and one of the two sides the merge
 preview folds. Distinguish from a draft that is "pending publication", which this
 codebase does not call pending. A base branch whose history holds no version
-tag has an *uncomputed* rather than empty pending side, and the comment says so
-(`glyph preview --help` says why it is not walked). `internal/preview/preview.go: Input.Pending,
+tag has an *uncomputed* rather than empty pending side, and the comment says so.
+`internal/preview/preview.go: Input.Pending,
 Input.Untagged`, `internal/cli/cmd_preview.go: previewPending`
 
 **incomplete banner** — retired with t-pysg: the `> [!WARNING]` block an

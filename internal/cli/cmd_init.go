@@ -34,9 +34,10 @@ func newInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Write a glyph.toml preset at the checkout's top level",
 		Long: "init writes glyph.toml — the configuration in which YOUR regex patterns\n" +
-			"decide the commit grammar and the named group semver_sigil (= none / ~ patch /\n" +
-			"^ minor / ! major / % promote to 1.0.0) is the only input to version\n" +
-			"calculation.\n\n" +
+			"decide the commit grammar and the sigil a pattern yields (its semver_sigil\n" +
+			"group's capture, or its fixed semver_sigil key when the group captures none)\n" +
+			"is the only input to version calculation (= none / ~ patch / ^ minor /\n" +
+			"! major / % promote to 1.0.0).\n\n" +
 			"The file lands at the top level of the git checkout init runs in, from any\n" +
 			"subdirectory — the one glyph.toml every other command reads — and in the\n" +
 			"current directory only where git says there is no repository at all. Inside\n" +

@@ -24,7 +24,7 @@ func CheckPublishedFloor(l config.Line, next bump.Version, releases []Draft) err
 		return nil
 	}
 	return core.APIf(
-		"computed version %s is not greater than the highest published release %s — refusing the draft, whose tag would collide with or regress below a published release (published at or above %s: %s). A run at a commit behind these tags (a re-run at an older commit) needs nothing: the run at the branch tip drafts past them. Otherwise clear each: one this line released off this branch, by landing its tagged commit with a merge commit (`git merge -s ours <tag>` keeps the tree); one published by mistake, by deleting it with its tag (`gh release delete <tag> --cleanup-tag`) — but where immutable releases are on (`gh api repos/{owner}/{repo}/immutable-releases`), a deleted release's tag name can never be reused, and the line could never publish that version",
+		"computed version %s is not greater than the highest published release %s — refusing the draft, whose tag would collide with or regress below a published release (published at or above %s: %s). A run at a commit behind these tags (a re-run at an older commit) needs nothing: the run at the branch tip walks from them. Otherwise clear each: one this line released off this branch, by landing its tagged commit with a merge commit (`git merge -s ours <tag>` keeps the tree); one published by mistake, by deleting it with its tag (`gh release delete <tag> --cleanup-tag`) — but where immutable releases are on (`gh api repos/{owner}/{repo}/immutable-releases`), a deleted release's tag name can never be reused, and the line could never publish that version",
 		next.TagOn(l.Prefix), floor.TagOn(l.Prefix), next.TagOn(l.Prefix), strings.Join(publishedAtOrAbove(l, next, releases), ", "))
 }
 

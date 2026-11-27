@@ -402,7 +402,8 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 // glyph.toml (or one that does not load) the fired hook's `glyph lint` exits 2
 // before judging anything and the hook waves 2 through as 0 by design — so the
 // probe's 0 says nothing about the glyph on PATH. Failing it would send the
-// reader, through its fix, to repair the PATH wrapper's source checkout — a
+// reader, through its fix, to one of two repairs of that glyph (put a glyph
+// release on PATH, or repair a wrapper's source checkout or its build), a
 // diagnosis of the wrong thing: the cause is the config glyph-toml-loads
 // already fails. Unknown, pointing there. The loaded-config row is the
 // positive control: the same probe on a loaded config is still the silent

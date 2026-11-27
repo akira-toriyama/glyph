@@ -148,7 +148,7 @@ type Unclaimed struct {
 // escape instead (internal/walk's walkRefusal).
 const (
 	unmatchedRemedy  = " (an unmatched commit folded as none would be a silent hole — fix the message, add a pattern, or exclude the author)"
-	unlandableRemedy = " (rewrite it as its reason says before it lands; a commit already on a published branch cannot be rewritten, so the range must start past it)"
+	unlandableRemedy = " (rewrite an unlandable commit as its reason says before it lands; a commit already on a published branch cannot be rewritten, so the range must start past it)"
 )
 
 // Judge is the one step from a commit's message to its refusal row: m is

@@ -286,12 +286,12 @@ appends a per-repo Markdown block (an `## Install` section) after it;
 `app` / `binary` name an artefact the reusable builds and attaches, on a
 macOS runner. Each input's `description:` in `release.yml` is its contract.
 
-The draft never collides with or regresses below a published release.
-Every published release sets a **floor** (per line under `[[packages]]`),
-wherever its commit sits: a computed version that is not strictly greater
-than the highest of them — equal included, because that tag is taken — is
-refused at exit 4 before anything is
-written, `--dry-run` included. The refusal names every published release at or
+The draft never collides with or regresses below a published `vX.Y.Z`
+release. Each one on the line sets a **floor** (per line under
+`[[packages]]`), wherever its commit sits, and a published pre-release sets
+none: a computed version that is not strictly greater than the highest of
+them — equal included, because that tag is taken — is refused at exit 4 before
+anything is written, `--dry-run` included. The refusal names every published release at or
 above the computed version and how to clear each: one released off the default
 branch by landing its tagged commit with a merge commit, one published by
 mistake by deleting it with its tag. Where immutable releases are on, that

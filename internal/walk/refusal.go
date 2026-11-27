@@ -87,6 +87,11 @@ func placeEscape(owner, repo string, number int, mergePoint, offending string) e
 	}
 }
 
+// unmergedReword closes both walk refusals that say a commit is already on a
+// published branch, walkRefusal's and attributionWedge's: one string, so the
+// two cannot drift (walkRefusal's doc has why the sentence exists).
+const unmergedReword = "On a branch that has not merged, reword each refused commit there instead — these escapes are for commits already merged or pushed to the released branch."
+
 // walkRefusal is the walk's one refusal, built once the whole range is
 // walked: the first refused commit's sentence and where it sits, the count
 // of the rest, every refused commit in details, and every distinct escape —
@@ -156,8 +161,8 @@ func (w *walk) walkRefusal(attributed []placementRefusal) error {
 		cut = fmt.Sprintf("Cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)", lineTags(w.ranges.lines, held))
 	}
 	return core.Lintf(
-		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so %s. The walk must start AT OR PAST %s. %s. On a branch that has not merged, reword each refused commit there instead — these escapes are for commits already merged or pushed to the released branch.",
-		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut).WithDetails(rows)
+		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so %s. The walk must start AT OR PAST %s. %s. %s",
+		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut, unmergedReword).WithDetails(rows)
 }
 
 // Outranks reports whether the refusal already found (found says one was) is

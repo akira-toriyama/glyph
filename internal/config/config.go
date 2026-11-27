@@ -1,6 +1,8 @@
 // Package config loads and validates glyph.toml — the configuration in
-// which user-defined RE2 patterns decide the message grammar and the named
-// group semver_sigil is the only input to version calculation. The sigil
+// which user-defined RE2 patterns decide the message grammar and the sigil a
+// pattern yields (its semver_sigil group's capture, or its fixed semver_sigil
+// key when the group captures none) is the only input to version
+// calculation. The sigil
 // alphabet is fixed in the binary (= none / ~ patch / ^ minor / ! major /
 // % promote to 1.0.0); everything else — where the sigil sits, what a subject
 // looks like, which commits are skipped — belongs to the file, not to glyph.

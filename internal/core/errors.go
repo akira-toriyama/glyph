@@ -39,8 +39,9 @@ const (
 	// wholeHistory`, past its cap) return it because a verdict computed over a
 	// range glyph could not read — or could only read at a cost nobody named —
 	// is worse than no verdict at all. `draftplan.CheckPublishedFloor` returns
-	// it for a draft that could never be published (its version is not above
-	// the highest published release), and `bodylimit.go: checkReleaseBody` for
+	// it for a draft whose tag would collide with or regress below a published
+	// release (its version is not above the highest published one), and
+	// `bodylimit.go: checkReleaseBody` for
 	// a release body over GitHub's cap, refused before anything is written
 	// rather than shipped truncated. A release run started from a ref that is
 	// not the repository's default branch (`releaseref.go: checkReleaseRef`)
