@@ -13,7 +13,9 @@ import (
 )
 
 // bumpResult is the machine verdict: {current, level, next, commits, reason}
-// — plus packages when the repository declares [[packages]].
+// — plus packages when the repository declares [[packages]], and unknown
+// when the walk met commits GitHub had not indexed (walk.Facts.Unknown;
+// absent otherwise, and always from --range and --pr).
 // next is omitted on a none verdict — there is no next version to act on.
 //
 // With packages declared current / level are EMPTY, next is absent, and
@@ -30,6 +32,8 @@ type bumpResult struct {
 	Commits  []bump.Row       `json:"commits"`
 	Packages []packageVerdict `json:"packages,omitempty"`
 	Reason   string           `json:"reason"`
+
+	Unknown []walk.UnknownCommit `json:"unknown,omitempty"`
 }
 
 // packageVerdict is one line's verdict inside bumpResult.packages: the
@@ -78,15 +82,26 @@ func newBumpCmd() *cobra.Command {
 			"everything; a commit NO pattern claims refuses the whole range (exit 3) —\n" +
 			"an unmatched commit folded as none would be a silent hole — and so does\n" +
 			"one an unlandable pattern claims, with that pattern's reason.\n" +
+			"Under --since-tag a commit GitHub has not indexed yet (API lag) that no\n" +
+			"pattern claims is the exception: it counts none and is reported (a\n" +
+			"::warning:: and an unknown entry), it does not refuse the range.\n" +
+			"The published floor is release's check only; bump does not read it.\n" +
 			"There are three input sources, exactly one of which is required.\n" +
 			"--range reads a local git revision range; --pr reads a pull request's\n" +
 			"INDIVIDUAL commits over the API, which is what makes the verdict\n" +
-			"squash-safe (a squash-merge rewrites the subject to the PR title and would\n" +
-			"otherwise erase every per-commit sigil); --since-tag walks main's merge\n" +
-			"points since a tag and expands each back into the pull it merged — the\n" +
-			"release-time source, and what glyph's own release job uses.\n" +
+			"squash-safe (a squash-merge of two or more commits besides merge commits\n" +
+			"rewrites the subject to the PR title and would otherwise erase every\n" +
+			"per-commit sigil); --since-tag walks main's merge points since a tag and\n" +
+			"expands each back into the pull it merged — the release-time source, the\n" +
+			"walk `glyph release` runs.\n" +
 			"stdout is the bare next version\n" +
-			"(pipe it into a tag step); --json emits {current,level,next,commits,reason}.\n" +
+			"(pipe it into a tag step); --json emits\n" +
+			"{current,level,next,commits,reason,unknown} — unknown lists the commits\n" +
+			"GitHub had not indexed, as {sha,arm}: message (read from its own message,\n" +
+			"which a pattern claims), unclaimed (no pattern claims it: counted none),\n" +
+			"merge (a merge commit, the pull it may have merged unresolved: nothing\n" +
+			"counted) or excluded (an exclude_authors author's, likewise unresolved:\n" +
+			"nothing counted); absent when there are none.\n" +
 			"A none verdict prints no version and exits 1 (soft no-release).\n\n" +
 			"On a repository declaring [[packages]] the verdict is per line: stdout is\n" +
 			"the next TAG of every line that moves, one per line (haiku/v0.2.0), and\n" +
@@ -98,11 +113,13 @@ func newBumpCmd() *cobra.Command {
 			"(haiku/v0.1.1, travel/onsen/v0.0.1), the major folded on a /vN path\n" +
 			"(pubsub/v2 → pubsub/v2.1.0), bare for the root package — present exactly\n" +
 			"when next is, so a line at none carries neither and an all-none walk is a\n" +
-			"full array with no tag in it. --pr is refused there (exit 2: a pull's\n" +
-			"listing carries messages and no files, so nothing can be attributed to a\n" +
-			"line), and --current is refused (exit 2) unless the walk selects one line\n" +
-			"(--since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
-			"prefix: haiku/, or nothing for the root package).",
+			"full array with no tag in it. A --since-tag tag names a line:\n" +
+			"<prefix>vX.Y.Z (an rc tag too) or below:<prefix>vX.Y.Z walks that one\n" +
+			"line, <prefix> being its tag prefix (haiku/, or nothing for the root\n" +
+			"package), and a line no [[packages]] entry declares is refused (exit 2).\n" +
+			"--pr is refused there (exit 2: a pull's listing carries messages and no\n" +
+			"files, so nothing can be attributed to a line), and --current is refused\n" +
+			"(exit 2) unless the walk selects one line.",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
@@ -111,7 +128,7 @@ func newBumpCmd() *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			return bumpRun(cmd.Context(), bumpOptions{source: sourceOf(cmd, f), current: current, json: asJSON})
+			return annotateRefusal(bumpRun(cmd.Context(), bumpOptions{source: sourceOf(cmd, f), current: current, json: asJSON}))
 		},
 	}
 	cmd.Flags().StringVar(&f.rng, "range", "", "fold every commit in a git revision range (BASE..HEAD)")
@@ -119,7 +136,7 @@ func newBumpCmd() *cobra.Command {
 	addSinceTagFlag(cmd, &f.tag, "fold")
 	cmd.Flags().StringVar(&f.repo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&current, "current", "", currentFlagUsage)
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}; with [[packages]] declared current/level are empty, next is absent, and packages[] carries one verdict per line, its tag beside its bare next")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason,unknown}; with [[packages]] declared current/level are empty, next is absent, and packages[] carries one verdict per line, its tag beside its bare next")
 	markInputSourceFlags(cmd)
 	return cmd
 }
@@ -165,7 +182,7 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 	// commit — on no line — still appears in what the walk read. On the bare
 	// line the union is the line, and these rows are its rows. A message no
 	// pattern claims never reaches the fold: the walk refused it at its
-	// sighting, and Pending, for --range and --pr, in one refusal with
+	// sighting and Pending, for --range and --pr, each in one refusal with
 	// attribution's (readSource) — so the error return is the fold's
 	// contract, not a path any source takes.
 	rows, _, cerr := bump.Fold(walk.BumpCommits(w.All), cfg)
@@ -187,10 +204,10 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 		}
 		pkgs = append(pkgs, pv)
 	}
-	res := bumpResult{Commits: rows, Packages: pkgs, Reason: packagesReason(pkgs, len(tags))}
+	res := bumpResult{Commits: rows, Packages: pkgs, Unknown: w.Facts.Unknown, Reason: packagesReason(pkgs, len(tags))}
 	if len(cfg.Packages) == 0 {
 		one := pkgs[0]
-		res = bumpResult{Current: one.Current, Level: one.Level, Next: one.Next, Commits: rows, Reason: one.Reason}
+		res = bumpResult{Current: one.Current, Level: one.Level, Next: one.Next, Commits: rows, Unknown: w.Facts.Unknown, Reason: one.Reason}
 	}
 	if len(tags) == 0 {
 		if o.json {

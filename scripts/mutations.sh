@@ -72,6 +72,29 @@ case "$JOBS" in
     ;;
 esac
 
+# MUTATIONS_SHARD=<k>/<n> measures the rows at ledger positions p with
+# (p - 1) mod n == k - 1, so CI can split the ledger across n runners; unset or
+# empty is the whole ledger. Interleaved, never contiguous ranges: rows are
+# appended at the end, so a range would grow only the last shard. The orphan
+# reconciliation below stays whole-ledger in every shard.
+SHARD=${MUTATIONS_SHARD:-}
+SHARD_K=1
+SHARD_N=1
+case "$SHARD" in
+  '') ;;
+  *[!0-9/]* | */*/* | 0*/* | */0*) SHARD_N=0 ;;
+  [0-9]*/[0-9]*)
+    SHARD_K=${SHARD%/*}
+    SHARD_N=${SHARD#*/}
+    [ "$SHARD_K" -le "$SHARD_N" ] || SHARD_N=0
+    ;;
+  *) SHARD_N=0 ;;
+esac
+if [ "$SHARD_N" -eq 0 ]; then
+  echo "mutations: MUTATIONS_SHARD must be <k>/<n> with integers 1 <= k <= n, got '$SHARD'" >&2
+  exit 2
+fi
+
 TMP=$(mktemp -d)
 PIDS=''
 cleanup() {
@@ -121,6 +144,7 @@ n=0
 while IFS='	' read -r patch pkg tests why || [ -n "${patch:-}" ]; do
   case "$patch" in '' | '#'*) continue ;; esac
   n=$((n + 1))
+  [ $(((n - 1) % SHARD_N)) -eq $((SHARD_K - 1)) ] || continue
   if [ -n "$FILTER" ]; then
     case "$patch$pkg$tests$why" in *"$FILTER"*) ;; *) continue ;; esac
   fi
@@ -128,7 +152,13 @@ while IFS='	' read -r patch pkg tests why || [ -n "${patch:-}" ]; do
 done <"$LEDGER"
 
 if [ ! -s "$ROWS" ]; then
-  echo "mutations: the filter '$FILTER' matched no ledger row" >&2
+  if [ -n "$SHARD" ] && [ -n "$FILTER" ]; then
+    echo "mutations: the filter '$FILTER' matched no ledger row in shard $SHARD" >&2
+  elif [ -n "$SHARD" ]; then
+    echo "mutations: shard $SHARD matched no ledger row" >&2
+  else
+    echo "mutations: the filter '$FILTER' matched no ledger row" >&2
+  fi
   exit 1
 fi
 
@@ -329,7 +359,10 @@ orphans=$(wc -l <"$TMP/orphans" | tr -d ' ')
 sed 's/^/  ✗ no ledger row names /' "$TMP/orphans" >&2
 
 echo
-tally="$kills/$rows ledger rows bite, $((patches - orphans))/$patches patches on a row"
+# A shard's green is a claim about its rows alone, so its line says which.
+scope=''
+[ -z "$SHARD" ] || scope=" in shard $SHARD"
+tally="$kills/$rows ledger rows bite$scope, $((patches - orphans))/$patches patches on a row"
 if [ "$bad" -ne 0 ] || [ "$orphans" -ne 0 ]; then
   echo "✗ $tally — $bad row(s) and $orphans patch(es) above need a look" >&2
   exit 1

@@ -1,0 +1,14 @@
+diff --git a/internal/cli/pr.go b/internal/cli/pr.go
+index 4502f5e..ef6d062 100644
+--- a/internal/cli/pr.go
++++ b/internal/cli/pr.go
+@@ -105,9 +105,6 @@ func checkRepoFlag(flag string) error {
+ // missing --repo, 2 (TestAnInterruptInTheRemoteListingCarriesOut).
+ func originRepo(ctx context.Context) (string, error) {
+ 	urls, err := gitsource.RemoteURLs(ctx, ".")
+-	if core.IsInterrupted(err) {
+-		return "", err
+-	}
+ 	if err != nil {
+ 		return "", nil
+ 	}

@@ -56,7 +56,8 @@ func apiWalker(gh *github.Client) walk.Walker {
 // its entrance, before glyph.toml is loaded (source.check, releaseRun), and
 // preview walks from Auto. bump, notes, release and preview share it; the
 // result's Facts say whether the walk read its range (release refuses on
-// them, preview reports the shortfall, bump and notes discard them).
+// them, preview reports the shortfall) and which commits GitHub had not
+// indexed (each of the four --json verdicts carries them as unknown).
 func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag string) (walk.Result, error) {
 	return sinceTagInputScoped(ctx, cfg, tagFlag, repoFlag, nil)
 }

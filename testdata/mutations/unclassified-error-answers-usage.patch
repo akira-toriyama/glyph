@@ -1,0 +1,13 @@
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index 44cae7a..b4498ce 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -88,7 +88,7 @@ func finish(err error) int {
+ 	}
+ 	ce := core.AsError(err)
+ 	if ce == nil {
+-		ce = core.APIf("%s", err.Error())
++		ce = core.Usagef("%s", err.Error())
+ 	}
+ 	if !ce.Silent {
+ 		renderError(ce)

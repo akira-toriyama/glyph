@@ -10,6 +10,6 @@ index ab08f73..84dab25 100644
 -		<-ctx.Done()
 -		stop()
 -	}()
- 	return finish(newRootCmd().ExecuteContext(ctx))
+ 	return finish(run(ctx, newRootCmd()))
  }
  

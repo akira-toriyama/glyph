@@ -17,7 +17,9 @@ import (
 
 // previewResult is the machine verdict:
 // {current, untagged, level, next, pr, pending, body} — plus packages when
-// the repository declares [[packages]]. level/next are the FOLDED
+// the repository declares [[packages]], and unknown (bump's,
+// walk.Facts.Unknown) when the pending walk met commits GitHub had not
+// indexed. level/next are the FOLDED
 // answer — what the version becomes if this PR merges — so a caller never
 // re-derives it from the two sides; pr and pending are the two sides it folded,
 // reported separately so a comment can show the working. With packages
@@ -36,6 +38,8 @@ type previewResult struct {
 	Pending  string           `json:"pending"`
 	Body     string           `json:"body"`
 	Packages []packagePreview `json:"packages,omitempty"`
+
+	Unknown []walk.UnknownCommit `json:"unknown,omitempty"`
 }
 
 // packagePreview is one line's verdict — bump's vocabulary (bare versions,
@@ -113,7 +117,7 @@ func newPreviewCmd() *cobra.Command {
 			"commits read over the API, and what is already merged but unreleased on\n" +
 			"the checked-out branch. Both step from the same tag, so the answer is the\n" +
 			"`next` of whichever folds higher — no caller ever does version arithmetic.\n\n" +
-			"A base branch whose history holds no v* tag skips the pending walk: it\n" +
+			"A base branch whose history holds no version tag skips the pending walk: it\n" +
 			"would resolve the whole history at one API round-trip per commit to\n" +
 			"answer a question that cannot matter (nothing is unreleased when nothing\n" +
 			"was released), so the PR's own verdict stands alone and the body says so.\n" +
@@ -127,9 +131,12 @@ func newPreviewCmd() *cobra.Command {
 			"The body never names a rolling draft — the arithmetic is the same whether\n" +
 			"the next release is a draft or a tag cut by hand, and most repos have no\n" +
 			"draft to name. stdout is the Markdown body (post it with `gh pr comment\n" +
-			"--body-file -`); --json emits {current,untagged,level,next,pr,pending,body}.\n" +
+			"--body-file -`); --json emits\n" +
+			"{current,untagged,level,next,pr,pending,body,unknown} — unknown is bump's,\n" +
+			"from the walk behind pending (see bump --help).\n" +
 			"Unlike bump and notes, a none verdict is a normal answer here and exits 0:\n" +
-			"'this PR moves nothing' is exactly what a reviewer asked.\n\n" +
+			"'this PR moves nothing' is exactly what a reviewer asked. A pull commit no\n" +
+			"pattern claims is refused at exit 3, while the branch can still be fixed.\n\n" +
 			"On a repository declaring [[packages]] the body carries one headline per\n" +
 			"line the pull touches (versions spelled as tags: haiku/v0.1.0 →\n" +
 			"haiku/v0.2.0; a line with no tag names its first release, never a\n" +
@@ -139,19 +146,19 @@ func newPreviewCmd() *cobra.Command {
 			"[{path,current,untagged,level,next,pr,pending}] with the scalars\n" +
 			"current/level/pr/pending EMPTY, untagged false and next absent. A commit\n" +
 			"no line can carry (a version sigil on shared files with no package scope)\n" +
-			"is refused at exit 3 here, while the branch can still be fixed.",
+			"is refused at exit 3 the same way.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
 				return err
 			}
-			return previewRun(cmd.Context(), o)
+			return annotateRefusal(previewRun(cmd.Context(), o))
 		},
 	}
 	cmd.Flags().IntVar(&o.pr, "pr", 0, "the pull request to preview, read over the API (required)")
 	cmd.Flags().StringVar(&o.repo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().BoolVar(&o.notes, "notes", false, "fold the release-notes preview for this PR into the body")
-	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,untagged,level,next,pr,pending,body}; with [[packages]] declared current/level/pr/pending are empty, untagged false, next absent, and packages[] carries one verdict per line")
+	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,untagged,level,next,pr,pending,body,unknown}; with [[packages]] declared current/level/pr/pending are empty, untagged false, next absent, and packages[] carries one verdict per line")
 	_ = cmd.MarkFlagRequired("pr")
 	return cmd
 }
@@ -208,7 +215,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
 	if err := foldTouched(ctx, cfg, touched); err != nil {
 		return err
 	}
-	pending, pendingShort, pendingWalked, shallow, err := previewPending(ctx, cfg, o.repo, owner, repo, touched)
+	pending, pendingShort, unknown, pendingWalked, shallow, err := previewPending(ctx, cfg, o.repo, owner, repo, touched)
 	if err != nil {
 		return err
 	}
@@ -235,12 +242,12 @@ func previewRun(ctx context.Context, o previewOptions) error {
 	}
 
 	in := preview.Input{PendingShort: pendingShort, PRShort: prShort, Shallow: shallow}
-	res := previewResult{Packages: verdicts}
+	res := previewResult{Packages: verdicts, Unknown: unknown}
 	render := preview.Render
 	if len(cfg.Packages) == 0 {
 		one, v := lines[0], verdicts[0]
 		in.Current, in.Untagged, in.PR, in.Pending, in.Notes = one.Current, one.Untagged, one.PR, one.Pending, lineNotes[0]
-		res = previewResult{Current: v.Current, Untagged: v.Untagged, Level: v.Level, Next: v.Next, PR: v.PR, Pending: v.Pending}
+		res = previewResult{Current: v.Current, Untagged: v.Untagged, Level: v.Level, Next: v.Next, PR: v.PR, Pending: v.Pending, Unknown: unknown}
 	} else {
 		in.Participating, in.OffLine, in.Packages = len(rows), offLine(rows, touched), lines
 		var headed []string
@@ -385,7 +392,8 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
 }
 
 // previewPending folds what is already merged but unreleased, per touched
-// line, from ONE walk, and says whether it walked. The walk runs only when a
+// line, from ONE walk, says whether it walked, and names the commits that
+// walk met GitHub had not indexed (walk.Facts.Unknown). The walk runs only when a
 // touched line has released at all — the release-floor guard. It is the one
 // unbounded input: with no tag in HEAD's history it resolves the whole
 // history at one API round-trip per commit (sinceTagRange names the cost
@@ -416,13 +424,13 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
 // the walk's own warning and shortfall already say the rest (measured
 // 2026-11-08: a --depth 3 clone reaching haiku's tag and not curry's drew
 // curry's first release and "no release tag on the base branch").
-func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, repo string, touched []touchedLine) (pending map[string]bump.Decision, short string, walked, shallow bool, err error) {
+func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, repo string, touched []touchedLine) (pending map[string]bump.Decision, short string, unknown []walk.UnknownCommit, walked, shallow bool, err error) {
 	if len(touched) == 0 {
-		return nil, "", false, false, nil
+		return nil, "", nil, false, false, nil
 	}
 	shallow, err = checkout().IsShallow(ctx)
 	if err != nil {
-		return nil, "", false, false, err
+		return nil, "", nil, false, false, err
 	}
 	if !slices.ContainsFunc(touched, func(tl touchedLine) bool { return tl.tag != "" }) {
 		if shallow {
@@ -430,7 +438,7 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
 			short = walk.ShallowShortfall
 		}
 		warnf("%s", skippedWalkWarning(cfg, shallow))
-		return nil, short, false, shallow, nil
+		return nil, short, nil, false, shallow, nil
 	}
 	only := make([]config.Package, 0, len(touched))
 	for _, tl := range touched {
@@ -438,7 +446,7 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
 	}
 	w, err := sinceTagInputScoped(ctx, cfg, walk.Auto, repoFlag, &walk.Scope{Only: only, Escape: previewWalkEscape})
 	if err != nil {
-		return nil, "", false, false, err
+		return nil, "", nil, false, false, err
 	}
 	if !w.Facts.Complete() {
 		short = w.Facts.Shortfall(owner, repo)
@@ -447,18 +455,18 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
 	// once, for the pull's reason (previewRun).
 	rows, _, err := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if err != nil {
-		return nil, "", false, false, err
+		return nil, "", nil, false, false, err
 	}
 	warnBumpRows(rows)
 	pending = make(map[string]bump.Decision, len(w.Lines))
 	for _, lw := range w.Lines {
 		_, dec, err := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
 		if err != nil {
-			return nil, "", false, false, err
+			return nil, "", nil, false, false, err
 		}
 		pending[lw.Package.Path] = dec
 	}
-	return pending, short, true, shallow, nil
+	return pending, short, w.Facts.Unknown, true, shallow, nil
 }
 
 // skippedWalkWarning names the pending walk the release-floor guard skipped,

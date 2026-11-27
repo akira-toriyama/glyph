@@ -180,15 +180,16 @@ func (r lineRanges) releasedEverywhere(gov string) bool {
 // collected with the lines it wedges.
 //
 // The refusals are handed down once the whole range is placed, for the
-// caller to word (attributionWedge, rangeRefusal) — one red run for every
-// refused commit of either stage, as lint --range over the same range
-// answers, so a wrong grammar cannot hide behind a wrong tree (DESIGN §4.1,
-// rule 3). A refusal already collected, of either stage, outranks a later
-// failure to place the rest (Outranks). On the release walk the grammar
-// refuses nothing here: the walk refused such a commit at its sighting
-// (expand, fallback) or did not judge it, at an identity every line released
-// (dropped above) or on the API's lag arm (never walked).
-func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, repo string, commits []Commit, facts *Facts, ranges lineRanges) ([]LineWalk, []Commit, []placementRefusal, error) {
+// caller to word (attributionWedge, walkRefusal, rangeRefusal) — one red run
+// for every refused commit of either stage, as lint --range over the same
+// range answers, so a wrong grammar cannot hide behind a wrong tree (DESIGN
+// §4.1, rule 3). A refusal already collected, of either stage, outranks a
+// later failure to place the rest (Outranks), and so does one the caller
+// found before the partition ran (found: the walk's wedges). On the release
+// walk the grammar refuses nothing here: the walk refused such a commit at
+// its sighting (expand, fallback) or did not judge it, at an identity every
+// line released (dropped above) or on the API's lag arm (never walked).
+func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, repo string, commits []Commit, facts *Facts, ranges lineRanges, found bool) ([]LineWalk, []Commit, []placementRefusal, error) {
 	lines := ranges.lines
 	if len(cfg.Packages) == 0 {
 		var refused []placementRefusal
@@ -221,7 +222,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 		case PlacedByFiles:
 			placed, ferr := w.PlaceByFiles(ctx, cfg, owner, repo, c, said, facts, reachedLines(lines, reach))
 			if ferr != nil {
-				if w.Outranks("the rest of the range", len(refused) > 0, ferr) {
+				if w.Outranks("the rest of the range", found || len(refused) > 0, ferr) {
 					return nil, nil, refused, nil
 				}
 				return nil, nil, nil, ferr

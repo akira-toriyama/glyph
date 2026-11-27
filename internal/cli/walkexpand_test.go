@@ -263,6 +263,51 @@ func TestNotesSinceTag(t *testing.T) {
 	}
 }
 
+// TestNotesSinceTagCiteASquashedCommitByItsPullAlone: a squash-merged pull's
+// listed commits exist on no branch — the squash wrote one new commit in their
+// place — so the notes cite such an entry by its pull alone, never by its
+// listed sha, while a direct push, landed under its own sha, keeps it (t-xxhj:
+// a live release body cited two shas git branch -r --contains answers nothing
+// for). The presets' note line names no $hash, so the citation is read through
+// one that gives it a span of its own (mutation row
+// notes-cite-a-squashed-commit-by-a-sha-no-branch-holds).
+func TestNotesSinceTagCiteASquashedCommitByItsPullAlone(t *testing.T) {
+	const presetLine = "line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'"
+	const listed = "926e05c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7"
+	dir, _ := testutil.NewTaggedRepo(t)
+	squash := squashCommit(t, dir, "Add a menu", 3)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	push := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	path := filepath.Join(dir, "glyph.toml")
+	b, err := os.ReadFile(path) // #nosec G304 -- a path under the test's own temp dir
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), presetLine) {
+		t.Fatalf("the fixture's glyph.toml carries no %s to replace", presetLine)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(b), presetLine, "line = '- $subject$[ ($pr)]$[ $hash]'", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	usePR(t, walkServer(t, map[string]string{
+		commitPullsPath(squash): `[` + apiPullRef(3, "2026-07-12T00:00:00Z", squash) + `]`,
+		pullCommitsPath(3):      `[` + apiCommit(listed, "akira-toriyama", ":sparkles:^ add a menu") + `]`,
+		commitPullsPath(push):   `[]`,
+	}))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--since-tag=v0.1.0")
+	if code != 0 {
+		t.Fatalf("notes --since-tag exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if want := "\n- :sparkles:^ add a menu (#3)\n"; !strings.Contains(stdout, want) || strings.Contains(stdout, listed[:7]) {
+		t.Errorf("the squashed entry must read %q, cited by its pull alone and never by the listed %.7s no branch holds:\n%s", want, listed, stdout)
+	}
+	if want := "\n- :bug:~ fix a crash " + push[:7] + "\n"; !strings.Contains(stdout, want) {
+		t.Errorf("the direct push must keep its own sha, %q:\n%s", want, stdout)
+	}
+}
+
 // TestSinceTagPicksTheMergedMatch: commits/{sha}/pulls returns every PR a
 // commit is ASSOCIATED with — a revert PR or a mention can ride along. The walk
 // must select on MergeCommitSHA == sha AND merged, never on order.

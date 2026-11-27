@@ -46,11 +46,20 @@ jobs:
   # gitsource's shallow / did-it-land paths (testdata/mutations/README.md).
   # Its own job because it snapshots, patches and rebuilds the tree per row, and
   # a red here means something different from a red unit test.
-  mutations:
+  mutations-shard:
     runs-on: ubuntu-latest
-    # Pull-request runs measured 2026-11-09, the ledger at 650–691 rows: 1159–1772 s,
-    # and one at 1818 s that 30 cancelled (#354); 45 leaves a third of headroom.
-    timeout-minutes: 45
+    # One runner over the whole ledger, measured 2026-11-24 at 771–779 patches:
+    # 1793 s, 1832 s, 1937 s, 2320 s and 2630 s on five heads, and one head
+    # cancelled at 2718 s under a 45-minute limit. Four shards split the rows
+    # between them (scripts/mutations.sh, MUTATIONS_SHARD); their first run, at
+    # 774 patches, took 495 s, 706 s, 636 s and 720 s (run 45354892438).
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      MUTATIONS_SHARD: ${{ matrix.shard }}/4
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,6 +71,24 @@ jobs:
           cache-dependency-path: go.sum
       - name: mutation ledger
         run: sh scripts/mutations.sh
+
+  # The required status check: branch protection reads it by this name. A job
+  # whose need failed is skipped rather than failed, so this one runs under
+  # always() and fails itself unless every shard succeeded.
+  mutations:
+    needs: mutations-shard
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every shard bit
+        env:
+          SHARDS: ${{ needs.mutations-shard.result }}
+        run: |
+          if [ "$SHARDS" != success ]; then
+            echo "mutations: the ledger's shards ended '$SHARDS', not success — the mutations-shard runs say which" >&2
+            exit 1
+          fi
 
   # A change to what glyph SHIPS must carry evidence, exactly as a change to
   # what it computes must. `bite` above acts on Go diffs only and the smoke

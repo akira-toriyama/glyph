@@ -1,7 +1,8 @@
 diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+index b9870d3..9154b62 100644
 --- a/internal/cli/cmd_bump.go
 +++ b/internal/cli/cmd_bump.go
-@@ -146,7 +146,6 @@
+@@ -172,7 +172,6 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
  	if cerr != nil {
  		return cerr
  	}
@@ -10,9 +11,10 @@ diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
  	var tags []string
  	for _, lw := range w.Lines {
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index e3737e5..27da222 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -418,9 +418,7 @@
+@@ -424,9 +424,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
  	// Warnings go out even when the run fails: the warned commits are real
  	// whichever way the verdict lands, and a developer fixing the violation
  	// should not discover the warning only on the green re-run.
@@ -21,5 +23,5 @@ diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
 -	}
 +	_ = warned
  	if len(findings) > 0 {
- 		for _, f := range findings {
- 			errorf("commit %.7s: %s", f.SHA, f.Detail)
+ 		annotateFindings(findings)
+ 		return core.Lintf("%d commit-convention violation(s)", len(findings)).WithDetails(findings)

@@ -95,6 +95,10 @@ type walk struct {
 	coveredPulls map[int]bool
 	coveredOrder []int
 	expanded     map[int]bool
+	// truncatedAt is, per line under [[packages]], the merge points of the
+	// truncated pulls that line's range holds — what facts.truncatedTags
+	// names; nil on the single line.
+	truncatedAt lineBases
 	// visited counts the commits the walk asked GitHub about, unknown the ones
 	// GitHub did not know; reconcile reads the all-unknown shape off them.
 	visited, unknown int
@@ -107,21 +111,23 @@ type walk struct {
 const ShallowWarning = "this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing"
 
 // walkSince is the walk over revRange: the log, the shallow question asked
-// once, one visit per commit, reconcile, and the verdict — the walked list
-// with its facts, or the refusal naming every wedge. An error out of a visit is
-// the API's or git's as received; Outranks decides whether the wedges
-// already found are the verdict over it.
-func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, revRange string, ranges lineRanges) ([]Commit, Facts, error) {
+// once, one visit per commit, and reconcile — the walked list with its facts,
+// and the walk itself, whose wedges are the grammar's refusals for Since to
+// word beside attribution's (walkRefusal), so one red run names both. An
+// error out of a visit is the API's or git's as received; Outranks decides
+// whether the wedges already found are the verdict over it, and then the
+// error is their refusal: the walk never finished, so nothing is attributed.
+func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, revRange string, ranges lineRanges) ([]Commit, Facts, *walk, error) {
 	raws, err := w.Git.Log(ctx, revRange)
 	if err != nil {
-		return nil, Facts{}, err
+		return nil, Facts{}, nil, err
 	}
 	// Asked once per WALK, before any expansion, never lazily on the first
 	// pull that expands: a walk where no pull resolves is still a walk over a
 	// truncated history, and it was the one that never asked (DESIGN §4).
 	shallow, serr := w.Git.IsShallow(ctx)
 	if serr != nil {
-		return nil, Facts{}, serr
+		return nil, Facts{}, nil, serr
 	}
 	if shallow {
 		w.Report.Warnf("%s", ShallowWarning)
@@ -130,16 +136,13 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	for _, raw := range raws {
 		if err := wk.visit(ctx, raw); err != nil {
 			if w.Outranks("the rest of the range", len(wk.wedges) > 0, err) {
-				return nil, Facts{}, wk.walkRefusal()
+				return nil, Facts{}, nil, wk.walkRefusal(nil)
 			}
-			return nil, Facts{}, err
+			return nil, Facts{}, nil, err
 		}
 	}
 	wk.reconcile()
-	if len(wk.wedges) > 0 {
-		return nil, Facts{}, wk.walkRefusal()
-	}
-	return wk.commits, wk.facts, nil
+	return wk.commits, wk.facts, wk, nil
 }
 
 // newWalk opens a walk over raws, the range's log oldest first: every ledger
@@ -358,6 +361,13 @@ func (w *walk) expand(ctx context.Context, m *merged, canonical string) error {
 	if m.capped {
 		w.warnCapped(number, len(listing))
 		w.facts.truncated = append(w.facts.truncated, number)
+		if w.ranges.holds != nil {
+			if w.truncatedAt == nil {
+				w.truncatedAt = make(lineBases, len(w.ranges.lines))
+			}
+			w.truncatedAt.add(canonical, w.ranges.reach(canonical))
+			w.facts.truncatedTags = lineTags(w.ranges.lines, w.truncatedAt)
+		}
 	}
 	// Where did each listed commit LAND on the released branch? That is the
 	// only question that lets the walk RANGE — a git fact — govern a listing
@@ -486,6 +496,7 @@ func (w *walk) judges(gov string) bool {
 func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 	if lag && len(raw.Parents) >= 2 {
 		w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+		w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmMerge})
 		w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 		return
 	}
@@ -496,6 +507,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 		// message of its own would say.
 		if lag {
 			w.Report.Warnf("commit %.7s, an exclude_authors author's, is not known to GitHub yet (API lag), so a pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+			w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmExcluded})
 		}
 		if raw.SHA == "" || !w.seen[raw.SHA] {
 			if raw.SHA != "" {
@@ -525,13 +537,15 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 		// this commit's true content is a pull the API has not indexed, so
 		// it is dropped from the fold, warned about and carried in
 		// Facts.dropped — release refuses to ACT on it, bump and notes
-		// report it (DESIGN §4).
+		// report it, on stderr and in Facts.Unknown (DESIGN §4).
 		if row, ok := unclaimed(w.cfg, raw); ok {
 			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
+			w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmUnclaimed})
 			w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 			return
 		}
 		w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
+		w.facts.Unknown = append(w.facts.Unknown, UnknownCommit{SHA: raw.SHA, Arm: ArmMessage})
 	} else {
 		// A direct push GitHub knows is judged HERE, like a pull's inner
 		// commit: the fold's remedy (fix the message, add a pattern) is

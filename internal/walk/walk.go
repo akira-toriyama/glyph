@@ -125,9 +125,12 @@ type Escape func(baselines, unbaselined []string) string
 // Since is the release walk: the lines tagFlag names and the ONE range over
 // them (resolveLinesScoped), each line's own range (readLineRanges), the walk
 // itself (walkSince) and the partition (partitionLines), whose refusals are
-// the walk's (attributionWedge). tagFlag is a value CheckTag accepted; owner
-// and repo name the repository Pulls is asked about; a nil scope walks every
-// declared line.
+// the walk's (attributionWedge). The walk's own refusals, the grammar's at
+// each sighting, do not stop it before the partition: both stages go out in
+// one refusal, the walk's rows then attribution's, each in walk order
+// (walkRefusal), so the escapes it names clear the range in one step (DESIGN
+// §4.1, rule 3). tagFlag is a value CheckTag accepted; owner and repo name
+// the repository Pulls is asked about; a nil scope walks every declared line.
 func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, repo string, scope *Scope) (Result, error) {
 	lines, revRange, err := w.resolveLinesScoped(ctx, cfg, tagFlag, scope)
 	if err != nil {
@@ -137,13 +140,17 @@ func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, r
 	if err != nil {
 		return Result{}, err
 	}
-	commits, facts, err := w.walkSince(ctx, cfg, owner, repo, revRange, ranges)
+	commits, facts, wk, err := w.walkSince(ctx, cfg, owner, repo, revRange, ranges)
 	if err != nil {
 		return Result{}, err
 	}
-	lws, all, refused, err := w.partitionLines(ctx, cfg, owner, repo, commits, &facts, ranges)
+	wedged := len(wk.wedges) > 0
+	lws, all, refused, err := w.partitionLines(ctx, cfg, owner, repo, commits, &facts, ranges, wedged)
 	if err != nil {
 		return Result{}, err
+	}
+	if wedged {
+		return Result{}, wk.walkRefusal(refused)
 	}
 	if len(refused) > 0 {
 		return Result{}, attributionWedge(refused, owner, repo, lines)
@@ -161,14 +168,15 @@ func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, r
 // refuses and, under packages, every commit attribution refuses, in the
 // order the commits come, in one refusal worded for a range the caller may
 // still rewrite (rangeRefusal) — where the walk refuses the grammar at each
-// sighting, before attribution runs (DESIGN §4.1, rule 3).
+// sighting, before attribution runs, so its one refusal holds the walk's rows
+// ahead of attribution's (walkRefusal; DESIGN §4.1, rule 3).
 func (w Walker) Pending(ctx context.Context, cfg *config.Config, commits []Commit, source string) (Result, error) {
 	facts := Facts{Pulls: []PullExpansion{}}
 	ranges, err := w.readLineRanges(ctx, cfg, PendingLines(cfg, source))
 	if err != nil {
 		return Result{}, err
 	}
-	lws, all, refused, err := w.partitionLines(ctx, cfg, "", "", commits, &facts, ranges)
+	lws, all, refused, err := w.partitionLines(ctx, cfg, "", "", commits, &facts, ranges, false)
 	if err != nil {
 		return Result{}, err
 	}

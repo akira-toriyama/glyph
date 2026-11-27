@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -49,6 +50,9 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 		// anchored judges under endAnchoredPreset, where text the hook judges
 		// past what git records moves the verdict.
 		anchored bool
+		// commentString marks a row whose prefix is core.commentString's: it
+		// skips under a git that does not read that key (requireCommentString).
+		commentString bool
 		// want is the exit code BOTH sides must reach.
 		want int
 	}{
@@ -125,11 +129,12 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 			name: "core.commentString set after core.commentChar wins",
 			// One handler reads both names, so the later definition is the
 			// prefix (measured on git 2.54 in both orders).
-			config:  [][2]string{{"core.commentChar", ";"}, {"core.commentString", "//"}},
-			editor:  true,
-			below:   true,
-			message: ":sparkles:(x)^ add the thing\n",
-			want:    0,
+			config:        [][2]string{{"core.commentChar", ";"}, {"core.commentString", "//"}},
+			editor:        true,
+			below:         true,
+			commentString: true,
+			message:       ":sparkles:(x)^ add the thing\n",
+			want:          0,
 		},
 		{
 			name:    "core.commentChar set after core.commentString wins",
@@ -155,6 +160,9 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.commentString {
+				requireCommentString(t)
+			}
 			dir := testutil.NewRepo(t)
 			if tc.anchored {
 				if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), endAnchoredPreset(t), 0o644); err != nil {
@@ -237,6 +245,27 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 					hookCode, tc.want, raw, recorded, hookErr)
 			}
 		})
+	}
+}
+
+// requireCommentString skips when the git on PATH does not read
+// core.commentString: `git -c core.commentString=// stripspace -c` prefixes '#'
+// under git 2.39.5 and '//' under 2.54.0 (measured). Such a git strips by
+// core.commentChar while the hook honours the key, which is the hook 3 / CI 0
+// limit DESIGN §2.1 states, so the row has no git answer to hold the hook to.
+// Asked of the git itself, never of its version string.
+func requireCommentString(t *testing.T) {
+	t.Helper()
+	cmd := exec.Command("git", "-c", "core.commentString=//", "stripspace", "-c")
+	cmd.Dir = t.TempDir()
+	cmd.Stdin = strings.NewReader("x\n")
+	cmd.Env = testutil.GitEnv("akira-toriyama")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git -c core.commentString=// stripspace -c: %v", err)
+	}
+	if !strings.HasPrefix(string(out), "//") {
+		t.Skipf("this git does not read core.commentString (stripspace -c prefixed %q), so there is no git answer to compare the hook with: a known limit, DESIGN §2.1", out)
 	}
 }
 

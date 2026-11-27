@@ -864,6 +864,15 @@ handling, its Latin-1 fix-up under the default and iconv's whole table under
 any other setting (`golang.org/x/text/encoding`), a dependency and a second
 copy of git's rules bought for patterns no preset ships. Stated, not fixed.
 
+And a git older than **`core.commentString`** (t-9zef): it ignores the key while
+the hook reads it as the prefix (below), so under `core.commentChar=';'` then
+`core.commentString=//` an editor commit's `;` template above the subject is
+stripped by git and judged as the subject at the hook (hook 3, CI 0). Measured:
+git 2.39.5 ignores the key (`git -c core.commentString=// stripspace -c`
+prefixes `#`); Apple 2.50.1, 2.53, 2.54 and 2.56 read it. Only a key that git
+does nothing with reaches it, and the hook does not probe git for the key; the
+tests whose oracle is that answer skip under such a git.
+
 Three ways to close the editor and `--no-verbose` cells were measured and not
 taken. Judging the uncut text whenever the cut leaves nothing closes every cell
 where the typed cut line opens the message — since under `-v` git aborts an
@@ -1855,8 +1864,16 @@ and a template placing it *instead* of the pull would address a squash's entries
 by shas no branch holds. What actually reaches a body is `note.line`'s decision,
 not glyph's — the fold binds `$pr` and `$hash`, and both shipped presets place
 `$pr` alone inside an optional span, so a line reads `- subject (#123)` and
-drops the parens with the pull (§3). v1's hardcoded `(#123, abc1234)` is
-`$[ ($pr, $hash)]` today. Both git questions can also fail to answer, and a
+drops the parens with the pull (§3). v1's hardcoded `(#123, abc1234)` is not
+`$[ ($pr, $hash)]` today: a span renders only when every placeholder inside it
+resolves (§3), so that one span reads `(#123, abc1234)` for a pull's commit
+whose sha a branch holds and drops the whole citation from a squash entry,
+whose `$hash` is blank, and from a direct push, which has no `$pr` (measured
+2026-11-24 by swapping it into the fixtures of
+`TestPreviewNotesCiteThePullUnderReview` and
+`TestNotesSinceTagCiteASquashedCommitByItsPullAlone`). The two-span
+`$[ ($pr)]$[ $hash]` is the form that cites a squash entry by its pull alone
+and a direct push by its sha. Both git questions can also fail to answer, and a
 failure never reads as "never landed" where git signals it: a listed sha whose
 object this clone holds and **cannot read** — empty, truncated, not zlib, under
 a file or fan-out directory git cannot open — answers `missing` to `cat-file
@@ -2243,7 +2260,8 @@ was meant to start, or publish under a token that is not `GITHUB_TOKEN`.
 Convergence is on the verdict, and a verdict is a claim about the range only
 when the walk **read** the range. A walk that came back short — every commit
 unknown to the queried repository, a merged pull whose merge point nothing
-resolved, a commit GitHub had not indexed, a pull whose commit listing GitHub
+resolved, a merge commit or a message no pattern claims that GitHub had not
+indexed, a pull whose commit listing GitHub
 **truncated** at its 250 cap, a **shallow** checkout in which git cannot place
 a listed commit at all, or under `[[packages]]` a commit's file listing GitHub
 capped or would not give (§4.1) — hands down the same empty fold as a range
@@ -2263,7 +2281,14 @@ points resolve now, whoever pressed the button (t-7zt7, t-saky), so nothing
 remains of that shape, and a walk blind to part of its range is exactly what
 the exit is for. Where a re-run cannot read it either, the escape is the wedge
 escape: cut a tag at or past what the walk cannot read, or fix the checkout
-(`fetch-depth: 0`) when the shortfall names it. Ordinary API lag clears on the re-run the error asks for. The same family,
+(`fetch-depth: 0`) when the shortfall names it. Ordinary API lag clears on the re-run the error asks for.
+A single-parent commit GitHub had not indexed whose own message a pattern
+claims is not on that list: the lag arm reads it from that message, a weaker
+copy of the pull it may have squashed, and the walk stays complete, so
+`release --dry-run` exits 0 with the version that message gives
+(`TestSinceTagUnknownShaFallsBack` pins the read). The version can come out
+lower for one run, where the pull's own commits carry more than its title, and
+the next push corrects it (ruled t-4ysr). The same family,
 reached from the output side: a composed body over GitHub's release cap —
 **125000 characters, not bytes**, measured live against the API with the
 over-by-one and the multibyte case both probed (`internal/cli/bodylimit.go`
@@ -2328,7 +2353,7 @@ reproduce. A release run started from a ref that is not the repository's
 downstream of that ref is silently wrong and nothing catches it: the range is
 `<tag>..HEAD` over the branch, so its unmerged commits enter the notes; each
 resolves to no merged pull and takes the direct-push arm, classified from its
-own subject; only an API lag is recorded as dropped, so the walk still calls
+own subject; only an API lag the walk could not read is recorded as dropped, so the walk still calls
 itself complete and the refusal above never fires. Green run, a draft
 describing work the default branch never held, and Publish cutting the tag
 there. A caller cannot close this itself — GitHub offers no way to restrict
@@ -2459,12 +2484,20 @@ glyph's and is rewritten every time. The contract is printed where the human
 is typing, instead of being an unwritten rule learned by losing work. A body
 with no marker contributes no hand region — glyph cannot tell such a body's
 hand-written lines from its own stale output, and guessing would resurrect
-old machine text as if a human had written it. `checkReleaseBody` sizes the
+old machine text as if a human had written it. The marker counts only on a
+line of its own, with nothing but white space around it — a CR before the
+newline, or the spaces and tabs a hand edit left, keep it the boundary
+(t-cjck): the notes render a commit subject that quotes it inside a bullet,
+and a substring match read that machine line as the boundary once a human
+deleted the real one; a line holding anything else, `- ` and the marker
+included, is no boundary.
+`checkReleaseBody` sizes the
 FINAL body, hand region included. Rejected: a `RELEASE-NOTE:` commit footer
 (v2 removed footer parsing, and prose does not belong in commit messages
 addressed to the version fold); diffing the body against a re-render to
 detect edits (the base moves between pushes, so staleness and hand edits are
-indistinguishable). (Mutation row `draft-hand-region-discarded.patch`.)
+indistinguishable). (Mutation rows `draft-hand-region-discarded.patch`,
+`draft-hand-marker-matched-inside-a-line.patch`.)
 
 **The compare link** (t-v7f7): per-commit shas and `#N` citations give every
 line an address, and nothing gave the range one — glyph's own v4.2.0 page ended
@@ -3042,7 +3075,20 @@ asked:
    source a wrong grammar cannot be hidden by a wrong tree. The `--since-tag`
    walk refuses a message no pattern claims at its sighting, before
    attribution runs (§4), so attribution reads only what the grammar
-   accepted; `bump --range`, `notes --range`, `--pr` and `preview` load both
+   accepted, and then runs attribution over what it walked: one refusal
+   carries both stages in stage order — the walk's rows, then
+   attribution's, each in walk order, the first the headline — worded as
+   the walk's own, its sentence naming every escape of both, so the tags
+   it names clear the range in one step. Refused alone, the walk's refusal
+   left attribution's to the next red run, past the tag it had named
+   (measured 2026-11-04 on 2f9428a over a stand-in API and again on
+   7a24e2c: `oops no gemoji` on `haiku/` and `:bug:~ fix the readme` on
+   `README.md` alone, `--since-tag` named the first row where
+   `bump --range` named both, and with both lines tagged at the named
+   escape `--since-tag` refused the readme;
+   `TestSinceTagPackagesRefusesGrammarAndTreeAtOnce`, mutation row
+   `walk-wedge-hides-the-attribution-refusal`). `bump --range`,
+   `notes --range`, `--pr` and `preview` load both
    stages' rows — every message the pattern file refuses (`bump.Judge`, the
    one grammar judge) and every commit attribution refuses — into one
    refusal in range order (listing order for a pull), the first row the
@@ -3415,8 +3461,9 @@ so that arm is measured with a stand-in server only
 `later-page-422-discards-the-listed-files`).
 `release` refuses at 4 naming it, `bump` and `notes` warn, and `preview`
 carries it in the PR-side caveat, or in the pending one when the pending walk
-meets it. It is not §4's lag fallback. That arm reads a lagging merge point's
-own message — a weaker copy of the input it lost — and stays complete; here
+meets it. It is not §4's lag fallback. That arm reads a lagging single-parent
+commit's own message when a pattern claims it — a weaker copy of the input it
+lost — and stays complete; here
 the sha came from GitHub's own pull listing, its message was read, and the
 files are the one input attribution has no weaker source for. Before this,
 the same 422 died as a raw `github: GET …/commits/<sha>: 422` at exit 4 on
@@ -3684,8 +3731,9 @@ release base) and each line stepping from its own highest tag.
 the commits that joined that package's line, so §3 is unchanged per line: max-fold,
 `%` promotes that line, the 0.x rule reads that line's current version, and a
 commit no pattern claims still refuses the whole walk (it is refused before
-attribution, so a wrong grammar cannot be hidden by a wrong tree; over
-`--range` its row joins attribution's in one refusal — rule 3). Its
+attribution, so a wrong grammar cannot be hidden by a wrong tree; its row
+joins attribution's in one refusal, over `--range` in range order and over
+the walk ahead of them — rule 3). Its
 refusal names the escape per line, as rule 3's does: such a commit wedges
 every line whose range holds it, so what clears it is a tag on each of those
 lines at or past its governing identity — `a haiku/ tag at or past X / a
@@ -4212,7 +4260,10 @@ rejects `/v6@v6.0.0` and serves v5.1.0 for `/v5/@latest`) — since
 is the one place that holds both the tag and the tree. Rejected: a `doctor`
 check (t-nag8, 2026-09-15 — glyph reads no manifest, §4.1, and no workflow in
 the fleet runs `doctor`). Subcommands: everything `glyph --help` prints except
-cobra's own `completion` and `help` — not retyped here, because the retyped
+cobra's own `completion` and `help`, which glyph keeps but guards, `completion`
+with its own `noArgs` and `help` by handing the words after its topic to that
+topic's own Args (`glyph completion zshh` and `glyph help nosuch` are usage, 2,
+as `glyph nosuch` is) — not retyped here, because the retyped
 list rotted once (t-0cqs, §8); the tree below is held to `internal/` by
 `TestDesignTreeNamesEveryInternalPackage`.
 
@@ -4295,7 +4346,18 @@ the API or the filesystem, or a refusal to hand down a verdict glyph will not
 stand behind (`core.CodeAPI`'s doc lists the refusals) · `130` interrupted.
 
 Errors are classified at the source into `*core.Error`; `ExitCode` funnels
-everything (unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
+everything (unclassified ⇒ API, never usage). The CLI's funnel holds the same
+default — cobra's parse errors are made usage where cobra raises them, not by
+elimination, save the MinimumNArgs(1) of the `__complete` and
+`__completeNoDesc` commands cobra builds during execution, which leaves a bare
+`glyph __complete` at `4` because no completion script reaches it (zsh, bash
+and fish each pass a word) — and a stdout write that returns an error is `4` on
+every command, the payload a caller reads being what went missing; a write into a
+pipe whose reader has gone never returns, because Go ends the process by SIGPIPE
+(`141` in a shell). A run the user interrupted is
+`130` whatever other code its command reached, because a read that takes no
+context (a plain file, stdin) carries no signal and lets the command run on to
+its own; one that finished with `0` keeps it, its verdict delivered. `3` is the *gate* code — what glyph was asked
 to judge does not conform: a commit message under `lint`, a repository's own
 configuration under `doctor`. Same class, different subject; no new integer.
 
@@ -4432,13 +4494,42 @@ invisible.
 
 The same incident settled who *renders* a finding: the binary that computed it.
 `lint --range` writes one `::error::` per violation onto the stream before the
-envelope, so a consumer's whole job is `cat` — replay the stream verbatim and
-frame only the summary (`.error.message`). Rebuilding the per-finding lines out
+envelope, and a `bump`, `notes`, `preview` or `release` refusal writes the same
+line, through the same function (`annotateFindings`), for each commit row in its
+details, whatever the input; so a consumer's whole job is `cat` — replay the
+stream verbatim and frame only the summary (`.error.message`), and only where the binary annotated
+nothing: a refusal's message opens on its first refused commit, so pr-verdict.yml frames it only
+when the stream carries no `::error::` of glyph's (`TestVerdictReusablesAnnotateEachRefusedCommitOnce`).
+Rebuilding the per-finding lines out
 of `.error.details` in a caller's jq is exactly the reconstruction that vanished
 under `|| true`, on the fleet's side of the pin where no test here could see it,
 so `internal/workflows` bans the read itself
 (`TestNoWorkflowRebuildsPerFindingAnnotations`) and the mutation ledger holds the
-producer half (`lint-findings-lose-their-annotations`).
+producer half (`lint-findings-lose-their-annotations`,
+`verdict-refusals-annotate-only-their-first-commit`).
+
+**What stderr warns about, stdout carries** (t-xr9d). A walk's API-lag
+`::warning::` lines — the ones saying a commit `is not known to GitHub yet`
+(§4: a commit GitHub has not indexed yet is the one soft arm) — once named
+their commits on stderr only, so a consumer reading
+`bump --since-tag --json` saw a `v0.1.1` and nothing saying a weaker copy of an
+unseen pull decided it. `bump`, `notes`, `release` and `preview` `--json` now
+carry `unknown: [{sha, arm}]` — exactly the commits those warnings name
+(`walk.Facts.Unknown`), in walk order, by full sha — and, like the other
+optional fields, leave it out when the walk met none (a `--range` verdict
+never has one). The direct-push warning,
+`has no merged pull request (a direct push, or the API lagging)`, names lag
+only as a possible cause of an empty pull listing and is none of them: its
+commit is never in `unknown`. `arm` is what the fallback did with the commit: `message`,
+read from its own message, which a pattern claims — the only arm that counted
+anything; `unclaimed`, no pattern claims its message, so it counted none and,
+unlike a commit GitHub knows, does not refuse the range; `merge`, a merge
+commit whose pull could not be resolved, so nothing was counted from it;
+`excluded`, an `exclude_authors` author's commit whose pull could not be
+resolved, so nothing was counted from it. The field reports and never gates:
+`release` refuses a walk left short (`merge`, `unclaimed`) at 4 through
+`Facts.Complete`, not by reading it
+(`json-loses-a-lagging-commit-read-from-its-message`).
 
 **One channel, sieved** (t-sa7p). The obvious cure for a sieve copied into
 every consumer — a native hand-off: a root `--error-file <path>` that
@@ -5188,9 +5279,12 @@ The severities are the argued part:
   code from `core.CodeLint` so a renumbered constant cannot leave behind a hook
   comparing against a code glyph no longer emits — one that waves every
   violation through. That holds for the hook glyph *writes*; it holds for
-  nothing already on disk. Hooks are untracked, so no pull, no fleet-sync and no
-  CI job refreshes one, and everything it decides — the gate code, the arguments
-  it hands `lint` — was frozen by whichever glyph was on PATH that day. It fails
+  nothing already on disk. A hook under `.git/hooks` is untracked, so no pull, no
+  fleet-sync and no CI job refreshes one; a tracked `core.hooksPath` (below)
+  moves only when someone re-installs and commits, and a pull then delivers that
+  commit's bytes, not the running glyph's. Either way everything it decides — the
+  gate code, the arguments it hands `lint` — was frozen by whichever glyph ran
+  the install. It fails
   in the quiet direction: a stale hook still exits 0, which is what a clean
   message looks like. Hence the one artefact here that glyph itself wrote is
   also the one nothing else can notice going wrong.
@@ -5216,7 +5310,11 @@ The severities are the argued part:
   claim (`commit-msg-hook-fires`, below). Two failures end the run before
   doctor judges anything: a repository it cannot name (no `--repo`,
   `$GITHUB_REPOSITORY` or GitHub `origin`, or a malformed one — usage, 2), and
-  an interrupt in any read.
+  an interrupt in any read that takes the context, the remote listing that
+  names the repository included (130). The plain file reads — `glyph.toml`, the
+  hooks, the workflow and action files — take none: an interrupt landing in one
+  lets the report finish, and the run is `130` unless it finished with `0`
+  (§5, the CLI's funnel).
 - **The byte-identical hook is also FIRED (`commit-msg-hook-fires`).** Current
   bytes prove the script; they prove nothing about the glyph the script resolves
   on PATH at run time, and the script blocks only on the gate code and waves
@@ -5308,10 +5406,10 @@ The severities are the argued part:
   2.54.0 and 2.56.0). The remedy is
   `git remote set-head <remote> -a` only where git can record a head at all:
   a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
-  set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote
+  set-head exit 129 unquoted and 1 quoted (git 2.54). `git remote
   rename` is no remedy either: with git's usual fetch refspec it dies on that
   refspec (rc=128), and with the url alone the renamed remote has no refspec
-  for set-head to read (rc=1; review u6b-1, re-measured). So for a name
+  for set-head to read (rc=1, re-measured). So for a name
   `git check-ref-format refs/remotes/<name>/HEAD` refuses, doctor's fix and
   the hook's own warning both offer "pick a name git accepts for
   `<new-name>`, then" `git config --rename-section`, a rewritten fetch
@@ -5319,7 +5417,7 @@ The severities are the argued part:
   with the placeholder filled (`TestSetHeadRemedyRunsPasted`). No sanitised
   name is computed: that would reimplement git's ref rules. Both arms
   single-quote the old name, since `git remote add` accepts names a shell
-  splits (`a;b`, `it's`; review u6b-2) (`hook.SetHeadRemedy`,
+  splits (`a;b`, `it's`) (`hook.SetHeadRemedy`,
   `gitsource.RemoteCanRecordHead`). Firing pre-push itself
   — a `PrePushProbe` beside the commit-msg one — stays unbuilt. It would carry
   a fabricated push into a read-only diagnosis: a scratch repository, a bare

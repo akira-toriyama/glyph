@@ -60,7 +60,7 @@ fork and `HEAD` to drop what another pull landed (DESIGN §4, "A stacked pull
 lists what its base landed") — it has no range of its own. "Exactly one of the three" is `bump` and
 `notes` only — they are the two commands that carry all three flags and mark them
 mutually exclusive. `release` has just the walk (bare `release` walks from the
-highest v* tag HEAD contains, so no flag is required at all), and `preview` takes
+highest parseable version tag HEAD contains, so no flag is required at all), and `preview` takes
 `--pr`, which it marks required. `internal/walk/expand.go: walkSince`,
 `internal/cli/range.go: logRange`, `internal/cli/pr.go:
 pullInput`, `internal/cli/flags.go: markInputSourceFlags` (used by
@@ -71,8 +71,8 @@ base** (also *version base*): the version the bump steps *from*. They are
 deliberately returned by one resolution of one tag, because naming a tag names
 the release being redone — stepping from a different, higher tag would version a
 verdict computed over another range. An explicit tag that is not a version still
-walks but names no step base, and the bump then falls back to the highest v* tag
-HEAD contains. The published floor is the opposite set — every published release
+walks but names no step base, and the bump then falls back to the highest parseable
+version tag HEAD contains. The published floor is the opposite set — every published release
 on the line, from the releases listing (DESIGN §4).
 `internal/walk/base.go: sinceTagRange`, `internal/cli/cmd_bump.go:
 currentVersion`
