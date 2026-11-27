@@ -249,9 +249,9 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 // pinned below.
 //
 // The squash argument, every clause of it measured against this walk: a
-// squash-merged pull does NOT reach the same verdict dark as live
-// (a multi-commit squash carries the PR title — minor live, patch dark), a
-// merge-merged pull does NOT count none at full darkness
+// squash-merged pull does NOT reach the same verdict dark as live (a squash
+// of two or more commits besides merge commits carries the PR title — minor
+// live, patch dark), a merge-merged pull does NOT count none at full darkness
 // (gitsource.Checkout.Log runs without --first-parent, so its branch commits
 // are in the range and classify themselves — minor either way), and an outage
 // does NOT reach the fallback at all (only a 422 does; a 403/404/5xx exits 4).
