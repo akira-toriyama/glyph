@@ -60,7 +60,7 @@ a baseline**.
 |---|---|
 | `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) at the checkout's top level, from any subdirectory — the file lint, bump, notes, preview, release, doctor and hook pre-push read; an existing file refuses without `--force` |
 | `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a multi-commit squash lands): does one of the repository's patterns claim the message, and does it yield a sigil? |
-| `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag`; a commit no pattern claims refuses the whole range |
+| `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag`; a commit no pattern claims refuses the whole range. Under `--since-tag` a commit GitHub has not indexed yet (API lag) that no pattern claims counts none and is reported, on stderr and in `--json`'s `unknown`; it does not refuse the range. The published floor is `release`'s check only; `bump` does not read it |
 | `glyph notes` | the release-notes body: `[[note.sections]]` order, one line per commit through the `note.line` template — over `--since-tag`, closed by the range's compare link |
 | `glyph release` | upserts one rolling **draft** release (tag, target, body closed by the range's compare link — `--footer-file` appends a per-repo Markdown footer); publishing — and therefore the tag — stays a human act |
 | `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence; `--notes` folds the release-notes preview in |
@@ -663,7 +663,16 @@ glyph's stderr has a shape too — `::` workflow annotations, then, on a failure
 that is not silent, one JSON error envelope, written last — so read the
 envelope the way the *error envelope* entry in
 [`docs/glossary.md`](docs/glossary.md#6-exit-codes-and-streams) says, never by
-handing stderr whole to `jq`.
+handing stderr whole to `jq`. What a walk's API-lag `::warning::` lines — the
+ones saying a commit `is not known to GitHub yet` — say is on stdout too (the
+direct-push warning, which names lag only as a possible cause, is not):
+`bump`, `notes`, `release` and `preview` `--json` carry
+`unknown: [{sha, arm}]`, the commits GitHub had not indexed, each with the
+arm it took — `message` (read from its own message, which a pattern claims),
+`unclaimed` (no pattern claims it: counted none), `merge` (a merge commit
+whose pull could not be resolved: nothing counted) or `excluded` (an
+`exclude_authors` author's whose pull could not be resolved: nothing
+counted) — and leave the key out when there are none.
 
 ## Working on glyph
 

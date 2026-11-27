@@ -1,5 +1,5 @@
 diff --git a/internal/walk/partition.go b/internal/walk/partition.go
-index a55a8ad..0dbabe5 100644
+index 0e55b49..e40897e 100644
 --- a/internal/walk/partition.go
 +++ b/internal/walk/partition.go
 @@ -220,6 +220,10 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
@@ -12,4 +12,4 @@ index a55a8ad..0dbabe5 100644
 +			}
  			placed, ferr := w.PlaceByFiles(ctx, cfg, owner, repo, c, said, facts, reachedLines(lines, reach))
  			if ferr != nil {
- 				if w.Outranks("the rest of the range", len(refused) > 0, ferr) {
+ 				if w.Outranks("the rest of the range", found || len(refused) > 0, ferr) {

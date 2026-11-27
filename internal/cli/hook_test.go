@@ -2,10 +2,12 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -72,6 +74,55 @@ func TestHookInstallRefusesAForeignHookWithUsageCode(t *testing.T) {
 
 	if code, _, stderr := runGlyph(t, "hook", "install", "--force"); code != int(core.CodeOK) {
 		t.Fatalf("--force exit = %d, want 0\nstderr: %s", code, stderr)
+	}
+}
+
+// TestHookInstallRefusalCarriesTheReport: the refusal's envelope carries the
+// report as its details — one entry per kind, saying what happened to its
+// file — with --json and without, and --json writes nothing to stdout, as
+// every other refusal does. The CLI once returned the refusal alone, so the
+// caller learned which hook refused only from prose.
+func TestHookInstallRefusalCarriesTheReport(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	writeExecutable(t, filepath.Join(dir, ".git", "hooks", "pre-push"), "#!/bin/sh\necho foreign\n")
+	t.Chdir(dir)
+
+	for _, args := range [][]string{{"hook", "install", "--json"}, {"hook", "install"}} {
+		code, stdout, stderr := runGlyph(t, args...)
+		if code != int(core.CodeUsage) {
+			t.Fatalf("%v exit = %d, want %d\nstderr: %s", args, code, core.CodeUsage, stderr)
+		}
+		if stdout != "" {
+			t.Errorf("%v stdout = %q, want nothing beside the refusal's envelope", args, stdout)
+		}
+		env := decodeErrorEnvelope(t, stderr)
+		var got []hook.Result
+		if err := json.Unmarshal(env.Details, &got); err != nil {
+			t.Fatalf("%v details are not the report (%v):\n%s", args, err, stderr)
+		}
+		want := []hook.Result{
+			{Kind: "commit-msg", Path: filepath.Join(".git", "hooks", "commit-msg"), Action: "skipped", Existed: false},
+			{Kind: "pre-push", Path: filepath.Join(".git", "hooks", "pre-push"), Action: "refused", Existed: true},
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%v details = %+v, want %+v", args, got, want)
+		}
+	}
+}
+
+// TestHookInstallWritesARepeatedKindOnce: a kind named twice is one kind, so
+// it is written and reported once.
+func TestHookInstallWritesARepeatedKindOnce(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "hook", "install", "--json", "commit-msg", "commit-msg")
+	if code != int(core.CodeOK) {
+		t.Fatalf("exit = %d, want 0\nstderr: %s", code, stderr)
+	}
+	rep := decodeJSON[hook.Report](t, stdout)
+	if len(rep.Hooks) != 1 || rep.Hooks[0].Kind != "commit-msg" || rep.Hooks[0].Action != "installed" {
+		t.Errorf("report = %+v, want commit-msg installed, once", rep.Hooks)
 	}
 }
 
@@ -164,6 +215,23 @@ func TestHookInstallPrintTakesExactlyOneKind(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestHookInstallPrintOfAKindNamedTwiceIsItsScript: kinds dedupe everywhere,
+// --print included — a kind named twice is one kind and one script, printed at
+// exit 0, where counting the arguments refused it as two scripts (two
+// different kinds stay refused: TestHookInstallPrintTakesExactlyOneKind).
+func TestHookInstallPrintOfAKindNamedTwiceIsItsScript(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "hook", "install", "--print", "commit-msg", "commit-msg")
+	if code != int(core.CodeOK) {
+		t.Fatalf("exit = %d, want exactly %d\nstderr: %s", code, core.CodeOK, stderr)
+	}
+	if stdout != hook.Kinds()[0].Script {
+		t.Errorf("stdout = %q, want the commit-msg script once, verbatim", stdout)
 	}
 }
 
@@ -466,15 +534,21 @@ func commitWith(dir, path, message string) (string, error) {
 // nothing (installing is what the command does when no flag chooses otherwise),
 // so a =false member is simply not selecting, and only two flags genuinely ON
 // are a conflict.
+//
+// The conflict cases also name a kind: without one, --print's own "name the
+// kind" refusal answers 2 as well, so a lost exclusivity check would pass
+// unseen (mutation row hook-print-with-json-prints-the-script-anyway).
 func TestHookInstallPrintFalseIsNotAConflict(t *testing.T) {
 	for name, tc := range map[string]struct {
 		args     []string
 		wantCode int
 	}{
-		"declining print while forcing installs": {[]string{"hook", "install", "--print=false", "--force"}, 0},
-		"declining print while asking for json":  {[]string{"hook", "install", "--print=false", "--json"}, 0},
-		"print and force really do conflict":     {[]string{"hook", "install", "--print", "--force"}, 2},
-		"print and json really do conflict":      {[]string{"hook", "install", "--print", "--json"}, 2},
+		"declining print while forcing installs":   {[]string{"hook", "install", "--print=false", "--force"}, 0},
+		"declining print while asking for json":    {[]string{"hook", "install", "--print=false", "--json"}, 0},
+		"print and force really do conflict":       {[]string{"hook", "install", "--print", "--force"}, 2},
+		"print and json really do conflict":        {[]string{"hook", "install", "--print", "--json"}, 2},
+		"print and force conflict with a kind too": {[]string{"hook", "install", "--print", "--force", "commit-msg"}, 2},
+		"print and json conflict with a kind too":  {[]string{"hook", "install", "--print", "--json", "commit-msg"}, 2},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testutil.NewTaggedRepo(t)
@@ -482,6 +556,11 @@ func TestHookInstallPrintFalseIsNotAConflict(t *testing.T) {
 			code, _, stderr := runGlyph(t, tc.args...)
 			if code != tc.wantCode {
 				t.Fatalf("%v exited %d, want %d\nstderr: %s", tc.args, code, tc.wantCode, stderr)
+			}
+			if tc.wantCode != 0 {
+				if env := decodeErrorEnvelope(t, stderr); !strings.Contains(env.Message, "cannot be combined") {
+					t.Errorf("%v: envelope = %+v, want the exclusivity refusal", tc.args, env)
+				}
 			}
 			if strings.Contains(stderr, "were all set") {
 				t.Errorf("%v: the envelope claims a flag was set that the caller turned off:\n%s", tc.args, stderr)
@@ -572,6 +651,11 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 			warned := strings.Contains(stderr, staleHookNotice)
 			if warned != tc.wantWarn {
 				t.Fatalf("warned = %v, want %v\nstderr: %s", warned, tc.wantWarn, stderr)
+			}
+			// Beside a foreign pre-push hook a plain install refuses and writes
+			// nothing, so the refresh the warning names is this kind's install.
+			if want := "Refresh it: glyph hook install commit-msg"; tc.wantWarn && !strings.Contains(stderr, want) {
+				t.Errorf("the drift warning does not name %q\nstderr: %s", want, stderr)
 			}
 		})
 	}

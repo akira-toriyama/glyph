@@ -1,0 +1,13 @@
+diff --git a/scripts/mutations.sh b/scripts/mutations.sh
+index 1079ce3..33725b2 100755
+--- a/scripts/mutations.sh
++++ b/scripts/mutations.sh
+@@ -144,7 +144,7 @@ n=0
+ while IFS='	' read -r patch pkg tests why || [ -n "${patch:-}" ]; do
+   case "$patch" in '' | '#'*) continue ;; esac
+   n=$((n + 1))
+-  [ $(((n - 1) % SHARD_N)) -eq $((SHARD_K - 1)) ] || continue
++  [ $(((n - 1) % SHARD_N)) -eq $SHARD_K ] || continue
+   if [ -n "$FILTER" ]; then
+     case "$patch$pkg$tests$why" in *"$FILTER"*) ;; *) continue ;; esac
+   fi

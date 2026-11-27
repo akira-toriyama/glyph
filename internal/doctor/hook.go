@@ -66,7 +66,7 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
 		c.Status = StatusPass
 		c.Observed = "no " + k.Name + " hook at " + path + ", so none can be stale"
 		c.Message = "the local gate is opt-in and CI is the authority, so its absence costs a round trip rather than a " +
-			"wrong verdict. `glyph hook install` adds it: it holds no copy of the rules (it shells back to " +
+			"wrong verdict. `glyph hook install " + k.Name + "` adds it: it holds no copy of the rules (it shells back to " +
 			"`" + k.Asks + "`) and blocks for a real convention violation and nothing else"
 	case hook.Current:
 		c.Status = StatusPass
@@ -75,19 +75,20 @@ func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr
 	case hook.Stale:
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf("%s was written by glyph and no longer matches this binary's hook (%s)", path, diffSummary(installed.Body, k.Script))
-		c.Message = "a hook is written once and never refreshed by anything — hooks are untracked, so no pull, no fleet-sync " +
-			"and no CI job can update one. Everything it decides was therefore frozen at install time: the exit code it " +
+		c.Message = "a hook is written once and refreshed only by a re-install — one under .git/hooks is untracked, and a " +
+			"tracked core.hooksPath moves only when someone re-installs and commits, so no fleet-sync and no CI job " +
+			"updates one. Everything it decides was therefore frozen at install time: the exit code it " +
 			"treats as a convention violation (glyph interpolates that from core.CodeLint precisely because a stale copy " +
 			"waves every violation through) and the arguments it hands `glyph lint`. A hook that judges a message by rules " +
 			"other than this binary's is the hook-green/CI-red split, and it fails in the quiet direction — exit 0"
-		c.Fix = "glyph hook install (re-installing over a glyph-written hook is a no-questions refresh)"
+		c.Fix = "glyph hook install " + k.Name + " (re-installing over a glyph-written hook is a no-questions refresh)"
 	case hook.Foreign:
 		c.Status = StatusAdvice
 		c.Observed = fmt.Sprintf("%s exists and glyph did not write it (no `%s` marker)", path, hook.Marker)
 		c.Message = "glyph never silently overwrites somebody else's hook, so this is a standing choice and not drift. What " +
 			"it costs is that nothing here is known to lint the convention locally; if this hook does call glyph, it does " +
 			"so on terms this binary cannot see"
-		c.Fix = "inspect it, then `glyph hook install --force` to replace it with the generated hook"
+		c.Fix = "inspect it, then `glyph hook install --force " + k.Name + "` to replace it with the generated hook"
 	}
 	return c
 }

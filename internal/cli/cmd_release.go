@@ -28,7 +28,7 @@ import (
 // happened (never on a dry run). pulls is the walk's expansion provenance —
 // which merged pulls it resolved and how many of each one's listed commits
 // the walk took in — which is what a human or a CI step reads to audit how a
-// verdict was assembled.
+// verdict was assembled. unknown is bump's (walk.Facts.Unknown).
 //
 // With packages declared, current / level / action are EMPTY, next / tag /
 // body / url are absent, and packages carries one verdict and one draft per line
@@ -51,6 +51,7 @@ type releaseResult struct {
 	Commits  []bump.Row           `json:"commits"`
 	Packages []packageRelease     `json:"packages,omitempty"`
 	Pulls    []walk.PullExpansion `json:"pulls"`
+	Unknown  []walk.UnknownCommit `json:"unknown,omitempty"`
 	Reason   string               `json:"reason"`
 }
 
@@ -109,15 +110,18 @@ func newReleaseCmd() *cobra.Command {
 			"to the verdict); with it on, the draft converges to the Unreleased\n" +
 			"placeholder (<path>/Unreleased per line under [[packages]]). A walk that\n" +
 			"could NOT read its range (a wrong --repo, a merged pull whose merge point\n" +
-			"nothing resolved, a commit GitHub has not indexed, a truncated pull\n" +
-			"listing, a shallow checkout, or under [[packages]] a commit file listing\n" +
-			"GitHub capped (3000) or would not give) exits 4 before touching anything —\n" +
-			"an empty fold from a walk that could not look is not evidence that\n" +
-			"nothing shipped, so no verdict is handed down on it at all. Exit 4 too,\n" +
-			"with nothing written: a real run (not --dry-run) from a ref other than\n" +
-			"the default branch, a body (footer included) over GitHub's 125000\n" +
-			"characters, and a next version not greater than the highest published\n" +
-			"release.\n" +
+			"nothing resolved, a merge commit or a message no pattern claims that\n" +
+			"GitHub has not indexed, a truncated pull listing, a shallow checkout, or\n" +
+			"under [[packages]] a commit file listing GitHub capped (3000) or would\n" +
+			"not give) exits 4 before touching anything — an empty fold from a walk\n" +
+			"that could not look is not evidence that nothing shipped, so no verdict\n" +
+			"is handed down on it at all. A single-parent commit GitHub has not\n" +
+			"indexed whose own message a pattern claims is read from that message\n" +
+			"and the walk stays complete: the version can come out lower for one\n" +
+			"run, and the next push corrects it. Exit 4 too, with nothing written: a\n" +
+			"real run (not --dry-run) from a ref other than the default branch, a\n" +
+			"body (footer included) over GitHub's 125000 characters, and a next\n" +
+			"version not greater than the highest published release.\n" +
 			"The body's notes close with the range's compare link\n" +
 			"(compare/<base tag>...<target>; none when the walk has no tag base, the\n" +
 			"notes are empty, or --target is not a full sha), before the\n" +
@@ -125,10 +129,10 @@ func newReleaseCmd() *cobra.Command {
 			"A real run prints the draft's URL; --dry-run computes everything\n" +
 			"including that action and writes nothing, printing the tag line, a\n" +
 			"blank line, then the Markdown body. --json emits\n" +
-			"{current,level,next,tag,target,body,action,url,commits,pulls,reason} —\n" +
-			"pulls is the walk's expansion provenance (each resolved pull and how many\n" +
+			"{current,level,next,tag,target,body,action,url,commits,pulls,reason,unknown}\n" +
+			"— pulls is the walk's expansion provenance (each resolved pull and how many\n" +
 			"of its listed commits the walk took in), which is how a verdict can be\n" +
-			"audited after the fact.\n\n" +
+			"audited after the fact; unknown is bump's (see bump --help).\n\n" +
 			"On a repository declaring [[packages]] release converges ONE rolling draft\n" +
 			"per line (haiku/v0.2.0 beside curry/v0.1.1), every line's upsert written\n" +
 			"before any stray is deleted, each draft's compare link from its own\n" +
@@ -175,7 +179,7 @@ func newReleaseCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.target, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
 	cmd.Flags().StringVar(&o.footerFile, "footer-file", "", "a Markdown file — or a pipe such as <(…) — appended verbatim after the notes, separated by one --- line (the per-repo install block)")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "compute the full verdict and the draft action but write nothing to GitHub")
-	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,level,next,tag,target,body,action,url,commits,pulls,reason}; with [[packages]] declared current/level/action are empty, next/tag/body/url absent (target too when no line has a draft to write), and packages[] carries one verdict per line")
+	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,level,next,tag,target,body,action,url,commits,pulls,reason,unknown}; with [[packages]] declared current/level/action are empty, next/tag/body/url absent (target too when no line has a draft to write), and packages[] carries one verdict per line")
 	return cmd
 }
 
@@ -245,8 +249,8 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	}
 	// The union rows are what the verdict reports as the commits it read. On
 	// the bare line the union is the line. A message no pattern claims never
-	// reaches the fold: the walk refused it at its sighting, before any line
-	// was placed.
+	// reaches the fold: the walk refused it at its sighting, and a walk that
+	// refused one hands down no commits.
 	rows, _, cerr := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if cerr != nil {
 		return cerr
@@ -516,7 +520,7 @@ func carryOut(ctx context.Context, gh *github.Client, owner, repoName string, ru
 // count, never moving, because a draft_on_none placeholder is a draft that
 // points at target too.
 func newReleaseResult(cfg *config.Config, w walk.Result, rows []bump.Row, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
-	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls}
+	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls, Unknown: w.Facts.Unknown}
 	if drafted {
 		res.Target = target
 	}

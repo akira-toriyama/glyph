@@ -256,6 +256,23 @@ func pinnedGit(t *testing.T, dir, stdin string, extraEnv []string, args ...strin
 	return stdout.String()
 }
 
+// requireMultiCharCommentChar skips when the git on PATH refuses a
+// multi-character core.commentChar: git 2.39.5 will not start under one
+// ("core.commentChar should only be one character", exit 128) where 2.54.0
+// prefixes with it (measured), so such a git records nothing under the prefix
+// and holds no answer to compare glyph's with. Asked of the git itself, never
+// of its version string.
+func requireMultiCharCommentChar(t *testing.T) {
+	t.Helper()
+	cmd := exec.Command("git", "-c", "core.commentChar=//", "stripspace", "-c")
+	cmd.Dir = t.TempDir()
+	cmd.Stdin = strings.NewReader("x\n")
+	cmd.Env = testutil.GitEnv("t")
+	if err := cmd.Run(); err != nil {
+		t.Skipf("this git refuses a multi-character core.commentChar (%v), so there is no git answer to compare glyph's with", err)
+	}
+}
+
 // TestCutLineIsTheOneGitWrites is the real-git oracle cleanup.go's cutTail
 // constant names: `git commit -v` writes the scissors line into the message
 // file, and this test asserts it writes EXACTLY the comment prefix and the
@@ -269,6 +286,9 @@ func pinnedGit(t *testing.T, dir, stdin string, extraEnv []string, args ...strin
 func TestCutLineIsTheOneGitWrites(t *testing.T) {
 	for _, prefix := range []string{"", ";", "//"} {
 		t.Run("core.commentChar="+prefix, func(t *testing.T) {
+			if len(prefix) > 1 {
+				requireMultiCharCommentChar(t)
+			}
 			dir := t.TempDir()
 			pinnedGit(t, dir, "", nil, "init", "-q", "-b", "main")
 			if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x\n"), 0o600); err != nil {
@@ -346,6 +366,7 @@ func TestCommentPrefix(t *testing.T) {
 // `lint --range` (measured 2026-11-04 at 2f9428a with the trim set widened to
 // " \t\r\v\f"; mutation row cleanup-trims-vertical-tab-and-form-feed).
 func TestApplyMatchesGitStripspace(t *testing.T) {
+	requireMultiCharCommentChar(t)
 	dir := t.TempDir()
 	prefixes := []string{"#", ";", "//", ".*", "$"}
 	for _, prefix := range prefixes {
@@ -388,6 +409,9 @@ func TestScissorsUnderACommentPrefixMatchesGit(t *testing.T) {
 	pinnedGit(t, dir, "", nil, "init", "-q", "-b", "main")
 	for _, prefix := range []string{";", "//", ".*"} {
 		t.Run(prefix, func(t *testing.T) {
+			if len(prefix) > 1 {
+				requireMultiCharCommentChar(t)
+			}
 			message := "subject\n\nbody\n" + cutLine + "kept under a set prefix\n" + prefix + cutTail + "below the scissors\n"
 			buffer := filepath.Join(t.TempDir(), "message.txt")
 			if err := os.WriteFile(buffer, []byte(message), 0o600); err != nil {

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -892,5 +893,51 @@ func TestReleasePackagesURLLandsOnItsLine(t *testing.T) {
 	}
 	if res.Packages[0].URL != "" || res.Packages[0].Action != "none" {
 		t.Errorf("haiku = %+v, want no URL and no action: it folded to none and wrote nothing", res.Packages[0])
+	}
+}
+
+// TestReleasePackagesTruncatedListingNamesTheTagPerLine: under [[packages]]
+// release's refusal of a pull GitHub listed at its cap names the tag to cut
+// on each line whose range holds the pull's merge point — a commit past the
+// cap may touch any line, and a bare tag is no line's. "Cut a tag at or past
+// the merge point" left the reader to guess which of haiku/vX.Y.Z,
+// curry/vX.Y.Z or vX.Y.Z clears it (measured 2026-11-24: no line was named).
+// A line tagged past the merge point drops out of the remedy, and once both
+// are, the walk no longer reads the pull.
+func TestReleasePackagesTruncatedListingNamesTheTagPerLine(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	mp := testutil.Touch(t, dir, "akira-toriyama", "Document everything (#7)", "haiku/season.go")
+	listing := make([]string, github.PullCommitsCap)
+	routes := map[string]string{commitPullsPath(mp): `[` + apiPullRef(7, "2026-07-22T00:00:00Z", mp) + `]`}
+	for i := range listing {
+		sha := fmt.Sprintf("c%03d", i)
+		listing[i] = apiCommit(sha, "akira-toriyama", fmt.Sprintf(":memo:= document part %d", i))
+		routes[commitFilesPath(sha)] = apiFiles("haiku/season.go")
+	}
+	routes[pullCommitsPath(7)] = `[` + strings.Join(listing, ",") + `]`
+	usePR(t, dryServer(t, routes))
+	t.Chdir(dir)
+
+	refusal := func(step string) string {
+		t.Helper()
+		code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+		if code != 4 || stdout != "" {
+			t.Fatalf("%s: release --dry-run = exit %d stdout %q, want 4\nstderr: %s", step, code, stdout, stderr)
+		}
+		return decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):]).Message
+	}
+	const rule = "cut a tag on every line whose range holds what the walk cannot read, merged pull request #7's merge point — "
+	if msg := refusal("no tag cut"); !strings.HasSuffix(msg, rule+"a haiku/ tag at or past "+mp[:7]+" / a curry/ tag at or past "+mp[:7]) {
+		t.Errorf("the remedy must name the tag on each line whose range holds #7's merge point:\n%s", msg)
+	}
+
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.1", mp)
+	if msg := refusal("haiku's tag cut"); !strings.HasSuffix(msg, rule+"a curry/ tag at or past "+mp[:7]) {
+		t.Errorf("with haiku's walk past the merge point only curry's tag is left to cut:\n%s", msg)
+	}
+
+	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.1", mp)
+	if code, stdout, stderr := runGlyph(t, "release", "--dry-run"); code != 1 || strings.Contains(stderr, "truncated") {
+		t.Fatalf("the tags named exited %d with %q, want 1 and no truncation: both walks start past the merge point\nstderr: %s", code, stdout, stderr)
 	}
 }
