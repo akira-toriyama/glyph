@@ -141,6 +141,13 @@ The flake builds with the Go its locked nixpkgs ships, not with `go.mod`'s
 `toolchain` (`buildGoModule` never downloads a toolchain), so a Go security
 fix reaches this path when `flake.lock` moves to a nixpkgs that carries it.
 
+However glyph got onto the machine, the hooks `glyph hook install` writes, and
+`glyph doctor` where it fires the installed `commit-msg` hook, run whichever
+`glyph` `command -v glyph` finds on `PATH` at that moment, never the binary that
+installed them: with none there, the hook lets the commit through after
+`glyph: not on PATH — skipping the commit-msg lint (CI still enforces it)`, and
+doctor fails its `commit-msg-hook-fires` check.
+
 **GitHub Actions** — either consume a reusable workflow at a pinned release
 tag:
 
@@ -186,15 +193,37 @@ actions are pinned to is not its question.
 glyph init --gemoji     # or --conventional; edit the file freely afterwards
 ```
 
-glyph ships no migration window: a subject no pattern claims is a violation at
-the gate and refuses the release walk, so a repository whose history predates
-the sigil does not teach its grammar to accept the old subjects — it baselines
-the walk with a tag on the last commit before the convention ("Adopting on a
-repository with deep history", below), and the walk never reads past that tag.
+It prints `wrote <path>/glyph.toml (gemoji preset)`. Over an existing file it
+exits 2 and writes nothing: edit that file, or pass `--force` to replace it.
+
+The release walk reads every commit since the highest version tag — the ones
+made before `glyph.toml` existed included — under today's `glyph.toml`, and
+glyph ships no migration window: a commit no pattern claims refuses the walk
+(`bump --since-tag` and `release`, `--dry-run` included, exit 3 with one
+`::error::` per commit). The gate never judges those commits again — it lints
+only what a pull or a push adds — so only the walk needs a base:
+
+- **A young repository** whose every commit is already convention-shaped (a
+  `:tada:=` bootstrap before the `glyph.toml` commit is) needs no tag. With no
+  version tag the walk starts from `v0.0.0` and reads the whole history, so
+  the first `^` releases `v0.1.0`. That walk asks GitHub about each commit and
+  refuses past 200 of them at exit 4, naming the remedy below.
+- **A repository with deep history** tags the **last commit before the
+  convention** — the parent of the first commit written with a sigil. The
+  walk reads `tag..HEAD`, which leaves the tagged commit out, so a tag on the
+  first convention commit drops that commit from every release. The walk
+  baselines at the highest parseable version tag the released branch holds,
+  so the number must be the highest one: `v0.0.0` on a repository with no
+  version tags (a first `^` above it releases `v0.1.0`), and above the highest
+  existing tag where there are some (`v2.3.1` behind a `v2.3.0`; a lower tag
+  is never the base). Push the tag (`git push origin v0.0.0`) — the walk runs
+  in CI from the checkout's tags, and the draft's compare link needs both
+  ends on GitHub.
 
 **1. Check the repository matches the model:**
 
 ```sh
+export GITHUB_TOKEN="$(gh auth token)"   # doctor reads the repository over the API
 glyph doctor            # read-only; --json for CI
 ```
 
@@ -209,6 +238,26 @@ severity. When one of those drifts nothing goes red — the verdict is just
 computed over a repository that no longer matches the model, which is exactly
 what `doctor` exists to catch. Its exit codes are its own subset of the
 contract, stated in `glyph doctor --help`.
+
+Success is exit 0 and a summary line with `0 fail` and `0 could not run`.
+Exit 3 is a failed check, printed with its `expected:`, `why:` and `fix:`:
+apply the fix and re-run. Exit 4 is a check that could not run — unverified,
+not fine: with neither `GITHUB_TOKEN` nor `GH_TOKEN` set, GitHub hides the
+repository's merge settings and the five merge-settings checks report
+`unknown`, so export a token that can read the settings, as above. Exit 2 is
+no repository to diagnose: run it in a clone whose `origin` is on GitHub, or
+pass `--repo owner/name`.
+
+The walk assumes squash merges that land `COMMIT_OR_PR_TITLE` with
+`COMMIT_MESSAGES`, and doctor recommends squash-only — merge commits and
+rebase merges off. One call sets all five (each `fix:` line names its own):
+
+```sh
+gh api -X PATCH repos/OWNER/NAME -F allow_squash_merge=true \
+  -F allow_merge_commit=false -F allow_rebase_merge=false \
+  -f squash_merge_commit_title=COMMIT_OR_PR_TITLE \
+  -f squash_merge_commit_message=COMMIT_MESSAGES
+```
 
 **2. Move the lint to the moment you write the message:**
 
@@ -234,6 +283,15 @@ what git cleans by never reaches a hook — a `--cleanup=`, `-v` or
 commits under the repository's settings, and DESIGN §2.1 lists the cases where
 its verdict and CI's part.
 
+Success is one `<name> hook installed at <path>` line per hook. From then on a
+`git commit` whose message no pattern claims fails, with glyph's exit-3
+envelope on stderr saying what to write instead. `pre-push` blocks only a push
+to the remote's default branch, which it reads from the local
+`refs/remotes/origin/HEAD`, never over the network; in a clone that records
+none, a violating push goes through with the warning `this clone does not
+record origin's default branch, so nothing in this push could block` — run
+`git remote set-head origin -a` and it blocks.
+
 **3. Wire CI** — three callers, each a few lines around one `uses:` pinned
 to a release tag; `glyph doctor` checks that each grants and passes what its
 pinned reusable declares. The `lint.yml` caller above is the gate.
@@ -255,6 +313,9 @@ jobs:
   verdict:
     uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@vX.Y.Z  # pin a release tag
 ```
+
+On every pull request it leaves one comment whose first line says what merging
+does to the version and names the next release.
 
 `release.yml` keeps a rolling draft release maintained on every push to
 `main`. Publishing the draft is the release: the tag is created by that human
@@ -376,20 +437,33 @@ attaches the same way, per line: iterate the `packages` output
 packages repository before the verdict runs (`glyph doctor` names the pair
 before the push).
 
-Adopting on a repository with deep history? Tag the **last commit before the
-convention** — the parent of the first commit written with a sigil. The walk
-reads `tag..HEAD`, which leaves the tagged commit out, so a tag on the first
-convention commit drops that commit from every release (measured 2026-11-08
-on a scratch repository: a `^` under the tag answered `v0.0.1`; the same tag
-on its parent answers `v0.1.0`). The walk baselines at the highest parseable
-version tag the released branch holds, so the number must be the highest one: `v0.0.0` on
-a repository with no version tags, and above the highest existing tag where
-there are some (`v2.3.1` behind a `v2.3.0`; a lower tag is never the base).
-Push the tag — the walk runs in CI from the checkout's tags, and the draft's
-compare link needs both ends on GitHub. With no tag at all a long history is
-refused past a walk cap (fail-loud, one API round-trip per commit is the cost
-it refuses; the error names this exact remedy) rather than walked unbounded. A
-young repository needs no tag: the first release walks the whole history.
+**4. Open a pull request.** With two or more commits besides merge commits,
+the squash lands the pull's title as the subject on `main`; the version and
+the notes still come from the pull's own commits, which `lint.yml`'s range
+step judges one by one. Its title step judges the title by the same patterns,
+except when the pull holds exactly one commit besides merge commits: the
+squash then lands that commit's own subject, so the title gets no verdict,
+only a `::notice::` saying so. Success is a green lint job and the
+merge-preview comment; exit 3 names each commit, or the title, that no pattern
+claims — reword the commit and force-push, or retitle the pull (the `edited`
+trigger re-runs the title step).
+
+**5. Publish the draft.** Every push to `main` rewrites the draft release for
+the next version. A draft glyph creates opens with this line:
+
+```
+<!-- glyph: notes written ABOVE this line survive every push; glyph rewrites everything BELOW it -->
+```
+
+Notes you write above it are kept byte for byte on every push; everything
+below it is regenerated. It counts only on a line of its own, and a body
+without it keeps nothing above, so leave the line in place. GitHub renders it
+as nothing, so the published release shows no trace of it. Publishing is the
+release — it creates the tag:
+
+```sh
+gh release edit vX.Y.Z --draft=false   # gh finds a draft by its intended tag
+```
 
 ## Commit format
 
