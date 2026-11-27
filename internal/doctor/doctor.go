@@ -531,8 +531,8 @@ func checkRebaseMerge(in Input) Check {
 // checkSquashTitle fails unless squash_merge_commit_title is
 // COMMIT_OR_PR_TITLE: the setting decides whether the commit that lands on main
 // carries the subject its author wrote, sigil included, and only
-// COMMIT_OR_PR_TITLE keeps a single-commit PR's own subject. Why PR_TITLE is a
-// failure: DESIGN §7.
+// COMMIT_OR_PR_TITLE keeps it, when the PR holds exactly one commit besides
+// merge commits. Why PR_TITLE is a failure: DESIGN §7.
 func checkSquashTitle(in Input) Check {
 	return checkSquashEnum(in, idSquashTitle, "squash_merge_commit_title",
 		in.RepoObject.SquashMergeCommitTitle, wantSquashTitle,
