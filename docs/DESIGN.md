@@ -7,8 +7,8 @@ owned by the repository. This document is the *why* and the *shape*.
 
 ## 1. Problem
 
-The problem statement — a multi-commit squash under `COMMIT_OR_PR_TITLE` lands
-the PR title and erases the per-commit types every commit-text release tool
+The problem statement — a squash under `COMMIT_OR_PR_TITLE` of two or more
+commits besides merge commits lands the PR title (§6) and erases the per-commit types every commit-text release tool
 reads — and the field comparison that places glyph against release-drafter,
 release-please, semantic-release and the rest (which tools are fooled, which
 hop is prior art, the two differentiators) live in README "Why it exists";
@@ -339,12 +339,19 @@ pattern says it means:
   exactly the ones the patterns do not describe. Whether such a commit
   appears in the notes is `[[note.sections]]`'s decision alone (§3), and
   under `[[packages]]` which lines' notes is its files' (§4.1). An
-  **empty entry is refused at load**: the authoring path has no commit yet, so
-  `lint --message` and `lint --stdin` judge under an empty author, and
-  `exclude_authors = ['']` excluded every message the commit-msg hook was ever
-  handed — measured, a message matching no pattern exited 0 with that one
-  entry present and 3 with it removed. A stray comma turning the gate off
-  silently is the shape this file refuses everywhere else. The author it is
+  **empty entry is refused at load**: `lint --message` has no commit and
+  judges under an empty author, and so does the commit-msg hook under
+  `git merge`, the one path that exports no `GIT_AUTHOR_NAME` to it. Every
+  `git commit` — `--amend`, `--author=`, `-C`, a rebase reword — exports the
+  author it will record, and `lint --stdin` judges under that one, skipping an
+  excluded author's message as `--range` skips the commit (t-cgz9; measured
+  on git 2.54 and 2.56: before, the hook refused at 3 a dependabot commit
+  `--range` skipped at 0). When the hook judged every message under the empty
+  author, `exclude_authors = ['']` excluded all of them — measured, a message
+  matching no pattern exited 0 with that one entry present and 3 with it
+  removed. The reason holds, narrower: the entry would still turn the gate off
+  for every merge the hook judges and every `--message`, and a stray comma
+  turning the gate off silently is the shape this file refuses everywhere else. The author it is
   compared against is read from git **whole** (t-esm5): `git log`'s fields
   were framed by the unit separator, a byte git keeps inside a name, so a
   contributor named `dependabot[bot]<US>x` shifted every field by one, read
@@ -904,9 +911,15 @@ row `cleanup-strips-hash-under-any-comment-char.patch`).
 picks the character per commit from what the message already holds, and
 nothing a hook reads names the pick: the config says `auto`, and the file it is
 handed already carries the template in the chosen character, beside whatever
-lines the author opened with it. Measured on git 2.54: a fresh editor commit and an amend whose body
-opens a line with `#` both got a `#` template and lost their `#` lines (so `#`
-agrees). What `#` misjudges is a class: a message git is handed **before** its
+lines the author opened with it. Measured on git 2.54.0 (nix and Apple
+Git-157, 2026-11-24), an amend parts from a fresh editor commit only at line 1
+of the recorded message. A `#` line typed during the amend fares as in a fresh
+editor commit: a `#` template, and git drops the line as the hook does (so `#`
+agrees). So does a recorded `#` line anywhere else — line 2, or after a blank
+line: a `#` template, the line dropped, hook and git agreeing. Only a recorded
+message whose line 1 opens with `#` gets a `;` template; git keeps that line
+in the subject while the hook drops it as a `#` comment (hook 0, CI 3), and
+that case is the class that follows. What `#` misjudges is a class: a message git is handed **before** its
 cleanup (measured with `-F`) whose line 1 opens with `#`, in a mode that strips
 comments. git then picks another character, keeps that line and records
 it as the subject; the hook drops it as a `#` comment and judges line 2, the
@@ -2065,8 +2078,8 @@ released on every line, the answer §4.1 gives a first sighting there.
 The identity is the listed sha, the one the walk-wide set already judges a stacked
 duplicate by, so a new commit that repeats a released message is new work
 (`TestSinceTagRepeatedMessageOfAReleasedCommitStillCounts`). Three others were
-rejected. **The messages behind the base** cannot hold on a squash: a multi-commit
-pull's subject is its title, and the inner subjects sit only in a body GitHub
+rejected. **The messages behind the base** cannot hold on a squash: the subject of a pull of
+two or more commits besides merge commits is its title, and the inner subjects sit only in a body GitHub
 writes under one `squash_merge_commit_message` (`glyph-test-2`#6 landed as `:bug:~
 stacked probe base pull titled apart from its inner commits (#6)`, its commits as
 bullets below it), which is §1's reason to read the API at all; matching the
@@ -4740,6 +4753,29 @@ waited for the commits to go green (run 41809643056). Pinned by
 `squash-title-step-refuses-every-direct-push`,
 `squash-title-step-allowed-to-fail` and `squash-title-step-swallows-the-verdict`.
 
+The title goes unjudged only where it is measured not to land.
+`COMMIT_OR_PR_TITLE` lands the commit's own subject on a one-commit pull, so
+`lint --pr` lists the pull's commits over the API it reads the title from, and
+when exactly one of them is not a merge commit (more than one parent) it exits
+0 with a notice and no title verdict, because the subject that lands is a
+commit the range step judged. At every other count the title is judged: two or
+more land the title, and for none — an empty listing, or merge commits only —
+nothing is measured, so the exemption, which rests on a measurement, does not
+reach it; nor can a listing of 250 commits, where GitHub truncates it, establish
+exactly one, so there the title is judged at any count and its refusal claims no
+count. The pull's own count is not that
+number: on glyph-test-2 #27 (2026-11-24) one authored commit plus the
+`Merge branch 'main'` that update-branch added landed the commit's subject,
+while `gh pr view --json commits` and REST `.commits` both said 2; #28, the
+same pull rebased by update-branch to one commit, landed its subject too. A
+merge commit whose second parent is not the base is unmeasured and left out by
+the same rule. The step re-fires when the count moves: a second commit pushed
+(#29) and a force-push back to one (#30) each re-ran the workflow. Judging every
+title instead was rejected: it reds a single-commit pull over a title that never
+lands, §7's reason against failing over what the fleet cannot act on. Pinned by
+`TestLintPRTitle`; mutation rows `lint-pr-title-counts-merge-commits` and
+`lint-pr-title-unjudged-on-a-truncated-listing`.
+
 Two behaviours of the shipped workflows are contract, not implementation
 detail. `lint.yml` carries a second, annotate-only arm (#140): a caller may add
 `push: branches: [main]` and the same rules run over each direct push to the
@@ -4975,8 +5011,9 @@ The severities are the argued part:
   writes new shas that appear in no pull's listing, so a replayed commit
   classified during the lag is folded in again when the last one expands the
   pull. Which failures reach the fallback at all is §4's rule (a 422 only). The
-  cost of a dark API under squash is that a MULTI-commit squash carries the PR
-  title, so the fallback reads one subject the range walk never saw. `lint
+  cost of a dark API under squash is that a squash of TWO or more commits
+  besides merge commits carries the PR title, so the fallback reads one
+  subject the range walk never saw. `lint
   --pr` is that subject's own gate — CONTRIBUTING ratifies the title as a
   commit subject and lint.yml runs it beside the range — so the
   fallback now reads a *linted* subject, though only as reliably as the gate's

@@ -51,22 +51,29 @@ func (c *Config) Lint(message, author string) LintVerdict {
 }
 
 // LintAuthoring judges a message at authoring time — the commit-msg hook's
-// question (`lint --stdin` / `--message`), asked before any commit exists, so
-// under the empty author. It is Lint with two differences. A message an
+// question (`lint --stdin` / `--message`), asked before the commit exists.
+// author is the one git exported to the hook, or empty where there is none
+// (`--message`, doctor's probe, a git merge); an exclude_authors author is
+// excluded before matching, as in Lint. Past that it is Lint with two
+// differences. A message an
 // unlandable pattern claims is OK, carrying its reason as the warning plus
 // what every later gate will do with it. The hook cannot make git write
 // another subject (git spells `amend!` itself), and refusing one there forces
 // --no-verify, which turns the gate off for everything else in that commit.
 // And the refusal of a message no pattern claims offers no author exclusion:
-// the empty author is one exclude_authors cannot name (an empty entry is
-// refused at load), so that remedy could never unblock this verdict.
+// the author it reaches is the empty one, which exclude_authors cannot name
+// (an empty entry is refused at load), or the developer writing the commit,
+// whose exclusion would turn the gate off for everything they write.
 //
 // This is an argued disagreement between the hook and CI on one message
 // (DESIGN §2.1), and it runs in the direction §2.1 calls the cheaper one: blessing costs a round trip, refusing costs the commit. The
 // warning is what keeps it honest — it says CI will refuse the commit.
 // Anything that must judge a message exactly as the hook does (doctor's hook
 // probe) calls this, never Lint.
-func (c *Config) LintAuthoring(message string) LintVerdict {
+func (c *Config) LintAuthoring(message, author string) LintVerdict {
+	if slices.Contains(c.ExcludeAuthors, author) {
+		return LintVerdict{Excluded: true}
+	}
 	m, err := c.Match(message)
 	if err == nil && !m.Matched {
 		if m.Unlandable != "" {
@@ -74,7 +81,7 @@ func (c *Config) LintAuthoring(message string) LintVerdict {
 		}
 		return LintVerdict{Reason: c.unclaimedReason(m, true)}
 	}
-	return c.Lint(message, "")
+	return c.Lint(message, author)
 }
 
 // unclaimedReason is the violation for a message Match left unclaimed: the

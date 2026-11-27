@@ -8,7 +8,7 @@ import (
 
 // TestLintReplaysGlyphStderrBeforeTheGreenExit pins the order of two lines in
 // each lint step of lint.yml: glyph's stderr is replayed to the log BEFORE the
-// step decides that exit 0 means "all commits OK" / "title OK" and returns.
+// step decides that exit 0 means "all commits OK" / "title not refused" and returns.
 //
 // The binary writes every diagnostic onto that stream — one `::error::` per
 // finding, but also, on a GREEN run, one `::warning::` per warn-pattern commit
@@ -30,7 +30,7 @@ func TestLintReplaysGlyphStderrBeforeTheGreenExit(t *testing.T) {
 	body := lintBody(t)
 	for _, step := range []struct{ name, errFile, ok string }{
 		{"range", `"$RUNNER_TEMP/glyph-lint.err"`, `echo "all commits OK"`},
-		{"title", `"$RUNNER_TEMP/glyph-title.err"`, `echo "title OK"`},
+		{"title", `"$RUNNER_TEMP/glyph-title.err"`, `echo "title not refused"`},
 	} {
 		replay := "cat " + step.errFile + " >&2"
 		green := `if [ "$status" -eq 0 ]; then` + "\n" + strings.Repeat(" ", 12) + step.ok

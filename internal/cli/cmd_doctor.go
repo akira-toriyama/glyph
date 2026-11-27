@@ -59,9 +59,9 @@ func newDoctorCmd() *cobra.Command {
 			"    main and that commit IS its merge_commit_sha, so it is never half-resolved —\n" +
 			"    no part of it can stand aside for a merge point the walk cannot resolve. The\n" +
 			"    multi-commit landings all have that window. (A dark API is still not free:\n" +
-			"    a MULTI-commit squash carries the PR title — linted by `lint --pr` at the\n" +
-			"    gate, but the fallback still classifies that one subject instead of the\n" +
-			"    pull's commits.)\n" +
+			"    a squash of TWO or more commits besides merge commits carries the PR\n" +
+			"    title — linted by `lint --pr` at the gate, but the fallback still\n" +
+			"    classifies that one subject instead of the pull's commits.)\n" +
 			"  - merge commits / rebase merges are off — advice, not a defect: the walk\n" +
 			"    resolves and expands both (a merge commit from itself, a rebase from its\n" +
 			"    last replayed commit — each what GitHub names merge_commit_sha). What is\n" +
@@ -160,7 +160,7 @@ func probeClaimed(ctx context.Context, cfg *config.Config) bool {
 	if cfg == nil {
 		return false
 	}
-	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))
+	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)), "")
 	return v.OK
 }
 

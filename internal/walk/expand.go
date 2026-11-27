@@ -732,13 +732,14 @@ func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []
 // commit has no position in.
 //
 // The identity is the listed sha, the one seen already judges a stacked
-// duplicate by. A message would be a second rule, and it cannot hold: a
-// multi-commit squash's subject is the pull's title, its body the text GitHub
-// drops unless squash_merge_commit_message says otherwise (DESIGN §1), and a
-// new commit repeating a released message would be dropped with it. What is
-// left aligns once what another pull landed is out of the way: a stacked rebase
-// replays only its own commits, so they are the run ending at the merge point
-// even when another pull landed under them.
+// duplicate by. A message would be a second rule, and it cannot hold: the
+// subject of a squash of two or more commits besides merge commits is the
+// pull's title, its body the text GitHub drops unless
+// squash_merge_commit_message says otherwise (DESIGN §1), and a new commit
+// repeating a released message would be dropped with it. What is left aligns
+// once what another pull landed is out of the way: a stacked rebase replays
+// only its own commits, so they are the run ending at the merge point even when
+// another pull landed under them.
 func (w *walk) placeStacked(ctx context.Context, number int, canonical string, listing []gitsource.RawCommit, landed []string) error {
 	open := false
 	for i, r := range listing {

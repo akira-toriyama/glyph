@@ -12,9 +12,10 @@ index 1f28d59..6fde57c 100644
  			// Every valued arm asks whether its flag was GIVEN — the question
  			// MarkFlagsOneRequired answers — and --stdin, asked LAST, is the
  			// one arm that reads a value: a --stdin=false that satisfied the
-@@ -135,6 +132,7 @@ func newLintCmd() *cobra.Command {
+@@ -136,7 +133,8 @@ func newLintCmd() *cobra.Command {
  	cmd.Flags().StringVar(&o.message, "message", "", "lint one message given inline")
  	cmd.Flags().BoolVar(&stdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
+ 	stdinTyped.wrap(cmd.Flags().Lookup("stdin"))
  	cmd.MarkFlagsOneRequired("range", "pr", "message", "stdin")
 +	cmd.MarkFlagsMutuallyExclusive("range", "pr", "message", "stdin")
  	return cmd

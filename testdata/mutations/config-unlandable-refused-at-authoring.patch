@@ -1,9 +1,9 @@
 diff --git a/internal/config/lint.go b/internal/config/lint.go
-index 3e484f4..dae3df3 100644
+index cec72c4..5a18165 100644
 --- a/internal/config/lint.go
 +++ b/internal/config/lint.go
-@@ -69,7 +69,7 @@ func (c *Config) Lint(message, author string) LintVerdict {
- func (c *Config) LintAuthoring(message string) LintVerdict {
+@@ -76,7 +76,7 @@ func (c *Config) LintAuthoring(message, author string) LintVerdict {
+ 	}
  	m, err := c.Match(message)
  	if err == nil && !m.Matched {
 -		if m.Unlandable != "" {

@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index 213fec2..1d046b2 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -186,7 +186,7 @@ func lintStdinRun(ctx context.Context) error {
+ 	// under git merge (measured, git 2.54 and 2.56, t-cgz9), so an
+ 	// exclude_authors author's commit is skipped here as --range skips it, and
+ 	// a merge is judged under the empty author.
+-	return lintOne(cleanup.Apply(string(b), hookCleanupMode(ctx, in)), os.Getenv("GIT_AUTHOR_NAME"), cfg)
++	return lintOne(cleanup.Apply(string(b), hookCleanupMode(ctx, in)), "", cfg)
+ }
+ 
+ // lintMessageRun lints the one message --message names, at authoring time.

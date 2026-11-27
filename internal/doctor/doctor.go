@@ -435,11 +435,11 @@ func checkSquashEnabled(in Input) Check {
 		c.Message = "PRs can land as one squash commit: the pull request's merge_commit_sha and the ONLY commit it puts on " +
 			"main are the same object, so a squash-merged pull is never half-resolved — the walk either expands it from the " +
 			"API or falls back on that one message, and no part of it can stand aside for a merge point that never resolves. " +
-			"That is the guarantee; identical verdicts are NOT. Under COMMIT_OR_PR_TITLE a MULTI-commit squash carries the PR " +
-			"title, whose sigil is its own, so an API-dark run classifies that one subject instead of the pull's commits: a " +
-			"^+~ pull titled ~ reads minor with the API and patch without, and a title no pattern claims is dropped from the " +
-			"fold with a warning, so the pull counts none. Squash bounds an API-dark window to one wrong level on one pull; " +
-			"a multi-commit landing can lose a whole one"
+			"That is the guarantee; identical verdicts are NOT. Under COMMIT_OR_PR_TITLE a squash of TWO or more commits " +
+			"besides merge commits carries the PR title, whose sigil is its own, so an API-dark run classifies that one " +
+			"subject instead of the pull's commits: a ^+~ pull titled ~ reads minor with the API and patch without, and a " +
+			"title no pattern claims is dropped from the fold with a warning, so the pull counts none. Squash bounds an " +
+			"API-dark window to one wrong level on one pull; a multi-commit landing can lose a whole one"
 		return c
 	}
 	c.Status = StatusFail
@@ -449,10 +449,10 @@ func checkSquashEnabled(in Input) Check {
 		"commit, or the merge commit, and the walk expands the pull request from there. A TOTAL blackout is not the problem " +
 		"either — when GitHub answers 422 for every sha the walk classifies each commit from its own message (DESIGN §4), and " +
 		"a merge- or rebase-landed pull comes out at the SAME level, because its commits are on main with their sigils " +
-		"intact; a multi-commit squash is the style that loses there. What squash removes is the PARTIAL window, which only a " +
-		"multi-commit landing has. GitHub indexes a merge commit AFTER the commits it merges, so a release run seconds behind " +
-		"the button sees the branch commits stand aside for a merge point it cannot resolve yet and the whole pull request " +
-		"counts none. A rebase writes new shas that appear in no pull request's commit " +
+		"intact; a squash of two or more commits besides merge commits is the style that loses there. What squash removes " +
+		"is the PARTIAL window, which only a multi-commit landing has. GitHub indexes a merge commit AFTER the commits it " +
+		"merges, so a release run seconds behind the button sees the branch commits stand aside for a merge point it cannot " +
+		"resolve yet and the whole pull request counts none. A rebase writes new shas that appear in no pull request's commit " +
 		"listing, so it depends on the walk aligning that listing against the run of commits ending at the canonical one; " +
 		"where the alignment cannot be verified — a rebase that dropped a commit it was asked to replay, one already " +
 		"upstream or one that rebased empty — a replayed commit classified during the lag is folded in a second time and " +
@@ -531,12 +531,13 @@ func checkRebaseMerge(in Input) Check {
 // checkSquashTitle fails unless squash_merge_commit_title is
 // COMMIT_OR_PR_TITLE: the setting decides whether the commit that lands on main
 // carries the subject its author wrote, sigil included, and only
-// COMMIT_OR_PR_TITLE keeps a single-commit PR's own subject. Why PR_TITLE is a
-// failure: DESIGN §7.
+// COMMIT_OR_PR_TITLE keeps it, when the PR holds exactly one commit besides
+// merge commits. Why PR_TITLE is a failure: DESIGN §7.
 func checkSquashTitle(in Input) Check {
 	return checkSquashEnum(in, idSquashTitle, "squash_merge_commit_title",
 		in.RepoObject.SquashMergeCommitTitle, wantSquashTitle,
-		"a single-commit PR keeps its own classifiable subject on main; only a multi-commit squash borrows the PR title",
+		"a pull with exactly one commit besides merge commits keeps its own classifiable subject on main; only a "+
+			"squash of two or more commits besides merge commits borrows the PR title",
 		"every squash commit takes the PR TITLE as its subject, including single-commit PRs — so a commit's own sigil "+
 			"never lands on main. The verdict holds while the API answers, but the walk's fallback "+
 			"(the API lag right after a push) classifies the squash commit's own message: the title's sigil "+

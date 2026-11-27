@@ -13,6 +13,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -519,16 +520,30 @@ func apiOnePullBody(title, login string) string {
 	return fmt.Sprintf(`{"number":7,"title":%s,"user":{"login":%q}}`, m, login)
 }
 
-// TestLintPRTitle is the squash-title gate working end to end: a title in the
-// grammar passes silently; a title outside it exits 3, is annotated by the
-// binary itself (the producer contract of t-sws7), and still ends in one
-// sievable envelope. CONTRIBUTING ratifies the title as a commit subject: a
-// title outside the grammar lands as the squash subject, which the release
-// walk's fallback reads as a silent none.
+// twoCommitListing is GET pulls/{n}/commits for a pull whose title is the merge
+// candidate: two commits besides merge commits.
+func twoCommitListing() string {
+	return "[" + apiCommit("a1", "akira-toriyama", ":bug:~ fix a") + "," + apiCommit("a2", "akira-toriyama", ":bug:~ fix b") + "]"
+}
+
+// TestLintPRTitle is the squash-title gate working end to end, on a pull whose
+// title is the merge candidate (two commits besides merge commits, which is
+// when COMMIT_OR_PR_TITLE lands the title): a title in the grammar passes
+// silently; a title outside it exits 3, is annotated by the binary itself (the
+// producer contract of t-sws7), and still ends in one sievable envelope. Such
+// a title lands as the squash subject, which the release walk's fallback reads
+// as a silent none. With exactly one commit besides merge commits the title
+// never lands — one commit, or one commit plus a merge from the base
+// (glyph-test-2 #27 landed the commit's subject while REST .commits said 2) —
+// so it gets a notice and no verdict; every other count, none included, is
+// judged.
 func TestLintPRTitle(t *testing.T) {
 	t.Chdir(testutil.NewRepo(t))
 	t.Run("clean title", func(t *testing.T) {
-		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody(":bug:(lint)~ fix a crash", "akira-toriyama")})
+		srv := walkServer(t, map[string]string{
+			pullPath(7):        apiOnePullBody(":bug:(lint)~ fix a crash", "akira-toriyama"),
+			pullCommitsPath(7): twoCommitListing(),
+		})
 		usePR(t, srv)
 		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
 		if code != 0 {
@@ -540,7 +555,10 @@ func TestLintPRTitle(t *testing.T) {
 	})
 
 	t.Run("unmatched title", func(t *testing.T) {
-		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody("add a menu without a gitmoji", "akira-toriyama")})
+		srv := walkServer(t, map[string]string{
+			pullPath(7):        apiOnePullBody("add a menu without a gitmoji", "akira-toriyama"),
+			pullCommitsPath(7): twoCommitListing(),
+		})
 		usePR(t, srv)
 		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
 		if code != 3 {
@@ -555,6 +573,102 @@ func TestLintPRTitle(t *testing.T) {
 		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
 		if env.Code != 3 {
 			t.Errorf("envelope carries code %d, want 3", env.Code)
+		}
+		if !strings.Contains(env.Message, "holds 2 commits besides merge commits") {
+			t.Errorf("the finding must say why the title lands, got %q", env.Message)
+		}
+	})
+
+	// The count rows: only exactly one commit besides merge commits is measured
+	// to land its own subject (glyph-test-2 #27, #28), so only that count skips
+	// the title; none is unmeasured and judged like two.
+	commit := apiCommit("a1", "akira-toriyama", ":bug:~ fix a")
+	merge := apiMergeCommit("m1", "akira-toriyama", "Merge branch 'main' into topic")
+	for _, row := range []struct {
+		name, listing string
+		judged, zero  bool
+		// why is what a judged row's refusal must say; at zero nothing measured
+		// what a squash lands, so it names the reason and claims no landing.
+		why string
+	}{
+		{"no commit (an empty listing)", "[]", true, true, "this pull holds none, so the title is judged"},
+		{"merge commits only", "[" + merge + "]", true, true, "this pull holds none, so the title is judged"},
+		{"one commit", "[" + commit + "]", false, false, ""},
+		{"one commit and a merge from the base", "[" + commit + "," + merge + "]", false, false, ""},
+		{"two commits", twoCommitListing(), true, false, "holds 2 commits besides merge commits, so a squash merge records this title as the landed commit's subject"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			srv := walkServer(t, map[string]string{
+				pullPath(7):        apiOnePullBody("add a menu without a gitmoji", "akira-toriyama"),
+				pullCommitsPath(7): row.listing,
+			})
+			usePR(t, srv)
+			code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
+			if stdout != "" {
+				t.Fatalf("lint --pr wrote stdout %q, want none", stdout)
+			}
+			if row.judged {
+				if code != 3 || !strings.Contains(stderr, "::error::glyph: ") || strings.Contains(stderr, "::notice::") {
+					t.Fatalf("lint --pr = %d, want 3 with the title judged and no notice — only exactly one commit "+
+						"besides merge commits is measured to land its own subject\nstderr: %s", code, stderr)
+				}
+				env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+				if !strings.Contains(env.Message, row.why) {
+					t.Errorf("the refusal must say %q, got %q", row.why, env.Message)
+				}
+				if row.zero && strings.Contains(env.Message, "records this title") {
+					t.Errorf("at zero nothing measured what a squash lands, so the refusal claims no landing, got %q", env.Message)
+				}
+				return
+			}
+			if code != 0 {
+				t.Fatalf("lint --pr on a pull whose title never lands = %d, want 0 — the squash lands "+
+					"the commit's subject, which the range judged\nstderr: %s", code, stderr)
+			}
+			if !strings.Contains(stderr, "::notice::glyph: ") || !strings.Contains(stderr, "title not judged: the pull holds one commit besides merge commits") || strings.Contains(stderr, "::error::") {
+				t.Fatalf("want one notice that the title is not judged and no finding, got:\n%s", stderr)
+			}
+		})
+	}
+
+	// A listing at github.PullCommitsCap may be truncated, so one commit besides
+	// merge commits in it does not establish the exemption: the title is judged
+	// whatever the listing counts, and a refusal names the cap, not a count.
+	capped := make([]string, github.PullCommitsCap)
+	capped[0] = commit
+	for i := 1; i < len(capped); i++ {
+		capped[i] = apiMergeCommit(fmt.Sprintf("m%03d", i), "akira-toriyama", "Merge branch 'main' into topic")
+	}
+	cappedListing := "[" + strings.Join(capped, ",") + "]"
+	t.Run("capped listing of one commit and merge commits, bad title", func(t *testing.T) {
+		srv := walkServer(t, map[string]string{
+			pullPath(7):        apiOnePullBody("add a menu without a gitmoji", "akira-toriyama"),
+			pullCommitsPath(7): cappedListing,
+		})
+		usePR(t, srv)
+		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
+		if code != 3 || stdout != "" || !strings.Contains(stderr, "::error::glyph: ") || strings.Contains(stderr, "::notice::") {
+			t.Fatalf("lint --pr on a capped listing = %d, want 3 with the title judged and no notice — a truncated listing "+
+				"cannot establish exactly one commit besides merge commits\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		if want := fmt.Sprintf("returned the maximum %d commits", github.PullCommitsCap); !strings.Contains(env.Message, want) {
+			t.Errorf("the refusal must name the cap (%q), got %q", want, env.Message)
+		}
+		if strings.Contains(env.Message, "holds") || strings.Contains(env.Message, "records this title") {
+			t.Errorf("a capped listing's count is not known, so the refusal claims no count and no landing, got %q", env.Message)
+		}
+	})
+	t.Run("capped listing of one commit and merge commits, good title", func(t *testing.T) {
+		srv := walkServer(t, map[string]string{
+			pullPath(7):        apiOnePullBody(":bug:(lint)~ fix a crash", "akira-toriyama"),
+			pullCommitsPath(7): cappedListing,
+		})
+		usePR(t, srv)
+		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
+		if code != 0 || stdout != "" || stderr != "" {
+			t.Fatalf("lint --pr with a good title on a capped listing = %d, stdout %q, stderr %q — want a silent 0: "+
+				"the title is judged, and it passes", code, stdout, stderr)
 		}
 	})
 }

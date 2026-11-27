@@ -131,7 +131,10 @@ func TestLintRangeRefusesUnlandable(t *testing.T) {
 func TestLintPRRefusesUnlandable(t *testing.T) {
 	dir, _ := unlandableRepo(t)
 	t.Chdir(dir)
-	usePR(t, walkServer(t, map[string]string{pullPath(7): apiOnePullBody("amend! :bug:~ fix b", "akira-toriyama")}))
+	usePR(t, walkServer(t, map[string]string{
+		pullPath(7):        apiOnePullBody("amend! :bug:~ fix b", "akira-toriyama"),
+		pullCommitsPath(7): twoCommitListing(),
+	}))
 
 	code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
 	if code != int(core.CodeLint) || stdout != "" {

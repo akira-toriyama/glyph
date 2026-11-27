@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/cleanup"
 	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
 	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v6/internal/hook"
 	"github.com/akira-toriyama/glyph/v6/internal/walk"
@@ -46,6 +48,7 @@ func newLintCmd() *cobra.Command {
 	// mode, and is refused there when it is the only mode flag given); below
 	// it the mode carries all there is to know.
 	var stdin bool
+	stdinTyped := &typedBool{}
 	cmd := &cobra.Command{
 		Use:   "lint",
 		Short: "Lint commit messages against the repository's glyph.toml patterns",
@@ -58,9 +61,14 @@ func newLintCmd() *cobra.Command {
 			"no opinion on combinations (a docs commit carrying ! is the author's call).\n" +
 			"--range lints every commit on its way into main (exclude_authors are\n" +
 			"skipped, and so is anything a skip pattern claims — merge commits under the\n" +
-			"shipped presets). --pr lints a pull request's TITLE over the API, as the\n" +
-			"merge candidate it is: a squash merge records that title as the landed\n" +
-			"commit's subject. --message and --stdin lint one message at authoring\n" +
+			"shipped presets). --pr lints a pull request's TITLE over the API: with two\n" +
+			"or more commits besides merge commits, a squash merge (COMMIT_OR_PR_TITLE)\n" +
+			"records the title as the landed commit's subject; with exactly one it lands\n" +
+			"that commit's own subject, which --range judges, so --pr gives the title no\n" +
+			"verdict and says so in a notice; with none the title is judged too, and so it\n" +
+			"is at any count once the listing returns 250 commits, where GitHub truncates\n" +
+			"it and the count is no longer known.\n" +
+			"--message and --stdin lint one message at authoring\n" +
 			"time — the commit-msg hook path — where a message an unlandable pattern\n" +
 			"claims passes with its reason as a warning (the shipped presets claim git's\n" +
 			"fixup! and squash! subjects, and an amend! whose body their grammar reads);\n" +
@@ -75,7 +83,9 @@ func newLintCmd() *cobra.Command {
 			"message at authoring time says the later gates will refuse it, and\n" +
 			"--stdin — the commit-msg hook's mode — says so when commit.cleanup names\n" +
 			"a mode git does not know or the installed hook was written by glyph and no\n" +
-			"longer matches this binary's.",
+			"longer matches this binary's, and when it skips the message because the\n" +
+			"author git exports to the hook (GIT_AUTHOR_NAME; git merge exports none)\n" +
+			"is in exclude_authors, as --range skips that author's commits.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
@@ -116,7 +126,7 @@ func newLintCmd() *cobra.Command {
 				o.mode = lintByMessage
 			case cmd.Flags().Changed("stdin"):
 				if !stdin {
-					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range, --pr or --message instead")
+					return core.Usagef("--stdin=%s selects no input mode — --stdin IS the mode, so drop it and give --range, --pr or --message instead", stdinTyped.typed)
 				}
 				o.mode = lintByStdin
 			}
@@ -132,10 +142,11 @@ func newLintCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&o.rng, "range", "", "lint every commit in a git revision range (BASE..HEAD)")
-	cmd.Flags().IntVar(&o.pull, "pr", 0, "lint a pull request's title — the subject a squash merge lands — read over the API")
+	cmd.Flags().IntVar(&o.pull, "pr", 0, "lint a pull request's title, read over the API, unless the pull holds exactly one commit besides merge commits (a squash merge then lands that commit's subject)")
 	cmd.Flags().StringVar(&o.repo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&o.message, "message", "", "lint one message given inline")
 	cmd.Flags().BoolVar(&stdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
+	stdinTyped.wrap(cmd.Flags().Lookup("stdin"))
 	cmd.MarkFlagsOneRequired("range", "pr", "message", "stdin")
 	return cmd
 }
@@ -179,7 +190,12 @@ func lintStdinRun(ctx context.Context) error {
 	// The hook that called this is also the one artefact nothing refreshes,
 	// so its own run is where a drifted copy is reported.
 	warnIfHookStale(ctx, hook.Kinds()[0])
-	return lintOne(cleanup.Apply(string(b), hookCleanupMode(ctx, in)), cfg)
+	// git exports to the commit-msg hook the author it will record — a plain
+	// commit, --amend, --author=, -C and a rebase reword alike — and none
+	// under git merge (measured, git 2.54 and 2.56, t-cgz9), so an
+	// exclude_authors author's commit is skipped here as --range skips it, and
+	// a merge is judged under the empty author.
+	return lintOne(cleanup.Apply(string(b), hookCleanupMode(ctx, in)), os.Getenv("GIT_AUTHOR_NAME"), cfg)
 }
 
 // lintMessageRun lints the one message --message names, at authoring time.
@@ -188,7 +204,7 @@ func lintMessageRun(ctx context.Context, message string) error {
 	if err != nil {
 		return err
 	}
-	return lintOne(message, cfg)
+	return lintOne(message, "", cfg)
 }
 
 // hookCleanupMode reads the five signals a commit-msg hook has about what git
@@ -265,18 +281,24 @@ func isGitMergeMessage(ctx context.Context, message io.Reader) bool {
 	return err == nil && os.SameFile(got, want)
 }
 
-// lintOne lints a single message at authoring time. The author is unknown —
-// no commit exists yet — so it stands as the empty string. That the human
-// authoring path is always judged is enforced in config.Load, which refuses
-// an empty exclude_authors entry (DESIGN §2, `exclude_authors`). Whatever
+// lintOne lints a single message at authoring time, under author: the one git
+// exported to the commit-msg hook, or the empty string where there is none —
+// --message, and the hook under a git merge. That the empty author is always
+// judged is enforced in config.Load, which refuses an empty exclude_authors
+// entry (DESIGN §2, `exclude_authors`); an excluded author is skipped with
+// the warning --range gives a range it judged none of. Whatever
 // tolerance authoring needs is the pattern file's to grant: skip patterns
 // (the presets skip a merge in progress) and unlandable ones (the presets
 // claim git's fixup! and squash! subjects, and an amend! whose body their
 // grammar reads), which pass here with a warning and nowhere else
 // (config.LintAuthoring).
-func lintOne(message string, cfg *config.Config) error {
-	v := cfg.LintAuthoring(message)
-	if v.OK || v.Excluded {
+func lintOne(message, author string, cfg *config.Config) error {
+	v := cfg.LintAuthoring(message, author)
+	if v.Excluded {
+		warnf("nothing linted: the commit's author %q is excluded from the convention (exclude_authors) — nothing to lint is not a pass on anything", author)
+		return nil
+	}
+	if v.OK {
 		if v.Warn != "" {
 			warnf("%s", v.Warn)
 		}
@@ -286,11 +308,17 @@ func lintOne(message string, cfg *config.Config) error {
 		WithDetails([]bump.Refusal{{Subject: bump.FirstLine(message), Detail: v.Reason}})
 }
 
-// lintPRRun lints the one line of a pull request a squash merge writes into
-// main's history: its title. CONTRIBUTING ratifies that line as a commit
-// subject, and it is the only merge-candidate subject the --range walk can
-// never see — the range holds the pre-squash commits, while the title exists
-// nowhere as a commit until the squash mints it.
+// lintPRRun lints a pull request's title unless the pull holds exactly one
+// commit besides merge commits: under COMMIT_OR_PR_TITLE a squash then lands
+// that commit's subject (glyph-test-2 #27: one commit plus an update-branch
+// merge landed the commit's subject while REST .commits said 2, so the count is
+// the listing's one-parent commits, never the pull's own count), a commit
+// --range already judged, so the title gets a notice and no verdict. The
+// exemption rests on that measurement alone, so zero — an empty listing, or
+// merge commits only — is judged like two or more, and so is any count in a
+// listing of github.PullCommitsCap entries, where GitHub truncates it. When it
+// lands, the title is the only landed subject the range can never see — it
+// exists nowhere as a commit until the squash mints it.
 //
 // The PR's author stands in for the commit author (a squash attributes the
 // landed commit to the pull's author), so an exclude_authors title —
@@ -307,11 +335,30 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	if err != nil {
 		return err
 	}
-	pull, err := newGitHub().PullRequest(ctx, owner, repo, number)
+	gh := newGitHub()
+	pull, err := gh.PullRequest(ctx, owner, repo, number)
 	if err != nil {
 		return err
 	}
 	v := cfg.Lint(pull.Title, pull.Author)
+	authored, capped := 0, false
+	if !v.Excluded {
+		commits, err := gh.PullCommits(ctx, owner, repo, number)
+		if err != nil {
+			return err
+		}
+		for _, c := range commits {
+			if len(c.Parents) < 2 {
+				authored++
+			}
+		}
+		capped = len(commits) >= github.PullCommitsCap
+		if authored == 1 && !capped {
+			noticef("%s/%s#%d title not judged: the pull holds one commit besides merge commits, so a squash merge (COMMIT_OR_PR_TITLE) lands that commit's own subject, which --range judges",
+				owner, repo, number)
+			return nil
+		}
+	}
 	if v.OK || v.Excluded {
 		if v.Warn != "" {
 			warnf("%s/%s#%d title: %s", owner, repo, number, v.Warn)
@@ -321,8 +368,19 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	// One annotation for the finding, written by the binary that computed it —
 	// the same producer contract lintRangeRun holds (t-sws7).
 	errorf("%s/%s#%d title: %s", owner, repo, number, v.Reason)
-	return core.Lintf("1 commit-convention violation in the title of %s/%s#%d — a squash merge records this title as the landed commit's subject",
-		owner, repo, number).
+	// Zero is judged because the exemption is measured for one alone, not because
+	// any squash of zero was seen to land the title — so it claims no landing. A
+	// capped listing is judged because it cannot establish the one, so it claims
+	// no count.
+	why := fmt.Sprintf("the pull holds %d commits besides merge commits, so a squash merge records this title as the landed commit's subject", authored)
+	switch {
+	case capped:
+		why = fmt.Sprintf("the pull's commit listing returned the maximum %d commits, and GitHub truncates it there, so the count of commits besides merge commits is not known and the title is judged", github.PullCommitsCap)
+	case authored == 0:
+		why = "a title goes unjudged only on a pull with exactly one commit besides merge commits, whose own subject a squash merge lands, and this pull holds none, so the title is judged"
+	}
+	return core.Lintf("1 commit-convention violation in the title of %s/%s#%d — %s",
+		owner, repo, number, why).
 		WithDetails([]bump.Refusal{{Subject: pull.Title, Detail: v.Reason}})
 }
 

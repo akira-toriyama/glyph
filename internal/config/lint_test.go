@@ -45,10 +45,10 @@ func TestLintHasNoTaste(t *testing.T) {
 }
 
 // TestLintEmptyAuthorIsAlwaysJudged pins WHY an empty exclude_authors entry is
-// refused at load rather than tolerated at lint. lint --message and lint
-// --stdin have no commit yet, so they judge under the empty author; a config
-// carrying an empty entry therefore excludes every message the commit-msg hook
-// is ever handed, and a message matching no pattern exits 0. Measured against
+// refused at load rather than tolerated at lint. lint --message, and lint
+// --stdin under a git merge (git exports no author to the hook there), judge
+// under the empty author; a config carrying an empty entry therefore excludes
+// every such message, and a message matching no pattern exits 0. Measured against
 // the binary before the load refusal existed: exit 0 with the entry, exit 3
 // with only that entry removed.
 //
@@ -60,7 +60,7 @@ func TestLintHasNoTaste(t *testing.T) {
 func TestLintEmptyAuthorIsAlwaysJudged(t *testing.T) {
 	cfg := loadGemoji(t)
 	if got := cfg.Lint("no gitmoji, no sigil, nothing", ""); got.OK || got.Excluded {
-		t.Fatalf("Lint(_, \"\") = %+v, want a violation — the authoring path is never excluded", got)
+		t.Fatalf("Lint(_, \"\") = %+v, want a violation — the empty author is never excluded", got)
 	}
 
 	unreachable := *cfg
@@ -129,7 +129,7 @@ func TestAuthoringRefusalOffersNoAuthorExclusion(t *testing.T) {
 		"no template":     mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]) '\n"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			authoring := cfg.LintAuthoring("fix: wrong grammar")
+			authoring := cfg.LintAuthoring("fix: wrong grammar", "")
 			if authoring.OK || strings.Contains(authoring.Reason, "exclude the author") {
 				t.Errorf("LintAuthoring = %+v, want a refusal that does not offer to exclude the author", authoring)
 			}

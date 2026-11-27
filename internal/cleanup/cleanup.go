@@ -36,13 +36,9 @@ const defaultComment = "#"
 // `auto` (in any case — git compares it that way, measured) answers
 // defaultComment, an accepted boundary rather than a port. Under it git picks the
 // character per commit from what the message already holds, and no input a hook
-// has names the pick. Measured on git 2.54: a fresh editor commit, and an amend
-// whose body opens a line with '#', both got a '#' template and lost their '#'
-// lines. What this reading misjudges is a class: a message git is handed before
-// its cleanup (measured with -F) whose line 1 opens with '#', cleaned with
-// comments stripped — git picks another character and records that line as the
-// subject, the hook drops it. Measured instances: `-F` under
-// commit.cleanup=strip, and `-F <file> -e` with no cleanup config (DESIGN §2.1).
+// has names the pick. Which commits this reading judges as git records them,
+// and the class it misjudges in the lenient direction (a line git records as
+// the subject that the hook drops as a comment), are measured in DESIGN §2.1.
 // git deprecates `auto` for Git 3.0 and warns on every commit.
 //
 // An empty value, or one holding a newline, also answers defaultComment: git

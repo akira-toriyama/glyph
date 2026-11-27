@@ -534,10 +534,10 @@ func TestNotesSinceTagUnknownBreakingFallbackHoists(t *testing.T) {
 // buys, against the claim that it makes the dark verdict equal the lit one.
 // Squash guarantees a pull request resolves ALL-OR-NOTHING — one commit on
 // main, and it IS the merge point — but it does NOT guarantee the same verdict
-// with the API dark as with it answering. A multi-commit squash's subject is
-// the PR title, and the fallback classifies that one subject instead of the
-// pull's commits: a :sparkles:+:bug:~ pull titled :bug:~ reads minor live and
-// patch dark.
+// with the API dark as with it answering. The subject of a squash of two or
+// more commits besides merge commits is the PR title, and the fallback
+// classifies that one subject instead of the pull's commits: a
+// :sparkles:+:bug:~ pull titled :bug:~ reads minor live and patch dark.
 //
 // Do NOT golden doctor's prose to pin what squash buys — pin the walk it
 // describes.
@@ -579,10 +579,10 @@ func TestSinceTagSquashMultiCommitDivergesWhenAPIDark(t *testing.T) {
 // TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark is the same divergence at its
 // floor. A PR title carrying no gitmoji at all can still reach main — lint.yml's
 // squash-title step excludes bot pulls, and a repository need not call lint.yml —
-// so under COMMIT_OR_PR_TITLE a multi-commit squash can put a subject no
-// pattern claims on main. Live the pull's commits still decide; dark the
-// subject is dropped from the fold with a warning and the whole release counts
-// none.
+// so under COMMIT_OR_PR_TITLE a squash of two or more commits besides merge
+// commits can put a subject no pattern claims on main. Live the pull's commits
+// still decide; dark the subject is dropped from the fold with a warning and
+// the whole release counts none.
 func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Add a refresh endpoint", 6)

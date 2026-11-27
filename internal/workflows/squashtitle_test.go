@@ -13,11 +13,13 @@ import (
 const lintTitleStep = "Lint the squash title"
 
 // TestLintGateAlsoJudgesTheSquashTitle pins the second half of the lint gate:
-// the squash title. A squash merge records the PR title as the subject of the
-// commit that lands on main — CONTRIBUTING ratifies that title as a commit
-// subject — and the BASE..HEAD range can never see it, because the range holds
-// the pre-squash commits while the title exists as no commit at all until the
-// squash mints it. Measured across the fleet before the step existed, 158
+// the squash title, when it is the merge candidate. Under COMMIT_OR_PR_TITLE a
+// squash merge records the PR title as the subject of the commit that lands on
+// main when the pull holds two or more commits besides merge commits —
+// glyph counts them over the API inside `lint --pr`, so the step hands it the
+// number and nothing else — and the BASE..HEAD range can never see that
+// title, because the range holds the pre-squash commits while the title exists
+// as no commit at all until the squash mints it. Measured across the fleet before the step existed, 158
 // landed subjects had failed the grammar this way, each one read by the
 // release walk's fallback as a silent none. Losing this step does not red
 // anything: the range job stays green and the hole simply reopens, which is
@@ -91,7 +93,10 @@ func TestLintTitleStepExitsGlyphsVerdict(t *testing.T) {
 		name, stderr, says string
 		exit               int
 	}{
-		{"a title the grammar claims", "", "title OK", 0},
+		{"a title the grammar claims", "", "title not refused", 0},
+		// glyph's answer for a pull whose title is not the merge candidate:
+		// exit 0 and a notice, which must reach the log beside the green exit.
+		{"a pull whose title does not land", "::notice::glyph: stub title not judged\n", "title not refused", 0},
 		{
 			"a title the grammar refuses",
 			"::error::stub finding\n" + `{"error":{"code":3,"message":"stub verdict"}}` + "\n",
