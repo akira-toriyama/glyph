@@ -4720,8 +4720,11 @@ single home for it (§8 keeps no copy).
 `pr-verdict.yml` is advisory and not meant to be a required check:
 convention enforcement is `lint.yml`'s. A pull carrying a commit the lint
 rejects fails the verdict job too — the walk refuses an unclassifiable commit
-(§3) — and the job goes red without repeating commit-lint's per-commit
-annotations, which stay the one authoritative signal. Its comment is
+(§3) — and the job goes red with one `::error::` per refused commit — preview
+writes them and the compose step replays its stderr, adding its own headline
+only for an error glyph did not annotate (an API failure, a refusal with no
+commit rows) — while commit-lint stays the one authoritative signal, the verdict
+job being advisory. Its comment is
 refreshed on every push, a red one included: when the compose step does not
 succeed (preview exiting non-zero, or a step before it failed), the upsert still
 runs (`if: ${{ !cancelled() }}`) and replaces the comment with the workflow's
